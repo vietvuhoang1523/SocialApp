@@ -27,16 +27,23 @@ const LoginScreen = ({ navigation }) => {
     try {
       // Attempt to log in
       const data = await AuthService.login(email, password);
+      console.log('Login response:', data); // Thêm log để debug
 
       // Kiểm tra và điều hướng
       if (data.user && data.user.roles) {
         const userRole = data.user.roles[0]?.name;
+        console.log('User role:', userRole); // Thêm log để debug
+
         if (userRole === 'USERS') {
-          // Điều hướng đến màn hình chính
+          console.log('Navigating to Home screen'); // Thêm log để debug
+
+          // Sử dụng cả hai cách điều hướng để xem cái nào hoạt động
+          // Cách 1: Sử dụng reset
           navigation.reset({
             index: 0,
-            routes: [{ name: 'home' }],
+            routes: [{ name: 'Home' }],
           });
+
         } else {
           Alert.alert('Lỗi', 'Bạn không có quyền truy cập');
         }
@@ -44,6 +51,8 @@ const LoginScreen = ({ navigation }) => {
         Alert.alert('Lỗi', 'Không thể xác định vai trò người dùng');
       }
     } catch (error) {
+      console.error('Login error:', error); // Thêm log để debug
+
       // Xử lý lỗi đăng nhập
       Alert.alert(
           'Đăng nhập thất bại',
@@ -52,6 +61,16 @@ const LoginScreen = ({ navigation }) => {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const navigateToForgotPassword = () => {
+    console.log('Navigating to ForgotPassword'); // Debug log
+    navigation.navigate('ForgotPassword');
+  };
+
+  const navigateToRegister = () => {
+    console.log('Navigating to Register'); // Debug log
+    navigation.navigate('Register');
   };
 
   return (
@@ -88,10 +107,10 @@ const LoginScreen = ({ navigation }) => {
           )}
 
           <View style={styles.footer}>
-            <TouchableOpacity onPress={() => navigation.navigate('ForgotPassword')}>
+            <TouchableOpacity onPress={navigateToForgotPassword}>
               <Text style={styles.footerText}>Quên mật khẩu?</Text>
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => navigation.navigate('Register')}>
+            <TouchableOpacity onPress={navigateToRegister}>
               <Text style={styles.footerText}>Chưa có tài khoản? Đăng ký</Text>
             </TouchableOpacity>
           </View>

@@ -1,13 +1,18 @@
 import React from "react";
 import { NavigationContainer } from "@react-navigation/native";
 import { createStackNavigator } from "@react-navigation/stack";
-import HomeScreen from "./src/screens/HomeScreen";
-import MovieScreen from "./src/screens/MovieScreen";
-import VideoPlayerScreen from "./src/screens/VideoPlayerScreen";
+import InstagramHomeScreen from "./src/screens/InstagramHomeScreen";
 import LoginScreen from "./src/screens/LoginScreen";
-import SearchScreen from "./src/screens/SearchScreen";
 import { useFonts } from "expo-font";
-import { View, ActivityIndicator } from "react-native"; // thay thế AppLoading vì expo-app-loading bị deprecated
+import { View, ActivityIndicator } from "react-native";
+import ProfileScreen from "./src/screens/ProfileScreen";
+import ReelsScreen from "./src/screens/ReelsScreen";
+import CreatePostScreen from "./src/screens/CreatePostScreen";
+import NotificationsScreen from "./src/screens/NotificationsScreen";
+import MainTabNavigator from "./src/components/MainTabNavigator";
+import RegisterScreen from "./src/screens/RegisterScreen";
+import ForgotPasswordScreen from "./src/screens/ForgotPasswordScreen";
+import EditProfileScreen from "./src/components/EditProfileScreen";
 
 const Stack = createStackNavigator();
 
@@ -24,33 +29,62 @@ export default function App() {
 
   if (!fontsLoaded) {
     return (
-      <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
-        <ActivityIndicator size="large" />
-      </View>
+        <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+          <ActivityIndicator size="large" />
+        </View>
     );
   }
 
   return (
-    <NavigationContainer>
-      <Stack.Navigator>
-        <Stack.Screen
-          name="login"
-          component={LoginScreen}
-          options={{ headerShown: false }}
-        />
-        <Stack.Screen
-          name="home"
-          component={HomeScreen}
-          options={{ headerShown: false }}
-        />
-        <Stack.Screen name="Search" component={SearchScreen} options={{ headerShown: false }} />
-        <Stack.Screen
-          name="movie"
-          component={MovieScreen}
-          options={{ headerShown: false }}
-        />
-        <Stack.Screen name="VideoPlayerScreen" component={VideoPlayerScreen} options={{ headerShown: false }} />
-      </Stack.Navigator>
-    </NavigationContainer>
+      <NavigationContainer>
+        <Stack.Navigator initialRouteName="Login">
+          <Stack.Screen
+              name="Login"
+              component={LoginScreen}
+              options={{ headerShown: false }}
+          />
+          <Stack.Screen
+              name="Home"
+              component={InstagramHomeScreen}
+              options={{ headerShown: false }}
+          />
+          <Stack.Screen
+              name="Profile"
+              component={ProfileScreen}
+              options={{ headerShown: false }}
+          />
+          <Stack.Screen
+              name="Reels"
+              component={ReelsScreen}
+              options={{ headerShown: false }}
+          />
+          <Stack.Screen
+              name="Notifications"
+              component={NotificationsScreen}
+              options={{ headerShown: false }}
+          />
+          <Stack.Screen
+              name="CreatePost"
+              component={CreatePostScreen}
+              options={{ headerShown: false }}
+          />
+          <Stack.Screen
+              name="Register"
+              component={RegisterScreen}
+              options={{ headerShown: false }}
+          />
+          <Stack.Screen
+              name="ForgotPassword"
+              component={ForgotPasswordScreen}
+              options={{ headerShown: false }}
+          />
+          <Stack.Screen
+              name="EditProfile"
+              component={EditProfileScreen}
+              options={{ headerShown: false }}
+          />
+          <Stack.Screen name="MainApp" component={MainTabNavigator} />
+        </Stack.Navigator>
+      </NavigationContainer>
   );
 }
