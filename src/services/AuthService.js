@@ -1,329 +1,410 @@
+// AuthService.js - Bổ sung các router còn thiếu
+import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { BASE_URL, DEFAULT_TIMEOUT, DEFAULT_HEADERS } from './api';
 
-const API_BASE_URL = "http://192.168.100.193:8082/api/auth";
+class AuthService {
+    constructor() {
+        this.api = axios.create({
+            baseURL: `${BASE_URL}/auth`,
+            timeout: DEFAULT_TIMEOUT,
+            headers: DEFAULT_HEADERS,
+        });
+    }
 
-const AuthService = {
-    login: async (email, password) => {
+    /**
+     * Đăng ký người dùng mới
+     * @param {Object} userData - Thông tin đăng ký
+     * @returns {Promise} Kết quả đăng ký
+     */
+    async register(userData) {
         try {
-            const response = await fetch(`${API_BASE_URL}/login`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    email,
-                    password
-                }),
-            });
+            console.log('Đang gọi API đăng ký với email:', userData.email);
 
-            // Kiểm tra response
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.message || 'Đăng nhập thất bại');
-            }
+            const response = await this.api.post('/register', userData);
 
-            // Parse dữ liệu response
-            const responseData = await response.json();
-            const data = responseData.authentication; // Truy cập vào đối tượng authentication
-
-            // Lưu token và thông tin người dùng vào AsyncStorage
-            await AsyncStorage.setItem('userToken', data.token);
-            await AsyncStorage.setItem('refreshToken', data.refreshToken);
-            await AsyncStorage.setItem('userData', JSON.stringify(data.user));
-
-            return data;
+            console.log('Phản hồi từ API đăng ký:', response.data);
+            return response.data;
         } catch (error) {
-            console.error('Lỗi đăng nhập:', error);
+            console.error('Register error:', error);
+            if (error.response) {
+                console.error('Error status:', error.response.status);
+                console.error('Error data:', error.response.data);
+            }
             throw error;
         }
-    },
+    }
 
-    // Đăng ký tài khoản mới
-    register: async (fullName, email, password) => {
+    /**
+     * Đăng nhập người dùng bằng email và mật khẩu
+     * @param {string} email - Email của người dùng
+     * @param {string} password - Mật khẩu
+     * @returns {Promise} Kết quả đăng nhập
+     */
+    async login(email, password) {
         try {
-            const response = await fetch(`${API_BASE_URL}/register`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    fullName,
-                    email,
-                    password
-                }),
+            console.log('Đang gọi API đăng nhập với email:', email);
+
+            const response = await this.api.post('/login', {
+                email,
+                password
             });
 
-            // Kiểm tra response
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.message || 'Đăng ký thất bại');
+            console.log('Phản hồi từ API đăng nhập:', response.data);
+
+            // Kiểm tra cấu trúc phản hồi từ server
+            let tokenData = response.data;
+
+            // Nếu dữ liệu lồng trong đối tượng authentication
+            if (response.data.authentication) {
+                tokenData = response.data.authentication;
             }
 
-            // Parse dữ liệu response
-            const data = await response.json();
-            return data.registration; // Truy cập vào đối tượng registration
+            // Xác định token
+            const accessToken = tokenData.token || tokenData.accessToken;
+
+            // Nếu token tồn tại, lưu vào AsyncStorage
+            if (accessToken) {
+                console.log('Lưu access token:', accessToken);
+                await AsyncStorage.setItem('accessToken', accessToken);
+
+                // Lưu loại token (nếu có)
+                if (tokenData.tokenType) {
+                    await AsyncStorage.setItem('tokenType', tokenData.tokenType);
+                }
+
+                // Lưu refresh token (nếu có)
+                if (tokenData.refreshToken) {
+                    console.log('Lưu refresh token');
+                    await AsyncStorage.setItem('refreshToken', tokenData.refreshToken);
+                }
+
+                // Lưu thông tin người dùng (nếu có)
+                if (tokenData.user) {
+                    console.log('Lưu thông tin người dùng');
+                    await AsyncStorage.setItem('userData', JSON.stringify(tokenData.user));
+                }
+
+                // Log lại token sau khi lưu để kiểm tra
+                const savedToken = await AsyncStorage.getItem('accessToken');
+                console.log('Token sau khi lưu:', savedToken);
+            } else {
+                console.error('Không tìm thấy token trong phản hồi');
+            }
+
+            return response.data;
         } catch (error) {
-            console.error('Lỗi đăng ký:', error);
+            console.error('Login error:', error);
+
+            // Log chi tiết lỗi để debug
+            if (error.response) {
+                console.error('Error status:', error.response.status);
+                console.error('Error data:', error.response.data);
+            } else if (error.request) {
+                console.error('No response received:', error.request);
+            } else {
+                console.error('Error message:', error.message);
+            }
+
             throw error;
         }
-    },
+    }
 
-    // Xác thực tài khoản với mã xác minh
-    verifyAccount: async (email, verificationCode) => {
+    /**
+     * Xác minh tài khoản với mã xác nhận
+     * @param {string} email - Email của người dùng
+     * @param {string} verificationCode - Mã xác nhận
+     * @returns {Promise} Kết quả xác minh
+     */
+    async verifyAccount(email, verificationCode) {
         try {
-            const response = await fetch(`${API_BASE_URL}/verify`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    email,
-                    verificationCode
-                }),
+            console.log('Đang gọi API xác minh tài khoản:', email);
+
+            const response = await this.api.post('/verify', {
+                email,
+                verificationCode
             });
 
-            // Kiểm tra response
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.message || 'Xác thực tài khoản thất bại');
-            }
-
-            // Parse dữ liệu response
-            const data = await response.json();
-            return data.verification; // Truy cập vào đối tượng verification
+            console.log('Phản hồi từ API xác minh:', response.data);
+            return response.data;
         } catch (error) {
-            console.error('Lỗi xác thực tài khoản:', error);
+            console.error('Verification error:', error);
+            if (error.response) {
+                console.error('Error status:', error.response.status);
+                console.error('Error data:', error.response.data);
+            }
             throw error;
         }
-    },
+    }
 
-    // Gửi lại mã xác minh
-    resendVerificationCode: async (email) => {
+    /**
+     * Gửi lại mã xác minh
+     * @param {string} email - Email cần gửi lại mã
+     * @returns {Promise} Kết quả gửi mã
+     */
+    async resendVerificationCode(email) {
         try {
-            const response = await fetch(`${API_BASE_URL}/resend-verification`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    email
-                }),
+            console.log('Đang gọi API gửi lại mã xác minh cho:', email);
+
+            const response = await this.api.post('/resend-verification', {
+                email
             });
 
-            // Kiểm tra response
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.message || 'Không thể gửi lại mã xác minh');
-            }
-
-            // Parse dữ liệu response
-            const data = await response.json();
-            return data.verification; // Truy cập vào đối tượng verification
+            console.log('Phản hồi từ API gửi lại mã:', response.data);
+            return response.data;
         } catch (error) {
-            console.error('Lỗi gửi lại mã xác minh:', error);
+            console.error('Resend verification error:', error);
+            if (error.response) {
+                console.error('Error status:', error.response.status);
+                console.error('Error data:', error.response.data);
+            }
             throw error;
         }
-    },
+    }
 
-    // Yêu cầu đặt lại mật khẩu (quên mật khẩu)
-    sendPasswordResetCode: async (email) => {
+    /**
+     * Yêu cầu đặt lại mật khẩu
+     * @param {string} email - Email cần đặt lại mật khẩu
+     * @returns {Promise} Kết quả yêu cầu
+     */
+    async requestPasswordReset(email) {
         try {
-            const response = await fetch(`${API_BASE_URL}/forgot-password`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    email
-                }),
+            console.log('Đang gọi API yêu cầu đặt lại mật khẩu cho:', email);
+
+            const response = await this.api.post('/forgot-password', {
+                email
             });
 
-            // Kiểm tra response
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.message || 'Không thể gửi yêu cầu đặt lại mật khẩu');
-            }
-
-            // Parse dữ liệu response
-            const data = await response.json();
-            return data.passwordReset; // Truy cập vào đối tượng passwordReset
+            console.log('Phản hồi từ API yêu cầu đặt lại mật khẩu:', response.data);
+            return response.data;
         } catch (error) {
-            console.error('Lỗi gửi yêu cầu đặt lại mật khẩu:', error);
+            console.error('Password reset request error:', error);
+            if (error.response) {
+                console.error('Error status:', error.response.status);
+                console.error('Error data:', error.response.data);
+            }
             throw error;
         }
-    },
+    }
 
-    // Đặt lại mật khẩu với mã xác nhận
-    resetPassword: async (email, verificationCode, newPassword) => {
+    /**
+     * Đặt lại mật khẩu với mã xác nhận
+     * @param {string} email - Email người dùng
+     * @param {string} resetToken - Mã xác nhận đặt lại mật khẩu
+     * @param {string} newPassword - Mật khẩu mới
+     * @returns {Promise} Kết quả đặt lại mật khẩu
+     */
+    async resetPassword(email, resetToken, newPassword) {
         try {
-            const response = await fetch(`${API_BASE_URL}/reset-password`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    email,
-                    token: verificationCode, // API uses token instead of verificationCode
-                    newPassword
-                }),
+            console.log('Đang gọi API đặt lại mật khẩu cho:', email);
+
+            const response = await this.api.post('/reset-password', {
+                email,
+                resetToken,
+                newPassword
             });
 
-            // Check response
-            if (!response.ok) {
-                const errorData = await response.text(); // Use text() instead of json() to handle potential non-JSON errors
-                throw new Error(errorData || 'Cannot reset password');
-            }
-
-            // Parse response data
-            const data = await response.json();
-            return data; // PasswordResetResponse object
+            console.log('Phản hồi từ API đặt lại mật khẩu:', response.data);
+            return response.data;
         } catch (error) {
             console.error('Password reset error:', error);
+            if (error.response) {
+                console.error('Error status:', error.response.status);
+                console.error('Error data:', error.response.data);
+            }
             throw error;
         }
-    },
+    }
 
-    // Làm mới token
-    refreshToken: async () => {
+    /**
+     * Làm mới token
+     * @returns {Promise} Token mới
+     */
+    async refreshToken() {
         try {
             const refreshToken = await AsyncStorage.getItem('refreshToken');
 
-            const response = await fetch(`${API_BASE_URL}/refresh-token`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    refreshToken
-                }),
-            });
-
-            if (!response.ok) {
-                throw new Error('Không thể làm mới token');
+            if (!refreshToken) {
+                throw new Error('Không có refresh token');
             }
 
-            const data = await response.json();
+            console.log('Đang gọi API làm mới token');
 
-            // Lưu token mới
-            await AsyncStorage.setItem('userToken', data.accessToken);
-
-            return data.accessToken;
-        } catch (error) {
-            console.error('Lỗi làm mới token:', error);
-            throw error;
-        }
-    },
-
-    // Kiểm tra token
-    introspectToken: async (token) => {
-        try {
-            const tokenToCheck = token || await AsyncStorage.getItem('userToken');
-
-            const response = await fetch(`${API_BASE_URL}/introspect`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    token: tokenToCheck
-                }),
+            const response = await this.api.post('/refresh-token', {
+                refreshToken
             });
 
-            if (!response.ok) {
-                throw new Error('Không thể kiểm tra token');
+            console.log('Phản hồi từ API làm mới token:', response.data);
+
+            // Cập nhật token mới vào storage
+            const tokenData = response.data;
+
+            if (tokenData.token || tokenData.accessToken) {
+                const newToken = tokenData.token || tokenData.accessToken;
+                await AsyncStorage.setItem('accessToken', newToken);
+
+                if (tokenData.refreshToken) {
+                    await AsyncStorage.setItem('refreshToken', tokenData.refreshToken);
+                }
             }
 
-            const data = await response.json();
-            return data; // Đối tượng IntrospectResponse
+            return response.data;
         } catch (error) {
-            console.error('Lỗi kiểm tra token:', error);
+            console.error('Refresh token error:', error);
+            if (error.response) {
+                console.error('Error status:', error.response.status);
+                console.error('Error data:', error.response.data);
+            }
             throw error;
         }
-    },
+    }
 
-    // Đăng xuất
-    logout: async () => {
+    /**
+     * Kiểm tra tính hợp lệ của token
+     * @param {string} token - Token cần kiểm tra
+     * @returns {Promise} Thông tin về tính hợp lệ của token
+     */
+    async introspectToken(token = null) {
         try {
-            // Lấy token từ AsyncStorage
-            const token = await AsyncStorage.getItem('userToken');
-            const refreshToken = await AsyncStorage.getItem('refreshToken');
+            // Nếu không có token được cung cấp, lấy từ storage
+            if (!token) {
+                token = await AsyncStorage.getItem('accessToken');
+            }
 
-            // Gọi API logout
-            const response = await fetch(`${API_BASE_URL}/logout`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
-                body: JSON.stringify({
-                    token,
-                    refreshToken
-                }),
+            if (!token) {
+                throw new Error('Không có token để kiểm tra');
+            }
+
+            console.log('Đang gọi API kiểm tra token');
+
+            const response = await this.api.post('/introspect', {
+                token
             });
 
-            // Xóa thông tin đăng nhập khỏi AsyncStorage
-            await AsyncStorage.removeItem('userToken');
+            console.log('Phản hồi từ API kiểm tra token:', response.data);
+            return response.data;
+        } catch (error) {
+            console.error('Token introspection error:', error);
+            if (error.response) {
+                console.error('Error status:', error.response.status);
+                console.error('Error data:', error.response.data);
+            }
+            throw error;
+        }
+    }
+
+    /**
+     * Đăng xuất người dùng
+     * @returns {Promise} Kết quả đăng xuất
+     */
+    async logout() {
+        try {
+            // Nếu cần gọi API logout ở backend
+            const token = await AsyncStorage.getItem('accessToken');
+            if (token) {
+                try {
+                    await this.api.post('/logout', {
+                        token
+                    }, {
+                        headers: {
+                            Authorization: `Bearer ${token}`
+                        }
+                    });
+                } catch (logoutError) {
+                    console.warn('Logout API error:', logoutError);
+                    // Tiếp tục xóa token dù có lỗi API
+                }
+            }
+
+            // Xóa token và dữ liệu người dùng
+            await AsyncStorage.removeItem('accessToken');
+            await AsyncStorage.removeItem('tokenType');
             await AsyncStorage.removeItem('refreshToken');
             await AsyncStorage.removeItem('userData');
 
-            return response.ok;
+            // Reset biến global
+            global.authExpired = false;
+
+            return { success: true };
         } catch (error) {
-            console.error('Lỗi đăng xuất:', error);
+            console.error('Logout error:', error);
             throw error;
         }
-    },
+    }
 
-    // Kiểm tra trạng thái đăng nhập
-    isAuthenticated: async () => {
+    /**
+     * Kiểm tra xem người dùng đã đăng nhập chưa
+     * @returns {Promise<boolean>} Trạng thái đăng nhập
+     */
+    static async isAuthenticated() {
         try {
-            const token = await AsyncStorage.getItem('userToken');
+            const token = await AsyncStorage.getItem('accessToken');
 
-            if (!token) {
-                return false;
-            }
+            // Nếu không có token, trả về false
+            if (!token) return false;
 
-            // Gọi API kiểm tra token
-            const response = await fetch(`${API_BASE_URL}/introspect`, {
-                method: 'POST',
+            // Thêm logic kiểm tra token hợp lệ với backend (nếu cần)
+            // Ví dụ: gọi API kiểm tra token
+            const response = await axios.get('/api/validate-token', {
                 headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    token
-                }),
+                    'Authorization': `Bearer ${token}`
+                }
             });
 
-            const data = await response.json();
-            return data.valid;
+            return response.status === 200;
         } catch (error) {
-            console.error('Lỗi kiểm tra trạng thái đăng nhập:', error);
+            console.error('Authentication check failed:', error);
             return false;
         }
-    },
+    }
 
-    // Lấy thông tin người dùng từ AsyncStorage
-    getCurrentUser: async () => {
+    /**
+     * Lấy thông tin token hiện tại
+     * @returns {Promise<string|null>} Token hoặc null nếu không có
+     */
+    async getToken() {
         try {
-            const userDataString = await AsyncStorage.getItem('userData');
-            if (userDataString) {
-                return JSON.parse(userDataString);
-            }
-            return null;
+            return await AsyncStorage.getItem('accessToken');
         } catch (error) {
-            console.error('Lỗi lấy thông tin người dùng:', error);
-            return null;
-        }
-    },
-
-    // Lấy token hiện tại
-    getToken: async () => {
-        try {
-            return await AsyncStorage.getItem('userToken');
-        } catch (error) {
-            console.error('Lỗi lấy token:', error);
+            console.error('Get token error:', error);
             return null;
         }
     }
-};
 
-export default AuthService;
+    /**
+     * Lấy token với tiền tố Bearer để sử dụng trong header
+     * @returns {Promise<string|null>} Bearer token hoặc null
+     */
+    async getBearerToken() {
+        try {
+            const token = await AsyncStorage.getItem('accessToken');
+            const tokenType = await AsyncStorage.getItem('tokenType') || 'Bearer';
+
+            if (token) {
+                return `${tokenType} ${token}`;
+            }
+            return null;
+        } catch (error) {
+            console.error('Get bearer token error:', error);
+            return null;
+        }
+    }
+
+    /**
+     * Lấy thông tin người dùng đã lưu
+     * @returns {Promise<Object|null>} Thông tin người dùng hoặc null
+     */
+    async getUserData() {
+        try {
+            const userData = await AsyncStorage.getItem('userData');
+            return userData ? JSON.parse(userData) : null;
+        } catch (error) {
+            console.error('Get user data error:', error);
+            return null;
+        }
+    }
+}
+
+// Tạo instance singleton
+const authService = new AuthService();
+export default authService;

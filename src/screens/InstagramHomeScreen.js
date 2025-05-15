@@ -214,13 +214,13 @@ const InstagramHomeScreen = ({ navigation }) => {
                 <TouchableOpacity onPress={() => navigation.navigate('Home')}>
                     <Icon name="home" size={24} color="black" />
                 </TouchableOpacity>
-                <TouchableOpacity onPress={() => navigation.navigate('Search')}>
+                <TouchableOpacity onPress={() => navigation.navigate('FriendSearch')}>
                     <Icon name="magnify" size={24} color="black" />
                 </TouchableOpacity>
                 <TouchableOpacity onPress={() => navigation.navigate('CreatePost')}>
                     <Icon name="plus-box-outline" size={24} color="black" />
                 </TouchableOpacity>
-                <TouchableOpacity onPress={() => navigation.navigate('Notifications')}>
+                <TouchableOpacity onPress={() => navigation.navigate('FriendRequests')}>
                     <Icon name="heart-outline" size={24} color="black" />
                 </TouchableOpacity>
                 <TouchableOpacity onPress={() => navigation.navigate('Profile', { user: currentUser })}>

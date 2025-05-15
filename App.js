@@ -5,7 +5,7 @@ import InstagramHomeScreen from "./src/screens/InstagramHomeScreen";
 import LoginScreen from "./src/screens/LoginScreen";
 import { useFonts } from "expo-font";
 import { View, ActivityIndicator } from "react-native";
-import ProfileScreen from "./src/screens/ProfileScreen";
+import ProfileScreen from "./src/screens/profile/ProfileScreen";
 import ReelsScreen from "./src/screens/ReelsScreen";
 import CreatePostScreen from "./src/screens/CreatePostScreen";
 import NotificationsScreen from "./src/screens/NotificationsScreen";
@@ -13,18 +13,26 @@ import MainTabNavigator from "./src/components/MainTabNavigator";
 import RegisterScreen from "./src/screens/RegisterScreen";
 import ForgotPasswordScreen from "./src/screens/ForgotPasswordScreen";
 import EditProfileScreen from "./src/components/EditProfileScreen";
+import FriendSearchScreen from "./src/screens/FriendSearchScreen";
+import EmailSearchHandler from "./src/components/EmailSearchHandler";
+import FriendRequestsScreen from "./src/screens/FriendRequestsScreen";
+import ProfileTabs from "./src/screens/profile/ProfileTabs";
+import ProfileContent from "./src/screens/profile/ProfileContent";
+import ProfileInfo from "./src/screens/profile/ProfileInfo";
+import ProfileHeader from "./src/screens/profile/ProfileHeader";
+import FriendsSection from "./src/screens/profile/FriendsSection";
 
 const Stack = createStackNavigator();
 
 export default function App() {
   const [fontsLoaded] = useFonts({
-    Regular: require("./assets/fonts/NunitoSans-Regular.ttf"),
-    Bold: require("./assets/fonts/NunitoSans-Bold.ttf"),
-    Black: require("./assets/fonts/NunitoSans-Black.ttf"),
-    ExtraBold: require("./assets/fonts/NunitoSans-ExtraBold.ttf"),
-    ExtraLight: require("./assets/fonts/NunitoSans-ExtraLight.ttf"),
-    Light: require("./assets/fonts/NunitoSans-Light.ttf"),
-    SemiBold: require("./assets/fonts/NunitoSans-SemiBold.ttf"),
+    Regular: require("./src/assets/fonts/NunitoSans-Regular.ttf"),
+    Bold: require("./src/assets/fonts/NunitoSans-Bold.ttf"),
+    Black: require("./src/assets/fonts/NunitoSans-Black.ttf"),
+    ExtraBold: require("./src/assets/fonts/NunitoSans-ExtraBold.ttf"),
+    ExtraLight: require("./src/assets/fonts/NunitoSans-ExtraLight.ttf"),
+    Light: require("./src/assets/fonts/NunitoSans-Light.ttf"),
+    SemiBold: require("./src/assets/fonts/NunitoSans-SemiBold.ttf"),
   });
 
   if (!fontsLoaded) {
@@ -44,6 +52,16 @@ export default function App() {
               options={{ headerShown: false }}
           />
           <Stack.Screen
+              name="FriendSearch"
+              component={FriendSearchScreen}
+              options={{ headerShown: false }}
+          />
+          <Stack.Screen
+              name="FriendRequests"
+              component={FriendRequestsScreen}
+              options={{ headerShown: false }}
+          />
+          <Stack.Screen
               name="Home"
               component={InstagramHomeScreen}
               options={{ headerShown: false }}
@@ -51,6 +69,31 @@ export default function App() {
           <Stack.Screen
               name="Profile"
               component={ProfileScreen}
+              options={{ headerShown: false }}
+          />
+          <Stack.Screen
+              name="FriendsSection"
+              component={FriendsSection}
+              options={{ headerShown: false }}
+          />
+          <Stack.Screen
+              name="ProfileHeader"
+              component={ProfileHeader}
+              options={{ headerShown: false }}
+          />
+          <Stack.Screen
+              name="ProfileInfo"
+              component={ProfileInfo}
+              options={{ headerShown: false }}
+          />
+          <Stack.Screen
+              name="ProfileContent"
+              component={ProfileContent}
+              options={{ headerShown: false }}
+          />
+          <Stack.Screen
+              name="ProfileTabs"
+              component={ProfileTabs}
               options={{ headerShown: false }}
           />
           <Stack.Screen
@@ -81,6 +124,11 @@ export default function App() {
           <Stack.Screen
               name="EditProfile"
               component={EditProfileScreen}
+              options={{ headerShown: false }}
+          />
+          <Stack.Screen
+              name="EmailSearchHandler"
+              component={EmailSearchHandler}
               options={{ headerShown: false }}
           />
           <Stack.Screen name="MainApp" component={MainTabNavigator} />

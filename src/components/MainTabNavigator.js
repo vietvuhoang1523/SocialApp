@@ -6,7 +6,7 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 // Import your screens with correct paths
 import InstagramHomeScreen from "../screens/InstagramHomeScreen";
 import SearchScreen from "../screens/SearchScreen";
-import ProfileScreen from "../screens/ProfileScreen";
+import ProfileScreen from "../screens/profile/ProfileScreen";
 import NotificationsScreen from "../screens/NotificationsScreen";
 import CreatePostScreen from "../screens/CreatePostScreen";
 import ReelsScreen from "../screens/ReelsScreen";

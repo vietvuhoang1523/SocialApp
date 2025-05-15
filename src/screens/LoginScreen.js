@@ -1,173 +1,403 @@
-import React, { useState } from 'react';
+// LoginScreen.js (Đã sửa lỗi điều hướng)
+import React, { useState, useEffect } from 'react';
 import {
   View,
-  TextInput,
-  StyleSheet,
-  Alert,
   Text,
+  TextInput,
   TouchableOpacity,
-  ActivityIndicator
+  StyleSheet,
+  Image,
+  KeyboardAvoidingView,
+  Platform,
+  ActivityIndicator,
+  Alert,
+  ScrollView
 } from 'react-native';
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import AuthService from '../services/AuthService';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const LoginScreen = ({ navigation }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
+  const [isPasswordVisible, setIsPasswordVisible] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
 
+  // Kiểm tra xem đã đăng nhập chưa khi màn hình được tải
+  useEffect(() => {
+    checkAuthentication();
+  }, []);
+
+  // Kiểm tra xác thực
+  // Kiểm tra xác thực
+  const checkAuthentication = async () => {
+    try {
+      const token = await AsyncStorage.getItem('accessToken');
+
+      // Chỉ kiểm tra khi có token
+      if (token) {
+        const isAuthenticated = await AuthService.isAuthenticated();
+        console.log('Đã đăng nhập:', isAuthenticated);
+
+        if (isAuthenticated) {
+          // Đã đăng nhập, chuyển đến màn hình chính
+          const availableScreens = ['Home', 'Dashboard', 'Profile'];
+
+          // Tìm màn hình đầu tiên khả dụng trong navigator
+          for (const screen of availableScreens) {
+            try {
+              // Thử chuyển hướng đến màn hình
+              navigation.navigate(screen);
+              console.log('Đã chuyển hướng đến màn hình:', screen);
+              return; // Dừng vòng lặp nếu chuyển hướng thành công
+            } catch (navError) {
+              console.warn(`Không thể chuyển hướng đến ${screen}, thử màn hình tiếp theo.`);
+            }
+          }
+
+          // Nếu không thể chuyển hướng đến bất kỳ màn hình nào
+          console.error('Không thể tìm thấy màn hình chính khả dụng');
+          Alert.alert(
+              'Lỗi điều hướng',
+              'Không thể tìm thấy màn hình chính. Vui lòng kiểm tra cấu hình của ứng dụng.'
+          );
+        }
+      }
+    } catch (error) {
+      console.error('Authentication check error:', error);
+      // Nếu có lỗi, không tự động chuyển hướng
+    } finally {
+      setInitialLoading(false);
+    }
+  };
+
+  // Xử lý đăng nhập
   const handleLogin = async () => {
-    // Validate inputs
     if (!email || !password) {
       Alert.alert('Lỗi', 'Vui lòng nhập email và mật khẩu');
       return;
     }
 
-    setIsLoading(true);
-
     try {
-      // Attempt to log in
-      const data = await AuthService.login(email, password);
-      console.log('Login response:', data); // Thêm log để debug
+      setLoading(true);
+      const response = await AuthService.login(email, password);
 
-      // Kiểm tra và điều hướng
-      if (data.user && data.user.roles) {
-        const userRole = data.user.roles[0]?.name;
-        console.log('User role:', userRole); // Thêm log để debug
+      console.log('Đăng nhập thành công:', response);
 
-        if (userRole === 'USERS') {
-          console.log('Navigating to Home screen'); // Thêm log để debug
+      // Log token để debug
+      const token = await AsyncStorage.getItem('accessToken');
+      console.log('Token đã lưu:', token);
 
-          // Sử dụng cả hai cách điều hướng để xem cái nào hoạt động
-          // Cách 1: Sử dụng reset
-          navigation.reset({
-            index: 0,
-            routes: [{ name: 'Home' }],
-          });
+      if (!token) {
+        throw new Error('Không thể lưu token.');
+      }
 
-        } else {
-          Alert.alert('Lỗi', 'Bạn không có quyền truy cập');
+      // Chuyển đến màn hình chính
+      // Thử các màn hình có thể có
+      const availableScreens = [ 'Home', 'Dashboard', 'Profile'];
+      let navigated = false;
+
+      for (const screen of availableScreens) {
+        try {
+          // Thử chuyển hướng đến màn hình
+          navigation.navigate(screen);
+          console.log('Đã chuyển hướng đến màn hình:', screen);
+          navigated = true;
+          break; // Dừng vòng lặp nếu chuyển hướng thành công
+        } catch (navError) {
+          console.warn(`Không thể chuyển hướng đến ${screen}, thử màn hình tiếp theo.`);
         }
-      } else {
-        Alert.alert('Lỗi', 'Không thể xác định vai trò người dùng');
+      }
+
+      if (!navigated) {
+        // Nếu không thể chuyển hướng đến bất kỳ màn hình nào
+        Alert.alert(
+            'Lỗi điều hướng',
+            'Không thể tìm thấy màn hình chính. Vui lòng kiểm tra cấu hình của ứng dụng.'
+        );
       }
     } catch (error) {
-      console.error('Login error:', error); // Thêm log để debug
+      console.error('Login error', error);
+      let errorMessage = 'Không thể đăng nhập. Vui lòng thử lại.';
 
-      // Xử lý lỗi đăng nhập
-      Alert.alert(
-          'Đăng nhập thất bại',
-          error.message || 'Đã có lỗi xảy ra. Vui lòng thử lại.'
-      );
+      if (error.response) {
+        // Lỗi từ server
+        if (error.response.status === 401) {
+          errorMessage = 'Email hoặc mật khẩu không đúng';
+        } else if (error.response.data && error.response.data.message) {
+          errorMessage = error.response.data.message;
+        }
+      } else if (error.request) {
+        // Không nhận được phản hồi từ server
+        errorMessage = 'Không thể kết nối đến máy chủ. Vui lòng kiểm tra kết nối mạng.';
+      } else {
+        // Lỗi khác
+        errorMessage = error.message || 'Có lỗi xảy ra khi đăng nhập';
+      }
+
+      Alert.alert('Lỗi đăng nhập', errorMessage);
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   };
 
-  const navigateToForgotPassword = () => {
-    console.log('Navigating to ForgotPassword'); // Debug log
-    navigation.navigate('ForgotPassword');
-  };
-
-  const navigateToRegister = () => {
-    console.log('Navigating to Register'); // Debug log
+  // Xử lý chuyển đến màn hình đăng ký
+  const handleRegister = () => {
     navigation.navigate('Register');
   };
 
+  // Xử lý quên mật khẩu
+  const handleForgotPassword = () => {
+    navigation.navigate('ForgotPassword');
+  };
+
+  if (initialLoading) {
+    return (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#4CAF50" />
+          <Text style={styles.loadingText}>Đang kiểm tra thông tin đăng nhập...</Text>
+        </View>
+    );
+  }
+
   return (
-      <View style={styles.background}>
-        <View style={styles.overlay}>
-          <Text style={styles.title}>Đăng nhập</Text>
+      <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : null}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 50 : 0}
+      >
+        <ScrollView contentContainerStyle={styles.container}>
+          {/* Logo và tiêu đề */}
+          <View style={styles.logoContainer}>
+            {/*<Image*/}
+            {/*    source={require('../assets/logo.png')}*/}
+            {/*    style={styles.logo}*/}
+            {/*    resizeMode="contain"*/}
+            {/*/>*/}
+            <Text style={styles.appTitle}>Social Matching App</Text>
+            <Text style={styles.appSubtitle}>Kết nối - Chia sẻ - Kết bạn</Text>
+          </View>
 
-          <TextInput
-              placeholder="Email"
-              value={email}
-              onChangeText={setEmail}
-              autoCapitalize="none"
-              keyboardType="email-address"
-              style={styles.input}
-          />
-          <TextInput
-              placeholder="Mật khẩu"
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
-              style={styles.input}
-          />
+          {/* Form đăng nhập */}
+          <View style={styles.formContainer}>
+            <View style={styles.inputContainer}>
+              <Icon name="email" size={20} color="#757575" style={styles.inputIcon} />
+              <TextInput
+                  style={styles.input}
+                  placeholder="Email"
+                  value={email}
+                  onChangeText={setEmail}
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+              />
+            </View>
 
-          {isLoading ? (
-              <ActivityIndicator size="large" color="#4CAF50" />
-          ) : (
+            <View style={styles.inputContainer}>
+              <Icon name="lock" size={20} color="#757575" style={styles.inputIcon} />
+              <TextInput
+                  style={styles.input}
+                  placeholder="Mật khẩu"
+                  secureTextEntry={!isPasswordVisible}
+                  value={password}
+                  onChangeText={setPassword}
+              />
               <TouchableOpacity
-                  style={styles.loginButton}
-                  onPress={handleLogin}
-                  disabled={isLoading}
+                  style={styles.visibilityIcon}
+                  onPress={() => setIsPasswordVisible(!isPasswordVisible)}
               >
-                <Text style={styles.buttonText}>Đăng nhập</Text>
+                <Icon
+                    name={isPasswordVisible ? 'eye-off' : 'eye'}
+                    size={20}
+                    color="#757575"
+                />
               </TouchableOpacity>
-          )}
+            </View>
 
-          <View style={styles.footer}>
-            <TouchableOpacity onPress={navigateToForgotPassword}>
-              <Text style={styles.footerText}>Quên mật khẩu?</Text>
+            <TouchableOpacity
+                style={styles.forgotPasswordButton}
+                onPress={handleForgotPassword}
+            >
+              <Text style={styles.forgotPasswordText}>Quên mật khẩu?</Text>
             </TouchableOpacity>
-            <TouchableOpacity onPress={navigateToRegister}>
-              <Text style={styles.footerText}>Chưa có tài khoản? Đăng ký</Text>
+
+            <TouchableOpacity
+                style={styles.loginButton}
+                onPress={handleLogin}
+                disabled={loading}
+            >
+              {loading ? (
+                  <ActivityIndicator size="small" color="white" />
+              ) : (
+                  <Text style={styles.loginButtonText}>Đăng nhập</Text>
+              )}
             </TouchableOpacity>
           </View>
-        </View>
-      </View>
+
+          {/* Phần đăng ký */}
+          <View style={styles.registerContainer}>
+            <Text style={styles.registerText}>Chưa có tài khoản? </Text>
+            <TouchableOpacity onPress={handleRegister}>
+              <Text style={styles.registerButtonText}>Đăng ký ngay</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Hoặc đăng nhập với */}
+          <View style={styles.socialLoginContainer}>
+            <View style={styles.divider}>
+              <View style={styles.dividerLine} />
+              <Text style={styles.dividerText}>Hoặc đăng nhập với</Text>
+              <View style={styles.dividerLine} />
+            </View>
+
+            <View style={styles.socialButtonsContainer}>
+              <TouchableOpacity style={styles.socialButton}>
+                <Icon name="google" size={24} color="#DB4437" />
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.socialButton}>
+                <Icon name="facebook" size={24} color="#4267B2" />
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.socialButton}>
+                <Icon name="apple" size={24} color="#000000" />
+              </TouchableOpacity>
+            </View>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
   );
 };
 
 const styles = StyleSheet.create({
-  background: {
+  container: {
+    flexGrow: 1,
+    backgroundColor: 'white',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#E3F2FD',
+    backgroundColor: 'white',
   },
-  overlay: {
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    padding: 30,
-    borderRadius: 10,
-    width: '80%',
+  loadingText: {
+    marginTop: 10,
+    color: '#666',
+  },
+  logoContainer: {
     alignItems: 'center',
+    marginBottom: 40,
   },
-  title: {
-    fontSize: 30,
-    color: '#ffffff',
+  logo: {
+    width: 120,
+    height: 120,
+    marginBottom: 10,
+  },
+  appTitle: {
+    fontSize: 24,
     fontWeight: 'bold',
+    color: '#4CAF50',
+    marginBottom: 5,
+  },
+  appSubtitle: {
+    fontSize: 14,
+    color: '#757575',
+  },
+  formContainer: {
+    width: '100%',
     marginBottom: 20,
   },
-  input: {
-    width: '100%',
-    padding: 15,
+  inputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    borderRadius: 8,
     marginBottom: 15,
-    borderRadius: 5,
-    backgroundColor: '#ffffff',
+    paddingHorizontal: 10,
+    height: 50,
+    backgroundColor: '#F5F5F5',
+  },
+  inputIcon: {
+    marginRight: 10,
+  },
+  input: {
+    flex: 1,
+    height: '100%',
     fontSize: 16,
+  },
+  visibilityIcon: {
+    padding: 10,
+  },
+  forgotPasswordButton: {
+    alignSelf: 'flex-end',
+    marginBottom: 20,
+  },
+  forgotPasswordText: {
+    color: '#4CAF50',
+    fontSize: 14,
   },
   loginButton: {
-    width: '100%',
-    padding: 15,
     backgroundColor: '#4CAF50',
-    borderRadius: 5,
+    borderRadius: 8,
+    height: 50,
+    justifyContent: 'center',
     alignItems: 'center',
   },
-  buttonText: {
-    color: '#ffffff',
-    fontWeight: 'bold',
+  loginButtonText: {
+    color: 'white',
     fontSize: 16,
+    fontWeight: 'bold',
   },
-  footer: {
-    marginTop: 20,
-    width: '100%',
-    alignItems: 'center',
+  registerContainer: {
+    flexDirection: 'row',
+    marginBottom: 30,
   },
-  footerText: {
-    color: '#42A5F5',
+  registerText: {
+    color: '#757575',
     fontSize: 14,
-    marginVertical: 5,
+  },
+  registerButtonText: {
+    color: '#4CAF50',
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  socialLoginContainer: {
+    width: '100%',
+  },
+  divider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: '#E0E0E0',
+  },
+  dividerText: {
+    color: '#9E9E9E',
+    paddingHorizontal: 10,
+    fontSize: 14,
+  },
+  socialButtonsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+  },
+  socialButton: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: '#F5F5F5',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginHorizontal: 10,
+    elevation: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 1,
   },
 });
 

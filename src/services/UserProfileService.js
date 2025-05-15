@@ -1,212 +1,225 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+// UserProfileService.js
 import axios from 'axios';
-import Config from './config';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { BASE_URL, DEFAULT_TIMEOUT, DEFAULT_HEADERS, FORM_DATA_HEADERS } from './api';
 
 class UserProfileService {
     constructor() {
-        // Lấy địa chỉ API từ config.js
-        this.API_URL = Config.extra.apiUrl + '/v1';
+        this.api = axios.create({
+            baseURL: `${BASE_URL}/v1/users`,
+            timeout: DEFAULT_TIMEOUT,
+            headers: DEFAULT_HEADERS,
+        });
+
+        // Thêm interceptor để gắn token vào mỗi request
+        this.api.interceptors.request.use(
+            async (config) => {
+                const token = await AsyncStorage.getItem('accessToken');
+                if (token) {
+                    config.headers.Authorization = `Bearer ${token}`;
+                }
+                return config;
+            },
+            (error) => {
+                return Promise.reject(error);
+            }
+        );
+
+        // Interceptor để xử lý lỗi 401 và refresh token nếu cần
+        this.api.interceptors.response.use(
+            (response) => response,
+            async (error) => {
+                const originalRequest = error.config;
+
+                // Kiểm tra lỗi 401 (Unauthorized) và chưa thử refresh token
+                if (error.response?.status === 401 && !originalRequest._retry) {
+                    originalRequest._retry = true;
+
+                    try {
+                        // Gọi API refresh token (cần implement)
+                        // const refreshToken = await AsyncStorage.getItem('refreshToken');
+                        // const response = await AuthService.refreshToken(refreshToken);
+                        // Lưu token mới
+                        // await AsyncStorage.setItem('accessToken', response.data.accessToken);
+
+                        // Thử lại request ban đầu với token mới
+                        // originalRequest.headers.Authorization = `Bearer ${response.data.accessToken}`;
+                        // return this.api(originalRequest);
+
+                        // Nếu chưa implement refresh token, set biến để thông báo lỗi auth
+                        global.authExpired = true;
+                        return Promise.reject(error);
+                    } catch (refreshError) {
+                        // Xóa token và chuyển đến màn hình đăng nhập
+                        global.authExpired = true;
+                        return Promise.reject(error);
+                    }
+                }
+                return Promise.reject(error);
+            }
+        );
     }
 
-    // Lấy header xác thực
-    async getAuthHeader() {
-        try {
-            const token = await AsyncStorage.getItem('userToken');
-            return {
-                'Authorization': `Bearer ${token}`
-            };
-        } catch (error) {
-            console.error('Lỗi lấy token:', error);
-            throw new Error('Không thể lấy token xác thực');
-        }
-    }
-
-    // Lấy thông tin hồ sơ người dùng hiện tại
+    // Lấy thông tin profile của người dùng hiện tại
     async getCurrentUserProfile() {
         try {
-            const headers = await this.getAuthHeader();
-            const response = await axios.get(`${this.API_URL}/users/profile`, { headers });
+            const response = await this.api.get('/profile');
             return response.data;
         } catch (error) {
             this.handleError(error);
+            throw error;
         }
     }
 
-    // Lấy thông tin hồ sơ người dùng khác theo ID
+    // Lấy thông tin profile của người dùng theo ID
     async getUserProfile(userId) {
         try {
-            const headers = await this.getAuthHeader();
-            const response = await axios.get(`${this.API_URL}/users/profile/${userId}`, { headers });
+            const response = await this.api.get(`/profile/${userId}`);
             return response.data;
         } catch (error) {
             this.handleError(error);
+            throw error;
         }
     }
 
-    // Cập nhật thông tin hồ sơ
+    // Cập nhật thông tin profile
     async updateProfile(profileData) {
         try {
-            const headers = await this.getAuthHeader();
-            const response = await axios.put(`${this.API_URL}/users/profile`, profileData, {
-                headers: {
-                    ...headers,
-                    'Content-Type': 'application/json'
-                }
-            });
+            const response = await this.api.put('/profile', profileData);
             return response.data;
         } catch (error) {
             this.handleError(error);
+            throw error;
         }
     }
 
-    // Tải ảnh đại diện
+    // Tải lên ảnh đại diện
     async uploadProfilePicture(file) {
         try {
-            const headers = await this.getAuthHeader();
-
-            // Tạo FormData để tải ảnh
             const formData = new FormData();
             formData.append('file', {
                 uri: file.uri,
                 type: file.type || 'image/jpeg',
-                name: file.fileName || 'profile-picture.jpg'
+                name: file.fileName || 'profile_picture.jpg'
             });
 
-            const response = await axios.post(`${this.API_URL}/users/profile-picture`, formData, {
-                headers: {
-                    ...headers,
-                    'Content-Type': 'multipart/form-data'
-                }
+            const response = await this.api.post('/profile-picture', formData, {
+                headers: FORM_DATA_HEADERS,
             });
-
             return response.data;
         } catch (error) {
             this.handleError(error);
+            throw error;
         }
     }
 
-    // Tải ảnh bìa
+    // Tải lên ảnh bìa
     async uploadCoverImage(file) {
         try {
-            const headers = await this.getAuthHeader();
-
-            // Tạo FormData để tải ảnh
             const formData = new FormData();
             formData.append('file', {
                 uri: file.uri,
                 type: file.type || 'image/jpeg',
-                name: file.fileName || 'cover-image.jpg'
+                name: file.fileName || 'cover_image.jpg'
             });
 
-            const response = await axios.post(`${this.API_URL}/users/cover-image`, formData, {
-                headers: {
-                    ...headers,
-                    'Content-Type': 'multipart/form-data'
-                }
+            const response = await this.api.post('/cover-image', formData, {
+                headers: FORM_DATA_HEADERS,
             });
-
             return response.data;
         } catch (error) {
             this.handleError(error);
+            throw error;
         }
     }
 
     // Lấy cài đặt quyền riêng tư
     async getPrivacySettings() {
         try {
-            const headers = await this.getAuthHeader();
-            const response = await axios.get(`${this.API_URL}/users/privacy-settings`, { headers });
+            const response = await this.api.get('/privacy-settings');
             return response.data;
         } catch (error) {
             this.handleError(error);
+            throw error;
         }
     }
 
     // Cập nhật cài đặt quyền riêng tư
-    async updatePrivacySettings(settingsData) {
+    async updatePrivacySettings(settings) {
         try {
-            const headers = await this.getAuthHeader();
-            const response = await axios.put(`${this.API_URL}/users/privacy-settings`, settingsData, {
-                headers: {
-                    ...headers,
-                    'Content-Type': 'application/json'
-                }
-            });
+            const response = await this.api.put('/privacy-settings', settings);
             return response.data;
         } catch (error) {
             this.handleError(error);
+            throw error;
         }
     }
 
     // Lấy cài đặt thông báo
     async getNotificationSettings() {
         try {
-            const headers = await this.getAuthHeader();
-            const response = await axios.get(`${this.API_URL}/users/notification-settings`, { headers });
+            const response = await this.api.get('/notification-settings');
             return response.data;
         } catch (error) {
             this.handleError(error);
+            throw error;
         }
     }
 
     // Cập nhật cài đặt thông báo
-    async updateNotificationSettings(settingsData) {
+    async updateNotificationSettings(settings) {
         try {
-            const headers = await this.getAuthHeader();
-            const response = await axios.put(`${this.API_URL}/users/notification-settings`, settingsData, {
-                headers: {
-                    ...headers,
-                    'Content-Type': 'application/json'
+            const response = await this.api.put('/notification-settings', settings);
+            return response.data;
+        } catch (error) {
+            this.handleError(error);
+            throw error;
+        }
+    }
+
+    // Lấy URL xem file (ảnh đại diện, ảnh bìa, v.v.)
+    getFileUrl(bucketName, path) {
+        return `${BASE_URL}/v1/users/view?bucketName=${encodeURIComponent(bucketName)}&path=${encodeURIComponent(path)}`;
+    }
+    // Phương thức tìm kiếm người dùng
+    async searchUsers(query, page = 0, limit = 20) {
+        try {
+            const response = await this.api.get('/search', {
+                params: {
+                    query: query,
+                    page: page,
+                    limit: limit
                 }
             });
             return response.data;
         } catch (error) {
-            this.handleError(error);
+            console.error('Error searching users:', error);
+            throw error;
         }
     }
 
-    // Xử lý lỗi
+    // Xử lý lỗi chung
     handleError(error) {
+        console.error('API Error:', error);
         if (error.response) {
-            // Máy chủ trả về lỗi
-            console.error('Lỗi từ máy chủ:', error.response.data);
-            console.error('Trạng thái:', error.response.status);
+            // Xử lý lỗi từ response server
+            console.error('Error data:', error.response.data);
+            console.error('Error status:', error.response.status);
 
-            // Kiểm tra nếu là lỗi xác thực (401)
+            // Kiểm tra lỗi 401 (Unauthorized)
             if (error.response.status === 401) {
-                // Gọi hàm xử lý lỗi xác thực
-                this.handleAuthError();
-                throw new Error('Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại');
+                global.authExpired = true;
             }
-
-            throw new Error(error.response.data.message || 'Đã có lỗi xảy ra');
         } else if (error.request) {
-            // Không nhận được phản hồi từ máy chủ
-            console.error('Yêu cầu:', error.request);
-            throw new Error('Không thể kết nối đến máy chủ');
+            // Request đã được gửi nhưng không nhận được response
+            console.error('No response received:', error.request);
         } else {
-            // Lỗi khác
-            console.error('Lỗi:', error.message);
-            throw new Error('Đã có lỗi xảy ra');
+            // Lỗi khi setting up request
+            console.error('Error message:', error.message);
         }
     }
 
-    // Xử lý lỗi xác thực
-    async handleAuthError() {
-        try {
-            // Thử làm mới token
-            const AuthService = require('./AuthService').default;
-            await AuthService.refreshToken();
-        } catch (refreshError) {
-            // Nếu không thể làm mới token, đăng xuất người dùng
-            const AuthService = require('./AuthService').default;
-            await AuthService.logout();
 
-            // Thông báo cho ứng dụng biết phiên đăng nhập đã hết hạn
-            // Đây là một cách đơn giản để thông báo, có thể sử dụng EventEmitter hoặc Context API
-            global.authExpired = true;
-        }
-    }
 }
 
 export default UserProfileService;
