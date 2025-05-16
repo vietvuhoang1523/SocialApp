@@ -62,25 +62,6 @@ class FriendService {
     }
 
     /**
-     * Gửi yêu cầu kết bạn
-     * @param {number} userId - ID của người dùng muốn kết bạn
-     * @returns {Promise} Kết quả gửi yêu cầu
-     */
-    async sendFriendRequest(userId) {
-        try {
-            // Tạo yêu cầu theo định dạng của backend
-            const request = {
-                receiverId: userId
-            };
-
-            const response = await this.api.post('/request', request);
-            return response.data;
-        } catch (error) {
-            console.error('Error sending friend request:', error);
-            throw error;
-        }
-    }
-    /**
      * Gửi lời mời kết bạn qua email
      * @param {string} receiverEmail - Email của người nhận lời mời
      * @returns {Promise} Kết quả gửi lời mời
@@ -146,19 +127,7 @@ class FriendService {
         }
     }
 
-    /**
-     * Lấy gợi ý kết nối
-     * @returns {Promise} Danh sách gợi ý kết nối
-     */
-    // async getSuggestedFriends() {
-    //     try {
-    //         const response = await this.api.get('/suggestions');
-    //         return response.data;
-    //     } catch (error) {
-    //         console.error('Error getting suggested connections:', error);
-    //         throw error;
-    //     }
-    // }
+
 
     /**
      * Lấy danh sách yêu cầu kết bạn đã gửi

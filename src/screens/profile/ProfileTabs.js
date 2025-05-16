@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import {
     View,
     Text,
@@ -7,9 +7,8 @@ import {
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 
-const ProfileTabs = ({ onTabChange }) => {
-    const [activeTab, setActiveTab] = useState('posts');
-
+const ProfileTabs = ({ activeTab, onTabChange }) => {
+    // Danh sách các tab
     const tabs = [
         {
             key: 'posts',
@@ -20,26 +19,11 @@ const ProfileTabs = ({ onTabChange }) => {
             key: 'photos',
             label: 'Ảnh',
             icon: 'image-outline'
-        },
-        {
-            key: 'reels',
-            label: 'Reels',
-            icon: 'play-circle-outline'
-        },
-        {
-            key: 'videos',
-            label: 'Video',
-            icon: 'videocam-outline'
         }
     ];
 
-    const handleTabPress = (tabKey) => {
-        setActiveTab(tabKey);
-        onTabChange && onTabChange(tabKey);
-    };
-
     return (
-        <View style={styles.container}>
+        <View style={styles.tabContainer}>
             {tabs.map((tab) => (
                 <TouchableOpacity
                     key={tab.key}
@@ -47,7 +31,7 @@ const ProfileTabs = ({ onTabChange }) => {
                         styles.tabButton,
                         activeTab === tab.key && styles.activeTabButton
                     ]}
-                    onPress={() => handleTabPress(tab.key)}
+                    onPress={() => onTabChange(tab.key)}
                 >
                     <Ionicons
                         name={tab.icon}
@@ -69,7 +53,7 @@ const ProfileTabs = ({ onTabChange }) => {
 };
 
 const styles = StyleSheet.create({
-    container: {
+    tabContainer: {
         flexDirection: 'row',
         backgroundColor: 'white',
         borderTopWidth: 0.5,
@@ -96,7 +80,7 @@ const styles = StyleSheet.create({
     activeTabText: {
         color: '#1877F2',
         fontWeight: 'bold',
-    },
+    }
 });
 
 export default ProfileTabs;

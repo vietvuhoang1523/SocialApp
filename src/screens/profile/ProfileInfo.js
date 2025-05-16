@@ -5,12 +5,10 @@ import {
     Image,
     TouchableOpacity,
     StyleSheet,
-    Dimensions
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useProfileContext } from '../../components/ProfileContext';
-
-const { width } = Dimensions.get('window');
+import { useNavigation } from '@react-navigation/native';
 const DEFAULT_PROFILE_IMAGE = 'https://cdn.pixabay.com/photo/2015/10/05/22/37/blank-profile-picture-973460_1280.png';
 
 const ProfileInfo = ({
@@ -19,9 +17,11 @@ const ProfileInfo = ({
                      }) => {
     const {
         userProfile,
-        followerCount,
-        followingCount
+        followerCount = 0,
+        followingCount = 0
     } = useProfileContext();
+
+    const navigation = useNavigation();
 
     const profileImageUrl = useMemo(() => {
         return userProfile?.profilePicture || DEFAULT_PROFILE_IMAGE;
@@ -37,16 +37,45 @@ const ProfileInfo = ({
             `${userProfile.firstname || ''} ${userProfile.lastname || ''}`.trim();
     };
 
+    // Chuyển đến màn hình chỉnh sửa profile
+    const handleEditProfile = () => {
+        if (onEditProfile) {
+            onEditProfile();
+        } else {
+            navigation.navigate('EditProfile', { userProfile });
+        }
+    };
+
+    // Điều hướng đến màn hình đổi ảnh đại diện
+    const handleEditProfileImage = () => {
+        navigation.navigate('EditProfile', {
+            userProfile,
+            initialTab: 'avatar'  // Tùy chọn: nếu màn hình EditProfileScreen có tab
+        });
+    };
+
+    // Điều hướng đến màn hình đổi ảnh bìa
+    const handleEditCoverImage = () => {
+        navigation.navigate('EditProfile', {
+            userProfile,
+            initialTab: 'cover'  // Tùy chọn: nếu màn hình EditProfileScreen có tab
+        });
+    };
+
     return (
         <View style={styles.container}>
             {/* Cover Image */}
             <View style={styles.coverImageContainer}>
                 <Image
-                    source={coverImageUrl}
+                    source={typeof coverImageUrl === 'string' ? { uri: coverImageUrl } : coverImageUrl}
                     style={styles.coverImage}
                     resizeMode="cover"
                 />
-                <TouchableOpacity style={styles.editCoverButton}>
+                <TouchableOpacity
+                    style={styles.editCoverButton}
+                    onPress={handleEditCoverImage}
+                    activeOpacity={0.7}
+                >
                     <Ionicons name="camera" size={18} color="#000" />
                 </TouchableOpacity>
             </View>
@@ -57,7 +86,11 @@ const ProfileInfo = ({
                     source={{ uri: profileImageUrl }}
                     style={styles.profileImage}
                 />
-                <TouchableOpacity style={styles.editProfileImageButton}>
+                <TouchableOpacity
+                    style={styles.editProfileImageButton}
+                    onPress={handleEditProfileImage}
+                    activeOpacity={0.7}
+                >
                     <Ionicons name="camera" size={18} color="#000" />
                 </TouchableOpacity>
             </View>
@@ -70,6 +103,7 @@ const ProfileInfo = ({
                     <TouchableOpacity
                         style={styles.bioContainer}
                         onPress={onViewIntro}
+                        activeOpacity={0.7}
                     >
                         <Text
                             style={styles.bioText}
@@ -91,17 +125,14 @@ const ProfileInfo = ({
                 <View style={styles.actionButtonsContainer}>
                     <TouchableOpacity
                         style={styles.primaryButton}
-                        onPress={onEditProfile}
+                        onPress={handleEditProfile}
+                        activeOpacity={0.7}
                     >
                         <Text style={styles.primaryButtonText}>
                             Chỉnh sửa trang cá nhân
                         </Text>
                     </TouchableOpacity>
-                    <TouchableOpacity style={styles.secondaryButton}>
-                        <Text style={styles.secondaryButtonText}>
-                            Xem tin
-                        </Text>
-                    </TouchableOpacity>
+
                 </View>
             </View>
         </View>
@@ -131,6 +162,11 @@ const styles = StyleSheet.create({
         height: 36,
         justifyContent: 'center',
         alignItems: 'center',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.2,
+        shadowRadius: 1.5,
+        elevation: 2,
     },
     profileImageContainer: {
         position: 'absolute',
@@ -155,6 +191,11 @@ const styles = StyleSheet.create({
         height: 30,
         justifyContent: 'center',
         alignItems: 'center',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.2,
+        shadowRadius: 1.5,
+        elevation: 2,
     },
     profileDetailsContainer: {
         paddingTop: 60,
@@ -171,6 +212,7 @@ const styles = StyleSheet.create({
     },
     bioText: {
         color: '#65676B',
+        lineHeight: 20,
     },
     socialStatsContainer: {
         marginTop: 10,
@@ -189,6 +231,11 @@ const styles = StyleSheet.create({
         borderRadius: 6,
         marginRight: 10,
         flex: 1,
+        shadowColor: '#1877F2',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.1,
+        shadowRadius: 1,
+        elevation: 1,
     },
     primaryButtonText: {
         color: '#1877F2',
@@ -201,6 +248,11 @@ const styles = StyleSheet.create({
         paddingHorizontal: 15,
         borderRadius: 6,
         flex: 1,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.1,
+        shadowRadius: 1,
+        elevation: 1,
     },
     secondaryButtonText: {
         color: '#050505',

@@ -1,32 +1,73 @@
-import { BASE_URL } from './api';
+import appConfig from './config';
+
+const API_BASE_URL = appConfig.extra.apiUrl.replace(/\/api$/, '');
+// Lấy URL trực tiếp từ config
 
 class ImageService {
+    // Bucket name mặc định
+    static DEFAULT_BUCKET = 'thanh';
+
     /**
      * Tạo URL để hiển thị hình ảnh từ server
-     * @param {string} bucketName - Tên bucket lưu trữ
      * @param {string} path - Đường dẫn file trong bucket
+     * @param {string} bucketName - Tên bucket lưu trữ (mặc định là 'thanh')
      * @returns {string} URL đầy đủ để truy cập hình ảnh
      */
-    static getImageUrl(bucketName, path) {
-        if (!bucketName || !path) {
+    static getImageUrl(path, bucketName = this.DEFAULT_BUCKET) {
+        try {
+            console.log('getImageUrl called with:', path, bucketName);
+
+            if (!path) {
+                console.log('Path is empty');
+                return null;
+            }
+
+            // Xử lý path để loại bỏ dấu / ở đầu nếu có
+            let cleanPath = path;
+            if (path.startsWith('/')) {
+                cleanPath = path.substring(1);
+            }
+
+            // URL đúng format: http://192.168.1.73:8082/api/files/view?bucketName=thanh&path=posts/xyz.png
+            const url = `${API_BASE_URL}/api/files/view?bucketName=${encodeURIComponent(bucketName)}&path=${encodeURIComponent(cleanPath)}`;
+            console.log('Generated URL in service:', url);
+            return url;
+        } catch (error) {
+            console.error('Error in getImageUrl:', error);
             return null;
         }
-
-        return `${BASE_URL}/v1/users/view?bucketName=${encodeURIComponent(bucketName)}&path=${encodeURIComponent(path)}`;
     }
 
     /**
      * Tạo một đối tượng source cho component Image của React Native
-     * @param {string} bucketName - Tên bucket lưu trữ
      * @param {string} path - Đường dẫn file trong bucket
      * @param {string} defaultImage - URL hình ảnh mặc định khi không có hình ảnh
+     * @param {string} bucketName - Tên bucket lưu trữ (mặc định là 'thanh')
      * @returns {object} Đối tượng source cho Image component
      */
-    static getImageSource(bucketName, path, defaultImage = 'https://via.placeholder.com/150') {
-        const imageUrl = this.getImageUrl(bucketName, path);
-        return {
-            uri: imageUrl || defaultImage
-        };
+    static getImageSource(path, defaultImage = 'https://via.placeholder.com/150', bucketName = this.DEFAULT_BUCKET) {
+        try {
+            const imageUrl = this.getImageUrl(path, bucketName);
+            if (!imageUrl) {
+                console.log('Using default image:', defaultImage);
+                return { uri: defaultImage };
+            }
+
+            console.log('Image source created with URI:', imageUrl);
+            return { uri: imageUrl };
+        } catch (error) {
+            console.error('Error in getImageSource:', error);
+            return { uri: defaultImage };
+        }
+    }
+
+    // Các phương thức khác giữ nguyên...
+    static getProfileImageSource(path, defaultImage = 'https://cdn.pixabay.com/photo/2015/10/05/22/37/blank-profile-picture-973460_1280.png') {
+        return this.getImageSource(path, defaultImage);
+    }
+
+    static getPostImageSource(path, defaultImage = 'https://via.placeholder.com/600x400?text=No+Image') {
+        return this.getImageSource(path, defaultImage);
     }
 
     /**

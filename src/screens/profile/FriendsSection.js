@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
     View,
     Text,
@@ -8,34 +8,51 @@ import {
     ScrollView,
     Dimensions,
     Modal,
-    FlatList
+    ActivityIndicator,
+    FlatList,
+    TextInput
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
+import FriendService from '../../services/FriendService';
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useProfileContext } from '../../components/ProfileContext';
 
 const { width } = Dimensions.get('window');
 const DEFAULT_PROFILE_IMAGE = 'https://cdn.pixabay.com/photo/2015/10/05/22/37/blank-profile-picture-973460_1280.png';
 
-const FriendCard = ({ friend, onPress }) => (
-    <TouchableOpacity
-        style={styles.friendCardContainer}
-        onPress={() => onPress(friend)}
-    >
-        <View style={styles.friendImageContainer}>
-            <Image
-                source={{ uri: friend.avatar || DEFAULT_PROFILE_IMAGE }}
-                style={styles.friendImage}
-            />
-            {friend.online && <View style={styles.onlineIndicator} />}
-        </View>
-        <Text style={styles.friendName} numberOfLines={2}>
-            {friend.name}
-        </Text>
-    </TouchableOpacity>
-);
+// Khởi tạo service
+const friendService = new FriendService();
 
-const FriendDetailModal = ({ friend, visible, onClose }) => {
+// Component Card bạn bè
+const FriendCard = ({ friend, onPress, currentUserId }) => {
+    // Xác định thông tin người dùng là bạn bè
+    const friendData = friend.sender && friend.sender.id === currentUserId ? friend.receiver : friend.sender;
+
+    return (
+        <TouchableOpacity
+            style={styles.friendCardContainer}
+            onPress={() => onPress(friend)}
+        >
+            <View style={styles.friendImageContainer}>
+                <Image
+                    source={{ uri: friendData && friendData.avatarUrl ? friendData.avatarUrl : DEFAULT_PROFILE_IMAGE }}
+                    style={styles.friendImage}
+                />
+                {friendData && friendData.online && <View style={styles.onlineIndicator} />}
+            </View>
+            <Text style={styles.friendName} numberOfLines={2}>
+                {friendData && friendData.fullName ? friendData.fullName : "Người dùng"}
+            </Text>
+        </TouchableOpacity>
+    );
+};
+
+// Modal hiển thị chi tiết bạn bè
+const FriendDetailModal = ({ friend, visible, onClose, currentUserId }) => {
     if (!friend) return null;
+
+    // Lấy thông tin người dùng là bạn bè
+    const friendData = friend.sender && friend.sender.id === currentUserId ? friend.receiver : friend.sender;
 
     return (
         <Modal
@@ -51,11 +68,16 @@ const FriendDetailModal = ({ friend, visible, onClose }) => {
                     </TouchableOpacity>
 
                     <Image
-                        source={{ uri: friend.avatar || DEFAULT_PROFILE_IMAGE }}
+                        source={{ uri: friendData && friendData.avatarUrl ? friendData.avatarUrl : DEFAULT_PROFILE_IMAGE }}
                         style={styles.modalFriendImage}
                     />
 
-                    <Text style={styles.modalFriendName}>{friend.name}</Text>
+                    <Text style={styles.modalFriendName}>
+                        {friendData && friendData.fullName ? friendData.fullName : "Người dùng"}
+                    </Text>
+                    <Text style={styles.modalFriendEmail}>
+                        {friendData && friendData.email ? friendData.email : ""}
+                    </Text>
 
                     <View style={styles.modalActionButtons}>
                         <TouchableOpacity style={styles.modalActionButton}>
@@ -73,73 +95,217 @@ const FriendDetailModal = ({ friend, visible, onClose }) => {
     );
 };
 
+// Component hiển thị không có kết quả trong FlatList
+const EmptyListComponent = ({ searchQuery }) => (
+    <View style={styles.emptySearchContainer}>
+        <Text style={styles.emptySearchText}>
+            {searchQuery && searchQuery.trim()
+                ? "Không tìm thấy bạn bè khớp với tìm kiếm"
+                : "Bạn chưa có bạn bè nào"}
+        </Text>
+    </View>
+);
+
+// Modal hiển thị tất cả bạn bè
+const AllFriendsModal = ({ visible, friends, onClose, onFriendPress, currentUserId }) => {
+    const [searchQuery, setSearchQuery] = useState('');
+    const [filteredFriends, setFilteredFriends] = useState([]);
+
+    useEffect(() => {
+        if (friends) {
+            setFilteredFriends(friends);
+        }
+    }, [friends]);
+
+    // Xử lý tìm kiếm
+    const handleSearch = (text) => {
+        setSearchQuery(text);
+        if (!text || !text.trim()) {
+            setFilteredFriends(friends || []);
+        } else {
+            const lowercasedQuery = text.toLowerCase();
+            const filtered = (friends || []).filter(friend => {
+                if (!friend || (!friend.sender && !friend.receiver)) return false;
+
+                const friendData = friend.sender && friend.sender.id === currentUserId ? friend.receiver : friend.sender;
+                if (!friendData) return false;
+
+                const friendName = friendData.fullName ? friendData.fullName.toLowerCase() : '';
+                const friendEmail = friendData.email ? friendData.email.toLowerCase() : '';
+
+                return friendName.includes(lowercasedQuery) || friendEmail.includes(lowercasedQuery);
+            });
+            setFilteredFriends(filtered);
+        }
+    };
+
+    // Render từng item bạn bè
+    const renderFriendItem = ({ item }) => {
+        if (!item || (!item.sender && !item.receiver)) return null;
+
+        const friendData = item.sender && item.sender.id === currentUserId ? item.receiver : item.sender;
+        if (!friendData) return null;
+
+        return (
+            <TouchableOpacity
+                style={styles.allFriendItem}
+                onPress={() => onFriendPress(item)}
+            >
+                <Image
+                    source={{ uri: friendData.avatarUrl || DEFAULT_PROFILE_IMAGE }}
+                    style={styles.allFriendImage}
+                />
+                <View style={styles.allFriendInfo}>
+                    <Text style={styles.allFriendName}>
+                        {friendData.fullName || "Người dùng"}
+                    </Text>
+                    <Text style={styles.allFriendEmail}>
+                        {friendData.email || ""}
+                    </Text>
+                </View>
+                <TouchableOpacity style={styles.messageButton}>
+                    <Ionicons name="chatbubble-outline" size={22} color="#1877F2" />
+                </TouchableOpacity>
+            </TouchableOpacity>
+        );
+    };
+
+    return (
+        <Modal
+            visible={visible}
+            animationType="slide"
+            onRequestClose={onClose}
+        >
+            <View style={styles.allFriendsContainer}>
+                {/* Header */}
+                <View style={styles.allFriendsHeader}>
+                    <TouchableOpacity onPress={onClose} style={styles.allFriendsBackButton}>
+                        <Ionicons name="arrow-back" size={24} color="#1877F2" />
+                    </TouchableOpacity>
+                    <Text style={styles.allFriendsTitle}>Tất cả bạn bè</Text>
+                    <View style={{width: 24}} /> {/* Để giữ cân bằng layout */}
+                </View>
+
+                {/* Thanh tìm kiếm */}
+                <View style={styles.searchContainer}>
+                    <Ionicons name="search" size={20} color="#8E8E93" style={styles.searchIcon} />
+                    <TextInput
+                        style={styles.searchInput}
+                        placeholder="Tìm kiếm bạn bè..."
+                        value={searchQuery}
+                        onChangeText={handleSearch}
+                        clearButtonMode="while-editing"
+                    />
+                </View>
+
+                {/* Số lượng bạn bè */}
+                <View style={styles.friendCountContainer}>
+                    <Text style={styles.friendCountText}>
+                        {filteredFriends ? filteredFriends.length : 0} bạn bè
+                    </Text>
+                </View>
+
+                {/* Danh sách bạn bè */}
+                <FlatList
+                    data={filteredFriends}
+                    renderItem={renderFriendItem}
+                    keyExtractor={(item) => (item && item.id ? item.id.toString() : Math.random().toString())}
+                    contentContainerStyle={styles.allFriendsList}
+                    showsVerticalScrollIndicator={false}
+                    ListEmptyComponent={() => <EmptyListComponent searchQuery={searchQuery} />}
+                />
+            </View>
+        </Modal>
+    );
+};
+
+// Component chính
 const FriendsSection = ({
                             onFindFriends,
                             onViewAllFriends
                         }) => {
-    const {
-        userProfile,
-        followerCount
-    } = useProfileContext();
+    // Sử dụng ProfileContext để lấy userId
+    const { userProfile } = useProfileContext();
 
+    const [currentUserId, setCurrentUserId] = useState(null);
     const [selectedFriend, setSelectedFriend] = useState(null);
     const [isModalVisible, setIsModalVisible] = useState(false);
+    const [isAllFriendsModalVisible, setIsAllFriendsModalVisible] = useState(false);
+    const [friends, setFriends] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
 
-    // Danh sách bạn bè mẫu (nên thay thế bằng dữ liệu từ API)
-    const friendsData = useMemo(() => [
-        {
-            id: '1',
-            name: 'Đỗ Tiến Dũng',
-            avatar: DEFAULT_PROFILE_IMAGE,
-            online: true,
-            mutualFriends: 12
-        },
-        {
-            id: '2',
-            name: 'Dương Thanh Long',
-            avatar: DEFAULT_PROFILE_IMAGE,
-            online: false,
-            mutualFriends: 5
-        },
-        {
-            id: '3',
-            name: 'Trần Văn A',
-            avatar: DEFAULT_PROFILE_IMAGE,
-            online: true,
-            mutualFriends: 8
-        },
-        {
-            id: '4',
-            name: 'Nguyễn Văn B',
-            avatar: DEFAULT_PROFILE_IMAGE,
-            online: false,
-            mutualFriends: 3
-        },
-        {
-            id: '5',
-            name: 'Trịnh Mạnh Hà',
-            avatar: DEFAULT_PROFILE_IMAGE,
-            online: true,
-            mutualFriends: 15
-        },
-        {
-            id: '6',
-            name: 'Phúc Bùi',
-            avatar: DEFAULT_PROFILE_IMAGE,
-            online: false,
-            mutualFriends: 7
+    // Tải danh sách bạn bè khi component được render
+    useEffect(() => {
+        // Nếu có userProfile từ context, sử dụng id từ đó
+        if (userProfile && userProfile.id) {
+            setCurrentUserId(userProfile.id);
+        } else {
+            // Backup plan: đọc từ AsyncStorage nếu không có userProfile từ context
+            const getUserId = async () => {
+                try {
+                    const userProfileString = await AsyncStorage.getItem('userProfile');
+                    if (userProfileString) {
+                        const profile = JSON.parse(userProfileString);
+                        setCurrentUserId(profile.id);
+                    }
+                } catch (error) {
+                    console.error('Lỗi khi lấy userId:', error);
+                }
+            };
+            getUserId();
         }
-    ], []);
+    }, [userProfile]);
 
+    useEffect(() => {
+        loadFriends();
+    }, []);
+
+    // Hàm tải danh sách bạn bè
+    const loadFriends = async () => {
+        try {
+            setLoading(true);
+            const data = await friendService.getFriends();
+            console.log('Dữ liệu bạn bè từ API:', data);
+            setFriends(data || []);
+            setError(null);
+        } catch (err) {
+            console.error('Lỗi khi tải danh sách bạn bè:', err);
+            setError('Không thể tải danh sách bạn bè. Vui lòng thử lại sau.');
+            setFriends([]);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // Xử lý khi nhấn vào một người bạn
     const handleFriendPress = (friend) => {
         setSelectedFriend(friend);
         setIsModalVisible(true);
     };
 
+    // Đóng modal chi tiết bạn bè
     const handleCloseModal = () => {
         setIsModalVisible(false);
         setSelectedFriend(null);
     };
+
+    // Mở modal xem tất cả bạn bè
+    const handleViewAllFriends = () => {
+        if (onViewAllFriends) {
+            onViewAllFriends();
+        } else {
+            setIsAllFriendsModalVisible(true);
+        }
+    };
+
+    // Đóng modal xem tất cả bạn bè
+    const handleCloseAllFriendsModal = () => {
+        setIsAllFriendsModalVisible(false);
+    };
+
+    // Đếm số bạn bè
+    const friendCount = friends ? friends.length : 0;
 
     return (
         <View style={styles.container}>
@@ -148,7 +314,7 @@ const FriendsSection = ({
                 <View style={styles.headerTitleContainer}>
                     <Text style={styles.titleText}>Bạn bè</Text>
                     <Text style={styles.subtitleText}>
-                        {followerCount} bạn bè
+                        {friendCount} bạn bè
                     </Text>
                 </View>
 
@@ -161,43 +327,84 @@ const FriendsSection = ({
                     </TouchableOpacity>
                     <TouchableOpacity
                         style={styles.searchFriendsButton}
-                        onPress={() => {/* Implement search friends */}}
+                        onPress={() => setIsAllFriendsModalVisible(true)}
                     >
                         <Ionicons name="search" size={20} color="#1877F2" />
                     </TouchableOpacity>
                 </View>
             </View>
 
-            {/* Danh sách bạn bè */}
-            <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.friendsScrollContainer}
-            >
-                {friendsData.map(friend => (
-                    <FriendCard
-                        key={friend.id}
-                        friend={friend}
-                        onPress={handleFriendPress}
-                    />
-                ))}
-            </ScrollView>
+            {/* Hiển thị trạng thái tải */}
+            {loading ? (
+                <View style={styles.loadingContainer}>
+                    <ActivityIndicator size="large" color="#1877F2" />
+                    <Text style={styles.loadingText}>Đang tải danh sách bạn bè...</Text>
+                </View>
+            ) : error ? (
+                <View style={styles.errorContainer}>
+                    <Text style={styles.errorText}>{error}</Text>
+                    <TouchableOpacity
+                        style={styles.retryButton}
+                        onPress={loadFriends}
+                    >
+                        <Text style={styles.retryButtonText}>Thử lại</Text>
+                    </TouchableOpacity>
+                </View>
+            ) : friends.length === 0 ? (
+                <View style={styles.emptyContainer}>
+                    <Text style={styles.emptyText}>Bạn chưa có bạn bè nào</Text>
+                    <TouchableOpacity
+                        style={styles.findFriendsButtonLarge}
+                        onPress={onFindFriends}
+                    >
+                        <Text style={styles.findFriendsButtonText}>Tìm bạn bè</Text>
+                    </TouchableOpacity>
+                </View>
+            ) : (
+                <>
+                    {/* Danh sách bạn bè */}
+                    <ScrollView
+                        horizontal
+                        showsHorizontalScrollIndicator={false}
+                        contentContainerStyle={styles.friendsScrollContainer}
+                    >
+                        {friends.map((friend, index) => (
+                            <FriendCard
+                                key={friend.id || index}
+                                friend={friend}
+                                onPress={handleFriendPress}
+                                currentUserId={currentUserId}
+                            />
+                        ))}
+                    </ScrollView>
 
-            {/* Nút Xem tất cả bạn bè */}
-            <TouchableOpacity
-                style={styles.viewAllButton}
-                onPress={onViewAllFriends}
-            >
-                <Text style={styles.viewAllButtonText}>
-                    Xem tất cả bạn bè
-                </Text>
-            </TouchableOpacity>
+                    {/* Nút Xem tất cả bạn bè */}
+                    <TouchableOpacity
+                        style={styles.viewAllButton}
+                        onPress={handleViewAllFriends}
+                    >
+                        <Text style={styles.viewAllButtonText}>
+                            Xem tất cả bạn bè
+                        </Text>
+                    </TouchableOpacity>
+                </>
+            )}
 
             {/* Modal chi tiết bạn bè */}
             <FriendDetailModal
                 friend={selectedFriend}
                 visible={isModalVisible}
                 onClose={handleCloseModal}
+                currentUserId={currentUserId}
+            />
+
+            {/* Modal xem tất cả bạn bè */}
+            <AllFriendsModal
+                visible={isAllFriendsModalVisible}
+                friends={friends}
+                onClose={handleCloseAllFriendsModal}
+                onFriendPress={handleFriendPress}
+                currentUserId={currentUserId}
             />
         </View>
     );
@@ -243,9 +450,9 @@ const styles = StyleSheet.create({
         paddingHorizontal: 15,
     },
     friendCardContainer: {
-        marginRight: 10,
+        marginRight: 15,
         alignItems: 'center',
-        width: 100,
+        width: 90,
     },
     friendImageContainer: {
         position: 'relative',
@@ -284,7 +491,55 @@ const styles = StyleSheet.create({
         color: '#1877F2',
         fontWeight: '600',
     },
-    // Styles cho Modal
+    // Styles cho loading
+    loadingContainer: {
+        paddingVertical: 30,
+        alignItems: 'center',
+    },
+    loadingText: {
+        marginTop: 10,
+        color: '#65676B',
+    },
+    // Styles cho lỗi
+    errorContainer: {
+        paddingVertical: 30,
+        alignItems: 'center',
+    },
+    errorText: {
+        color: 'red',
+        marginBottom: 10,
+    },
+    retryButton: {
+        backgroundColor: '#1877F2',
+        paddingHorizontal: 15,
+        paddingVertical: 8,
+        borderRadius: 5,
+    },
+    retryButtonText: {
+        color: 'white',
+        fontWeight: '600',
+    },
+    // Styles cho trường hợp không có bạn bè
+    emptyContainer: {
+        paddingVertical: 30,
+        alignItems: 'center',
+    },
+    emptyText: {
+        fontSize: 16,
+        color: '#65676B',
+        marginBottom: 15,
+    },
+    findFriendsButtonLarge: {
+        backgroundColor: '#1877F2',
+        paddingHorizontal: 20,
+        paddingVertical: 10,
+        borderRadius: 5,
+    },
+    findFriendsButtonText: {
+        color: 'white',
+        fontWeight: '600',
+    },
+    // Styles cho Modal chi tiết bạn bè
     modalBackground: {
         flex: 1,
         backgroundColor: 'rgba(0,0,0,0.5)',
@@ -312,6 +567,11 @@ const styles = StyleSheet.create({
     modalFriendName: {
         fontSize: 20,
         fontWeight: 'bold',
+        marginBottom: 5,
+    },
+    modalFriendEmail: {
+        fontSize: 14,
+        color: '#65676B',
         marginBottom: 15,
     },
     modalActionButtons: {
@@ -334,6 +594,94 @@ const styles = StyleSheet.create({
         marginLeft: 5,
         color: '#1877F2',
         fontWeight: '600',
+    },
+    // Styles cho All Friends Modal
+    allFriendsContainer: {
+        flex: 1,
+        backgroundColor: 'white',
+    },
+    allFriendsHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: 15,
+        paddingVertical: 15,
+        borderBottomWidth: 1,
+        borderBottomColor: '#E4E6EB',
+    },
+    allFriendsBackButton: {
+        padding: 5,
+    },
+    allFriendsTitle: {
+        fontSize: 18,
+        fontWeight: 'bold',
+        color: '#050505',
+    },
+    searchContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#F0F2F5',
+        borderRadius: 20,
+        marginHorizontal: 15,
+        marginVertical: 10,
+        paddingHorizontal: 15,
+    },
+    searchIcon: {
+        marginRight: 10,
+    },
+    searchInput: {
+        flex: 1,
+        height: 40,
+        color: '#1C1E21',
+    },
+    friendCountContainer: {
+        paddingHorizontal: 15,
+        paddingVertical: 10,
+    },
+    friendCountText: {
+        fontSize: 16,
+        color: '#65676B',
+    },
+    allFriendsList: {
+        paddingHorizontal: 15,
+        paddingBottom: 20,
+    },
+    allFriendItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 12,
+        borderBottomWidth: 0.5,
+        borderBottomColor: '#E4E6EB',
+    },
+    allFriendImage: {
+        width: 60,
+        height: 60,
+        borderRadius: 30,
+    },
+    allFriendInfo: {
+        marginLeft: 15,
+        flex: 1,
+    },
+    allFriendName: {
+        fontSize: 16,
+        fontWeight: '600',
+        color: '#1C1E21',
+        marginBottom: 2,
+    },
+    allFriendEmail: {
+        fontSize: 14,
+        color: '#65676B',
+    },
+    messageButton: {
+        padding: 10,
+    },
+    emptySearchContainer: {
+        paddingVertical: 30,
+        alignItems: 'center',
+    },
+    emptySearchText: {
+        color: '#65676B',
+        fontSize: 16,
     },
 });
 

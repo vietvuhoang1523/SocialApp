@@ -1,397 +1,452 @@
-// src/screens/CreatePostScreen.js
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
     View,
     Text,
-    StyleSheet,
-    Image,
     TextInput,
+    Image,
     TouchableOpacity,
+    StyleSheet,
+    Alert,
     ScrollView,
-    FlatList,
-    SafeAreaView,
-    Dimensions
+    ActivityIndicator,
+    Platform
 } from 'react-native';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import Feather from 'react-native-vector-icons/Feather';
+import { MaterialIcons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
+import PostService from '../services/CreatePostService';
 
-const { width } = Dimensions.get('window');
+// Enum cho quyền riêng tư
+const PrivacyOptions = {
+    PUBLIC: 'PUBLIC',
+    PRIVATE: 'PRIVATE',
+    FRIENDS_ONLY: 'FRIENDS_ONLY'
+};
 
-// Mock data cho thư viện ảnh
-const MOCK_GALLERY = [
-    { id: '1', uri: 'https://picsum.photos/id/1/500/500' },
-    { id: '2', uri: 'https://picsum.photos/id/2/500/500' },
-    { id: '3', uri: 'https://picsum.photos/id/3/500/500' },
-    { id: '4', uri: 'https://picsum.photos/id/4/500/500' },
-    { id: '5', uri: 'https://picsum.photos/id/5/500/500' },
-    { id: '6', uri: 'https://picsum.photos/id/6/500/500' },
-    { id: '7', uri: 'https://picsum.photos/id/7/500/500' },
-    { id: '8', uri: 'https://picsum.photos/id/8/500/500' },
-    { id: '9', uri: 'https://picsum.photos/id/9/500/500' },
-    { id: '10', uri: 'https://picsum.photos/id/10/500/500' },
-    { id: '11', uri: 'https://picsum.photos/id/11/500/500' },
-    { id: '12', uri: 'https://picsum.photos/id/12/500/500' },
-];
+const CreatePostComponent = ({ onPostCreated, navigation }) => {
+    // State quản lý form
+    const [content, setContent] = useState('');
+    const [imageFile, setImageFile] = useState(null);
+    const [privacy, setPrivacy] = useState(PrivacyOptions.PUBLIC);
 
-const CreatePostScreen = ({ navigation }) => {
-    const [selectedImage, setSelectedImage] = useState(MOCK_GALLERY[0].uri);
-    const [caption, setCaption] = useState('');
-    const [selectedTab, setSelectedTab] = useState('GALLERY');
-    const [showFullCaption, setShowFullCaption] = useState(false);
+    // State quản lý UI
+    const [imagePreview, setImagePreview] = useState(null);
+    const [error, setError] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
 
-    // Tùy chọn chia sẻ
-    const [shareToFeed, setShareToFeed] = useState(true);
-    const [shareToStory, setShareToStory] = useState(false);
+    // Xin quyền truy cập thư viện ảnh khi component mount
+    useEffect(() => {
+        (async () => {
+            try {
+                const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+                console.log("Initial permission status:", status);
+            } catch (err) {
+                console.error("Error requesting permissions:", err);
+            }
+        })();
+    }, []);
 
-    // Các tabs tạo bài đăng
-    const tabs = ['GALLERY', 'PHOTO', 'VIDEO'];
-
-    const handlePost = () => {
-        // Xử lý logic đăng bài
-        // Sau khi đăng thành công, quay lại màn hình Home
-        navigation.navigate('Home');
+    // Xử lý thay đổi nội dung bài đăng
+    const handleContentChange = (text) => {
+        // Giới hạn 5000 ký tự
+        if (text.length <= 5000) {
+            setContent(text);
+            setError('');
+        } else {
+            setError('Nội dung bài đăng không được vượt quá 5000 ký tự');
+        }
     };
 
-    const renderGalleryItem = ({ item }) => (
-        <TouchableOpacity
-            style={[
-                styles.galleryItem,
-                selectedImage === item.uri && styles.selectedGalleryItem
-            ]}
-            onPress={() => setSelectedImage(item.uri)}
-        >
-            <Image source={{ uri: item.uri }} style={styles.galleryItemImage} />
-        </TouchableOpacity>
-    );
+    // Xử lý chọn ảnh
+    const handleImageUpload = async () => {
+        try {
+            // Xin quyền truy cập thư viện ảnh
+            const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+            console.log("Permission status:", status);
+
+            if (status !== 'granted') {
+                setError('Cần cấp quyền truy cập thư viện ảnh để tải lên');
+                return;
+            }
+
+            console.log("Launching image picker...");
+
+            // Sử dụng cấu trúc cũ/đơn giản
+            let result = await ImagePicker.launchImageLibraryAsync({
+                mediaTypes: "Images",
+                quality: 1,
+                allowsEditing: true,
+                aspect: [4, 3]
+            });
+
+            console.log("Picker result:", JSON.stringify(result));
+
+            if (!result.canceled && result.assets && result.assets.length > 0) {
+                const selectedAsset = result.assets[0];
+                console.log("Selected asset:", JSON.stringify(selectedAsset));
+
+                // Lấy tên file từ URI
+                const uriParts = selectedAsset.uri.split('/');
+                const fileName = uriParts[uriParts.length - 1];
+
+                // Đoán loại file dựa trên phần mở rộng
+                const fileExtension = fileName.split('.').pop().toLowerCase();
+                const mimeType = getMimeType(fileExtension);
+
+                const fileObject = {
+                    uri: selectedAsset.uri,
+                    type: mimeType,
+                    name: fileName,
+                };
+
+                console.log("Prepared file object:", JSON.stringify(fileObject));
+
+                setImageFile(fileObject);
+                setImagePreview(selectedAsset.uri);
+                setError('');
+
+                console.log("Image set successfully");
+            } else {
+                console.log("Image selection canceled or failed");
+            }
+        } catch (error) {
+            console.error("Image upload error:", error);
+            setError(`Lỗi khi chọn ảnh: ${error.message}`);
+        }
+    };
+
+    // Helper để xác định loại MIME từ phần mở rộng
+    const getMimeType = (extension) => {
+        switch (extension) {
+            case 'jpg':
+            case 'jpeg':
+                return 'image/jpeg';
+            case 'png':
+                return 'image/png';
+            case 'gif':
+                return 'image/gif';
+            case 'webp':
+                return 'image/webp';
+            default:
+                return 'image/jpeg'; // Mặc định
+        }
+    };
+
+    // Xóa ảnh
+    const handleRemoveImage = () => {
+        setImageFile(null);
+        setImagePreview(null);
+    };
+
+    // Gửi bài đăng
+    const handleSubmitPost = async () => {
+        // Reset trạng thái
+        setError('');
+        setIsLoading(true);
+
+        // Validate
+        if (!content.trim() && !imageFile) {
+            setError('Vui lòng nhập nội dung hoặc chọn ảnh');
+            setIsLoading(false);
+            return;
+        }
+
+        try {
+            console.log("Đang chuẩn bị gửi bài đăng...");
+            console.log("Content:", content);
+            console.log("ImageFile:", JSON.stringify(imageFile));
+            console.log("Privacy:", privacy);
+
+            // Gọi service tạo bài đăng
+            const newPost = await PostService.createPost({
+                content: content,
+                imageFile: imageFile,
+                type: privacy
+            });
+
+            console.log("Kết quả tạo bài đăng:", newPost);
+
+            // Gọi callback nếu có
+            if (onPostCreated) {
+                onPostCreated(newPost);
+            }
+
+            // Reset form
+            setContent('');
+            setImageFile(null);
+            setImagePreview(null);
+            setPrivacy(PrivacyOptions.PUBLIC);
+            setIsLoading(false);
+
+            // Thông báo
+            Alert.alert('Thành công', 'Đăng bài thành công!');
+
+            // Quay lại màn hình trước đó nếu có navigation
+            if (navigation) {
+                navigation.goBack();
+            }
+        } catch (error) {
+            console.error("Error in handleSubmitPost:", error);
+            // Xử lý lỗi chi tiết
+            setError(error.message || 'Đã có lỗi xảy ra khi đăng bài');
+            setIsLoading(false);
+        }
+    };
 
     return (
-        <SafeAreaView style={styles.container}>
-            {/* Header */}
-            <View style={styles.header}>
-                <TouchableOpacity onPress={() => navigation.goBack()}>
-                    <Icon name="close" size={28} color="black" />
-                </TouchableOpacity>
-                <Text style={styles.headerTitle}>New Post</Text>
-                <TouchableOpacity style={styles.nextButton} onPress={handlePost}>
-                    <Text style={styles.nextButtonText}>Share</Text>
-                </TouchableOpacity>
-            </View>
-
-            {/* Preview và Caption */}
-            <View style={styles.previewContainer}>
-                <Image source={{ uri: selectedImage }} style={styles.previewImage} />
-                <View style={styles.captionContainer}>
-                    <TextInput
-                        style={[styles.captionInput, showFullCaption && styles.expandedCaptionInput]}
-                        placeholder="Write a caption..."
-                        multiline
-                        value={caption}
-                        onChangeText={setCaption}
-                        onFocus={() => setShowFullCaption(true)}
-                        onBlur={() => setShowFullCaption(false)}
-                    />
-                    {!showFullCaption && (
-                        <View style={styles.quickActions}>
-                            <TouchableOpacity style={styles.quickAction}>
-                                <Icon name="emoticon-outline" size={24} color="#999" />
-                            </TouchableOpacity>
-                            <TouchableOpacity style={styles.quickAction}>
-                                <Icon name="map-marker-outline" size={24} color="#999" />
-                            </TouchableOpacity>
-                            <TouchableOpacity style={styles.quickAction}>
-                                <Icon name="music" size={24} color="#999" />
-                            </TouchableOpacity>
-                        </View>
-                    )}
-                </View>
-            </View>
-
-            {/* Tag People, Add Location, etc. */}
-            <View style={styles.optionsContainer}>
-                <TouchableOpacity style={styles.option}>
-                    <Text style={styles.optionText}>Tag People</Text>
-                    <Icon name="chevron-right" size={20} color="#999" />
-                </TouchableOpacity>
-
-                <TouchableOpacity style={styles.option}>
-                    <Text style={styles.optionText}>Add Location</Text>
-                    <Icon name="chevron-right" size={20} color="#999" />
-                </TouchableOpacity>
-
-                <TouchableOpacity style={styles.option}>
-                    <Text style={styles.optionText}>Add Music</Text>
-                    <Icon name="chevron-right" size={20} color="#999" />
-                </TouchableOpacity>
-
-                <TouchableOpacity style={styles.option}>
-                    <Text style={styles.optionText}>Advanced Settings</Text>
-                    <Icon name="chevron-right" size={20} color="#999" />
-                </TouchableOpacity>
-            </View>
-
-            {/* Share To Options */}
-            <View style={styles.shareOptionsContainer}>
-                <Text style={styles.shareOptionsTitle}>Also Share To</Text>
-
-                <View style={styles.shareOption}>
-                    <Text style={styles.shareOptionText}>Feed</Text>
-                    <TouchableOpacity
-                        style={styles.toggleButton}
-                        onPress={() => setShareToFeed(!shareToFeed)}
-                    >
-                        <View style={[styles.toggleTrack, shareToFeed && styles.toggleTrackActive]}>
-                            <View style={[styles.toggleThumb, shareToFeed && styles.toggleThumbActive]} />
-                        </View>
-                    </TouchableOpacity>
-                </View>
-
-                <View style={styles.shareOption}>
-                    <Text style={styles.shareOptionText}>Your Story</Text>
-                    <TouchableOpacity
-                        style={styles.toggleButton}
-                        onPress={() => setShareToStory(!shareToStory)}
-                    >
-                        <View style={[styles.toggleTrack, shareToStory && styles.toggleTrackActive]}>
-                            <View style={[styles.toggleThumb, shareToStory && styles.toggleThumbActive]} />
-                        </View>
-                    </TouchableOpacity>
-                </View>
-            </View>
-
-            {/* Tab selections */}
-            <View style={styles.tabContainer}>
-                {tabs.map((tab) => (
-                    <TouchableOpacity
-                        key={tab}
-                        style={[styles.tab, selectedTab === tab && styles.activeTab]}
-                        onPress={() => setSelectedTab(tab)}
-                    >
-                        <Text style={[styles.tabText, selectedTab === tab && styles.activeTabText]}>
-                            {tab}
-                        </Text>
-                    </TouchableOpacity>
-                ))}
-            </View>
-
-            {/* Gallery */}
-            {selectedTab === 'GALLERY' && (
-                <FlatList
-                    data={MOCK_GALLERY}
-                    renderItem={renderGalleryItem}
-                    keyExtractor={(item) => item.id}
-                    numColumns={3}
-                    style={styles.gallery}
+        <ScrollView style={styles.container}>
+            <View style={styles.createPostContainer}>
+                {/* Textarea nhập nội dung */}
+                <TextInput
+                    style={styles.postContentInput}
+                    placeholder="Bạn đang nghĩ gì?"
+                    value={content}
+                    onChangeText={handleContentChange}
+                    multiline
+                    numberOfLines={4}
                 />
-            )}
 
-            {/* Camera options if PHOTO or VIDEO selected */}
-            {selectedTab !== 'GALLERY' && (
-                <View style={styles.cameraContainer}>
-                    <Text style={styles.cameraText}>
-                        {selectedTab === 'PHOTO' ? 'Camera would open here to take photos' : 'Camera would open here to record video'}
-                    </Text>
-                    <Icon name="camera" size={48} color="#999" />
+                {/* Hiển thị preview ảnh */}
+                {imagePreview && (
+                    <View style={styles.imagePreview}>
+                        <Image
+                            source={{ uri: imagePreview }}
+                            style={styles.previewImage}
+                            resizeMode="cover"
+                        />
+                        <TouchableOpacity
+                            style={styles.removeImageBtn}
+                            onPress={handleRemoveImage}
+                        >
+                            <MaterialIcons name="close" size={16} color="white" />
+                        </TouchableOpacity>
+                    </View>
+                )}
+
+                {/* Hiển thị lỗi */}
+                {error ? (
+                    <View style={styles.errorMessage}>
+                        <Text style={styles.errorText}>{error}</Text>
+                    </View>
+                ) : null}
+
+                {/* Các hành động: upload ảnh, chọn quyền riêng tư */}
+                <View style={styles.postActions}>
+                    {/* Nút upload ảnh */}
+                    <TouchableOpacity
+                        style={styles.uploadImageBtn}
+                        onPress={handleImageUpload}
+                    >
+                        <MaterialIcons name="image" size={20} color="#1877f2" />
+                        <Text style={styles.uploadImageBtnText}>Ảnh/Video</Text>
+                    </TouchableOpacity>
+
+                    {/* Nút đăng bài */}
+                    <TouchableOpacity
+                        style={[
+                            styles.submitPostBtn,
+                            (!content.trim() && !imageFile) || isLoading
+                                ? styles.submitPostBtnDisabled
+                                : null
+                        ]}
+                        onPress={handleSubmitPost}
+                        disabled={(!content.trim() && !imageFile) || isLoading}
+                    >
+                        {isLoading ? (
+                            <ActivityIndicator size="small" color="white" />
+                        ) : (
+                            <Text style={styles.submitPostBtnText}>Đăng</Text>
+                        )}
+                    </TouchableOpacity>
                 </View>
-            )}
 
-            {/* Edit Toolbar */}
-            <View style={styles.editToolbar}>
-                <TouchableOpacity style={styles.editTool}>
-                    <Icon name="crop" size={24} color="black" />
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.editTool}>
-                    <Icon name="tune" size={24} color="black" />
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.editTool}>
-                    <Icon name="magic-staff" size={24} color="black" />
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.editTool}>
-                    <Icon name="text" size={24} color="black" />
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.editTool}>
-                    <Icon name="sticker-emoji" size={24} color="black" />
-                </TouchableOpacity>
+                {/* Quyền riêng tư */}
+                <View style={styles.privacyContainer}>
+                    <Text style={styles.privacyLabel}>Quyền riêng tư:</Text>
+                    <View style={styles.privacyOptions}>
+                        <TouchableOpacity
+                            style={[
+                                styles.privacyOption,
+                                privacy === PrivacyOptions.PUBLIC && styles.privacyOptionSelected
+                            ]}
+                            onPress={() => setPrivacy(PrivacyOptions.PUBLIC)}
+                        >
+                            <Text
+                                style={[
+                                    styles.privacyOptionText,
+                                    privacy === PrivacyOptions.PUBLIC && styles.privacyOptionTextSelected
+                                ]}
+                            >
+                                Công khai
+                            </Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                            style={[
+                                styles.privacyOption,
+                                privacy === PrivacyOptions.FRIENDS_ONLY && styles.privacyOptionSelected
+                            ]}
+                            onPress={() => setPrivacy(PrivacyOptions.FRIENDS_ONLY)}
+                        >
+                            <Text
+                                style={[
+                                    styles.privacyOptionText,
+                                    privacy === PrivacyOptions.FRIENDS_ONLY && styles.privacyOptionTextSelected
+                                ]}
+                            >
+                                Bạn bè
+                            </Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                            style={[
+                                styles.privacyOption,
+                                privacy === PrivacyOptions.PRIVATE && styles.privacyOptionSelected
+                            ]}
+                            onPress={() => setPrivacy(PrivacyOptions.PRIVATE)}
+                        >
+                            <Text
+                                style={[
+                                    styles.privacyOptionText,
+                                    privacy === PrivacyOptions.PRIVATE && styles.privacyOptionTextSelected
+                                ]}
+                            >
+                                Chỉ mình tôi
+                            </Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
             </View>
-        </SafeAreaView>
+        </ScrollView>
     );
 };
 
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: 'white',
+        backgroundColor: '#f0f2f5',
     },
-    header: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        paddingHorizontal: 15,
-        paddingVertical: 10,
-        borderBottomWidth: 1,
-        borderBottomColor: '#EFEFEF',
+    createPostContainer: {
+        backgroundColor: '#ffffff',
+        borderRadius: 8,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.1,
+        shadowRadius: 2,
+        elevation: 1,
+        padding: 16,
+        margin: 10,
     },
-    headerTitle: {
-        fontSize: 18,
-        fontWeight: 'bold',
+    postContentInput: {
+        minHeight: 100,
+        borderWidth: 1,
+        borderColor: '#ddd',
+        borderRadius: 8,
+        padding: 12,
+        marginBottom: 12,
+        fontSize: 16,
+        textAlignVertical: 'top',
     },
-    nextButton: {
-        backgroundColor: '#0095F6',
-        paddingHorizontal: 12,
-        paddingVertical: 5,
-        borderRadius: 4,
-    },
-    nextButtonText: {
-        color: 'white',
-        fontWeight: 'bold',
-    },
-    previewContainer: {
-        flexDirection: 'row',
-        padding: 15,
-        borderBottomWidth: 1,
-        borderBottomColor: '#EFEFEF',
+    imagePreview: {
+        position: 'relative',
+        marginBottom: 12,
+        height: 200,
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: '#ddd',
+        overflow: 'hidden',
     },
     previewImage: {
-        width: 80,
-        height: 80,
-        borderRadius: 5,
-        marginRight: 15,
-    },
-    captionContainer: {
-        flex: 1,
-        justifyContent: 'space-between',
-    },
-    captionInput: {
-        fontSize: 16,
-        maxHeight: 80,
-    },
-    expandedCaptionInput: {
-        height: 80,
-    },
-    quickActions: {
-        flexDirection: 'row',
-    },
-    quickAction: {
-        marginRight: 15,
-    },
-    optionsContainer: {
-        borderBottomWidth: 1,
-        borderBottomColor: '#EFEFEF',
-    },
-    option: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        paddingHorizontal: 15,
-        paddingVertical: 12,
-    },
-    optionText: {
-        fontSize: 16,
-    },
-    shareOptionsContainer: {
-        padding: 15,
-        borderBottomWidth: 1,
-        borderBottomColor: '#EFEFEF',
-    },
-    shareOptionsTitle: {
-        fontSize: 16,
-        fontWeight: 'bold',
-        marginBottom: 10,
-    },
-    shareOption: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginVertical: 8,
-    },
-    shareOptionText: {
-        fontSize: 16,
-    },
-    toggleButton: {
-        justifyContent: 'center',
-    },
-    toggleTrack: {
-        width: 50,
-        height: 28,
-        borderRadius: 14,
-        backgroundColor: '#EFEFEF',
-        justifyContent: 'center',
-        paddingHorizontal: 2,
-    },
-    toggleTrackActive: {
-        backgroundColor: '#0095F6',
-    },
-    toggleThumb: {
-        width: 24,
-        height: 24,
-        borderRadius: 12,
-        backgroundColor: 'white',
-        shadowColor: '#000',
-        shadowOpacity: 0.2,
-        shadowRadius: 2,
-        shadowOffset: { width: 0, height: 1 },
-        elevation: 2,
-    },
-    toggleThumbActive: {
-        transform: [{ translateX: 22 }],
-    },
-    tabContainer: {
-        flexDirection: 'row',
-        borderBottomWidth: 1,
-        borderBottomColor: '#EFEFEF',
-    },
-    tab: {
-        flex: 1,
-        alignItems: 'center',
-        paddingVertical: 12,
-    },
-    activeTab: {
-        borderBottomWidth: 2,
-        borderBottomColor: 'black',
-    },
-    tabText: {
-        fontSize: 14,
-        color: '#999',
-    },
-    activeTabText: {
-        color: 'black',
-        fontWeight: 'bold',
-    },
-    gallery: {
-        flex: 1,
-    },
-    galleryItem: {
-        width: width / 3,
-        height: width / 3,
-        padding: 1,
-    },
-    selectedGalleryItem: {
-        opacity: 0.7,
-    },
-    galleryItemImage: {
         width: '100%',
         height: '100%',
     },
-    cameraContainer: {
-        flex: 1,
+    removeImageBtn: {
+        position: 'absolute',
+        top: 10,
+        right: 10,
+        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+        borderRadius: 15,
+        width: 30,
+        height: 30,
+        alignItems: 'center',
         justifyContent: 'center',
-        alignItems: 'center',
-        backgroundColor: '#F7F7F7',
     },
-    cameraText: {
-        marginBottom: 20,
-        fontSize: 16,
-        color: '#666',
+    errorMessage: {
+        backgroundColor: '#f8d7da',
+        borderWidth: 1,
+        borderColor: '#f5c6cb',
+        borderRadius: 4,
+        padding: 10,
+        marginBottom: 12,
     },
-    editToolbar: {
+    errorText: {
+        color: '#dc3545',
+        fontSize: 14,
+    },
+    postActions: {
         flexDirection: 'row',
-        justifyContent: 'space-around',
-        paddingVertical: 15,
-        borderTopWidth: 1,
-        borderTopColor: '#EFEFEF',
-    },
-    editTool: {
+        justifyContent: 'space-between',
         alignItems: 'center',
+        marginBottom: 10,
+    },
+    uploadImageBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#f0f2f5',
+        borderRadius: 6,
+        padding: 8,
+        paddingHorizontal: 12,
+    },
+    uploadImageBtnText: {
+        color: '#1877f2',
+        marginLeft: 8,
+        fontSize: 14,
+    },
+    submitPostBtn: {
+        backgroundColor: '#1877f2',
+        borderRadius: 6,
+        padding: 10,
+        paddingHorizontal: 16,
+    },
+    submitPostBtnDisabled: {
+        backgroundColor: '#b0b3b8',
+    },
+    submitPostBtnText: {
+        color: 'white',
+        fontWeight: '500',
+    },
+    privacyContainer: {
+        marginTop: 10,
+    },
+    privacyLabel: {
+        fontSize: 14,
+        fontWeight: '500',
+        marginBottom: 6,
+    },
+    privacyOptions: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+    },
+    privacyOption: {
+        flex: 1,
+        padding: 8,
+        backgroundColor: '#f0f2f5',
+        borderRadius: 4,
+        marginHorizontal: 2,
+        alignItems: 'center',
+    },
+    privacyOptionSelected: {
+        backgroundColor: '#e6f2ff',
+        borderWidth: 1,
+        borderColor: '#1877f2',
+    },
+    privacyOptionText: {
+        fontSize: 12,
+        color: '#444',
+    },
+    privacyOptionTextSelected: {
+        color: '#1877f2',
+        fontWeight: '500',
     },
 });
 
-export default CreatePostScreen;
+export default CreatePostComponent;

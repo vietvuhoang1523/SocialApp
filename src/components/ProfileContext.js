@@ -1,158 +1,113 @@
-import React, {
-    createContext,
-    useContext,
-    useState,
-    useEffect,
-    useCallback,
-    useMemo
-} from 'react';
-import UserProfileService from '../services/UserProfileService';
-import FollowService from '../services/FollowService';
-
-// Hằng số mặc định
-const DEFAULT_PROFILE_IMAGE = 'https://cdn.pixabay.com/photo/2015/10/05/22/37/blank-profile-picture-973460_1280.png';
-
-// Tạo context
+import React, { createContext, useState, useContext, useEffect } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+// Tạo context cho profile
 const ProfileContext = createContext();
 
+// Hook để sử dụng ProfileContext
+export const useProfileContext = () => {
+    const context = useContext(ProfileContext);
+    if (!context) {
+        throw new Error('useProfileContext phải được sử dụng trong ProfileProvider');
+    }
+    return context;
+};
+
 // Provider component
-export const ProfileProvider = ({ children, initialProfile = null }) => {
-    // State quản lý profile
-    const [userProfile, setUserProfile] = useState(initialProfile);
-    const [loading, setLoading] = useState(true);
-    const [refreshing, setRefreshing] = useState(false);
+export const ProfileProvider = ({ children }) => {
+    const [userProfile, setUserProfile] = useState(null);
     const [followerCount, setFollowerCount] = useState(0);
     const [followingCount, setFollowingCount] = useState(0);
+    const [loading, setLoading] = useState(true);
 
-    // Khởi tạo các service
-    const userProfileService = useMemo(() => new UserProfileService(), []);
-    const followService = useMemo(() => new FollowService(), []);
-
-    // Lấy tên đầy đủ
-    const getFullName = useMemo(() => {
-        if (!userProfile) return 'Người dùng';
-
-        const firstName = userProfile.firstname || '';
-        const lastName = userProfile.lastname || '';
-
-        if (userProfile.fullName) {
-            return userProfile.fullName;
-        } else if (firstName && lastName) {
-            return `${firstName} ${lastName}`;
-        } else if (firstName) {
-            return firstName;
-        } else if (lastName) {
-            return lastName;
-        } else {
-            return 'Người dùng';
-        }
-    }, [userProfile]);
-
-    // Lấy URL ảnh đại diện
-    const profileImageUrl = useMemo(() => {
-        if (!userProfile) return DEFAULT_PROFILE_IMAGE;
-
-        return userProfileService.getFileUrl(
-            userProfile.profilePictureBucket || 'default',
-            userProfile.profilePicturePath || ''
-        ) || DEFAULT_PROFILE_IMAGE;
-    }, [userProfile, userProfileService]);
-
-    // Lấy URL ảnh bìa
-    const coverImageUrl = useMemo(() => {
-        if (!userProfile?.coverImagePath) return require('../assets/h1.png');
-
-        return {
-            uri: userProfileService.getFileUrl(
-                userProfile.coverImageBucket || 'default',
-                userProfile.coverImagePath
-            )
-        };
-    }, [userProfile, userProfileService]);
-
-    // Hàm tải thông tin người dùng
-    const fetchUserProfile = useCallback(async () => {
-        if (refreshing) return;
-
-        setLoading(true);
-        try {
-            // Lấy thông tin profile của người dùng hiện tại
-            const userData = await userProfileService.getCurrentUserProfile();
-            setUserProfile(userData);
-
-            // Lấy số lượng followers và following
-            const followers = await followService.getFollowerCount(userData.id);
-            const following = await followService.getFollowingCount(userData.id);
-
-            setFollowerCount(followers);
-            setFollowingCount(following);
-        } catch (error) {
-            console.error('Error fetching user profile:', error);
-            // Có thể thêm xử lý lỗi ở đây
-        } finally {
-            setLoading(false);
-        }
-    }, [refreshing, userProfileService, followService]);
-
-    // Hàm refresh profile
-    const refreshProfile = useCallback(async () => {
-        setRefreshing(true);
-        await fetchUserProfile();
-        setRefreshing(false);
-    }, [fetchUserProfile]);
-
-    // Hàm cập nhật profile
-    const updateProfile = useCallback(async (updatedData) => {
-        try {
-            const updatedProfile = await userProfileService.updateProfile(updatedData);
-            setUserProfile(prevProfile => ({
-                ...prevProfile,
-                ...updatedProfile
-            }));
-            return updatedProfile;
-        } catch (error) {
-            console.error('Error updating profile:', error);
-            throw error;
-        }
-    }, [userProfileService]);
-
-    // Effect để tải profile khi component mount
+    // Lấy thông tin profile từ AsyncStorage khi component được mount
     useEffect(() => {
-        fetchUserProfile();
+        const fetchProfileData = async () => {
+            try {
+                setLoading(true);
+
+                // Lấy userProfile từ AsyncStorage
+                const userProfileString = await AsyncStorage.getItem('userProfile');
+                if (userProfileString) {
+                    const parsedProfile = JSON.parse(userProfileString);
+                    setUserProfile(parsedProfile);
+                }
+
+                // Có thể lấy thêm followerCount và followingCount từ storage hoặc API
+                const followerCountString = await AsyncStorage.getItem('followerCount');
+                const followingCountString = await AsyncStorage.getItem('followingCount');
+
+                if (followerCountString) setFollowerCount(parseInt(followerCountString, 10));
+                if (followingCountString) setFollowingCount(parseInt(followingCountString, 10));
+
+            } catch (error) {
+                console.error('Lỗi khi lấy dữ liệu profile:', error);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchProfileData();
     }, []);
 
-    // Giá trị context
-    const contextValue = {
-        // Thông tin profile
+    // Hàm cập nhật profile
+    const updateProfile = async (newProfileData) => {
+        try {
+            // Cập nhật state
+            setUserProfile(prevProfile => ({
+                ...prevProfile,
+                ...newProfileData
+            }));
+
+            // Lưu vào AsyncStorage
+            const currentProfileString = await AsyncStorage.getItem('userProfile');
+            let currentProfile = {};
+
+            if (currentProfileString) {
+                currentProfile = JSON.parse(currentProfileString);
+            }
+
+            const updatedProfile = {
+                ...currentProfile,
+                ...newProfileData
+            };
+
+            await AsyncStorage.setItem('userProfile', JSON.stringify(updatedProfile));
+
+            return true;
+        } catch (error) {
+            console.error('Lỗi khi cập nhật profile:', error);
+            return false;
+        }
+    };
+
+    // Cập nhật số lượng follower
+    const updateFollowerCount = async (count) => {
+        setFollowerCount(count);
+        await AsyncStorage.setItem('followerCount', count.toString());
+    };
+
+    // Cập nhật số lượng following
+    const updateFollowingCount = async (count) => {
+        setFollowingCount(count);
+        await AsyncStorage.setItem('followingCount', count.toString());
+    };
+
+    // Context value
+    const value = {
         userProfile,
-        loading,
-        refreshing,
         followerCount,
         followingCount,
-
-        // Các hàm xử lý
-        fetchUserProfile,
-        refreshProfile,
+        loading,
         updateProfile,
-
-        // Các computed values
-        getFullName,
-        profileImageUrl,
-        coverImageUrl,
+        updateFollowerCount,
+        updateFollowingCount
     };
 
     return (
-        <ProfileContext.Provider value={contextValue}>
+        <ProfileContext.Provider value={value}>
             {children}
         </ProfileContext.Provider>
     );
 };
 
-// Custom hook để sử dụng context
-export const useProfileContext = () => {
-    const context = useContext(ProfileContext);
-    if (!context) {
-        throw new Error('useProfileContext must be used within a ProfileProvider');
-    }
-    return context;
-};
+export default ProfileContext;
