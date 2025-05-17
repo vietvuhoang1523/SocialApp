@@ -9,7 +9,7 @@ import {
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useProfileContext } from '../../components/ProfileContext';
 import { useNavigation } from '@react-navigation/native';
-const DEFAULT_PROFILE_IMAGE = 'https://cdn.pixabay.com/photo/2015/10/05/22/37/blank-profile-picture-973460_1280.png';
+const DEFAULT_PROFILE_IMAGE = 'http://172.20.10.18:8082/api/files/image?bucketName=thanh&path=posts/e8bd2bdc-97a9-432b-adc1-f90ec0fc3207.jpeg';
 
 const ProfileInfo = ({
                          onEditProfile,
