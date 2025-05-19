@@ -2,25 +2,27 @@ import React from "react";
 import { NavigationContainer } from "@react-navigation/native";
 import { createStackNavigator } from "@react-navigation/stack";
 import InstagramHomeScreen from "./src/screens/InstagramHomeScreen";
-import LoginScreen from "./src/screens/LoginScreen";
+import LoginScreen from "./src/screens/Login/LoginScreen";
 import { useFonts } from "expo-font";
 import { View, ActivityIndicator } from "react-native";
 import ProfileScreen from "./src/screens/profile/ProfileScreen";
-import ReelsScreen from "./src/screens/ReelsScreen";
+import ReelsScreen from "./src/screens/Login/ReelsScreen";
 import CreatePostScreen from "./src/screens/CreatePostScreen";
 import NotificationsScreen from "./src/screens/NotificationsScreen";
 import MainTabNavigator from "./src/components/MainTabNavigator";
-import RegisterScreen from "./src/screens/RegisterScreen";
-import ForgotPasswordScreen from "./src/screens/ForgotPasswordScreen";
+import RegisterScreen from "./src/screens/Login/RegisterScreen";
+import ForgotPasswordScreen from "./src/screens/Login/ForgotPasswordScreen";
 import EditProfileScreen from "./src/components/EditProfileScreen";
-import FriendSearchScreen from "./src/screens/FriendSearchScreen";
+import FriendSearchScreen from "./src/screens/Friend/FriendSearchScreen";
 import EmailSearchHandler from "./src/components/EmailSearchHandler";
-import FriendRequestsScreen from "./src/screens/FriendRequestsScreen";
+import FriendRequestsScreen from "./src/screens/Friend/FriendRequestsScreen";
 import ProfileTabs from "./src/screens/profile/ProfileTabs";
 import ProfileContent from "./src/screens/profile/ProfileContent";
 import ProfileInfo from "./src/screens/profile/ProfileInfo";
 import ProfileHeader from "./src/screens/profile/ProfileHeader";
-import FriendsSection from "./src/screens/profile/FriendsSection";
+import FriendsSection from "./src/components/friends/FriendsSection";
+import MessagesScreen from "./src/screens/Messages/MessagesScreen";
+import ChatScreen from "./src/screens/Messages/ChatScreen";
 
 const Stack = createStackNavigator();
 
@@ -126,6 +128,8 @@ export default function App() {
               component={EditProfileScreen}
               options={{ headerShown: false }}
           />
+          <Stack.Screen name="Messages" component={MessagesScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="Chat" component={ChatScreen} options={{ headerShown: false }} />
           <Stack.Screen
               name="EmailSearchHandler"
               component={EmailSearchHandler}

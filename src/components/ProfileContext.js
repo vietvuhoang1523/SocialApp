@@ -33,11 +33,7 @@ export const ProfileProvider = ({ children }) => {
                 }
 
                 // Có thể lấy thêm followerCount và followingCount từ storage hoặc API
-                const followerCountString = await AsyncStorage.getItem('followerCount');
-                const followingCountString = await AsyncStorage.getItem('followingCount');
 
-                if (followerCountString) setFollowerCount(parseInt(followerCountString, 10));
-                if (followingCountString) setFollowingCount(parseInt(followingCountString, 10));
 
             } catch (error) {
                 console.error('Lỗi khi lấy dữ liệu profile:', error);
@@ -80,17 +76,7 @@ export const ProfileProvider = ({ children }) => {
         }
     };
 
-    // Cập nhật số lượng follower
-    const updateFollowerCount = async (count) => {
-        setFollowerCount(count);
-        await AsyncStorage.setItem('followerCount', count.toString());
-    };
 
-    // Cập nhật số lượng following
-    const updateFollowingCount = async (count) => {
-        setFollowingCount(count);
-        await AsyncStorage.setItem('followingCount', count.toString());
-    };
 
     // Context value
     const value = {
@@ -98,9 +84,7 @@ export const ProfileProvider = ({ children }) => {
         followerCount,
         followingCount,
         loading,
-        updateProfile,
-        updateFollowerCount,
-        updateFollowingCount
+        updateProfile
     };
 
     return (

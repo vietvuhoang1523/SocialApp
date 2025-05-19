@@ -8,7 +8,7 @@ import {
     TouchableOpacity,
     ActivityIndicator
 } from 'react-native';
-import AuthService from '../services/AuthService';
+import AuthService from '../../services/AuthService';
 
 const ForgotPasswordScreen = ({ navigation }) => {
     const [email, setEmail] = useState('');

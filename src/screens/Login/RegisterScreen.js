@@ -10,7 +10,7 @@ import {
     ScrollView,
     Modal
 } from 'react-native';
-import AuthService from '../services/AuthService';
+import AuthService from '../../services/AuthService';
 
 const RegisterScreen = ({ navigation }) => {
     const [fullName, setFullName] = useState('');

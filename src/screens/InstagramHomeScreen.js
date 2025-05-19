@@ -182,7 +182,7 @@ const InstagramHomeScreen = ({ navigation }) => {
                     // source={require('../assets/instagram-logo.png')}
                     style={styles.logoImage}
                 />
-                <TouchableOpacity>
+                <TouchableOpacity onPress={() => navigation.navigate('Messages')}>
                     <Icon name="message-outline" size={24} color="black" />
                 </TouchableOpacity>
             </View>

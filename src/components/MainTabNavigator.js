@@ -9,7 +9,7 @@ import SearchScreen from "../screens/SearchScreen";
 import ProfileScreen from "../screens/profile/ProfileScreen";
 import NotificationsScreen from "../screens/NotificationsScreen";
 import CreatePostScreen from "../screens/CreatePostScreen";
-import ReelsScreen from "../screens/ReelsScreen";
+import ReelsScreen from "../screens/Login/ReelsScreen";
 
 
 const Tab = createBottomTabNavigator();

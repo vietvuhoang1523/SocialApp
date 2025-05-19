@@ -10,7 +10,7 @@ import {
     ActivityIndicator,
     RefreshControl
 } from 'react-native';
-import FriendService from '../services/FriendService';
+import FriendService from '../../services/FriendService';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 
 const FriendRequestsScreen = () => {

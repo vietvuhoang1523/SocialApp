@@ -119,7 +119,12 @@ class FriendService {
      */
     async getFriends() {
         try {
-            const response = await this.api.get('/friends');
+            // const response = await this.api.get('/friends');
+            // return response.data;
+            // Đảm bảo endpoint này trả về danh sách bạn bè, không phải posts
+            console.log('Calling friends API...');
+            const response = await this.api.get('/friends'); // Kiểm tra lại endpoint này
+            console.log('Response from friends API:', response.data);
             return response.data;
         } catch (error) {
             console.error('Error getting friends:', error);

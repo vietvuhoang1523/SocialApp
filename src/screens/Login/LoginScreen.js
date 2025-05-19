@@ -14,7 +14,7 @@ import {
   ScrollView
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import AuthService from '../services/AuthService';
+import AuthService from '../../services/AuthService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const LoginScreen = ({ navigation }) => {

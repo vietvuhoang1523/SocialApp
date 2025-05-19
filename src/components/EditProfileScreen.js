@@ -71,7 +71,8 @@ const EditProfileScreen = ({ navigation, route }) => {
     useEffect(() => {
         const checkAuth = async () => {
             try {
-                const isAuthenticated = await AuthService.isAuthenticated();
+                const isAuthenticated = await AuthService.checkAuthentication();
+
                 if (!isAuthenticated) {
                     Alert.alert(
                         'Phiên đăng nhập hết hạn',
@@ -93,7 +94,7 @@ const EditProfileScreen = ({ navigation, route }) => {
         };
 
         checkAuth();
-    }, []);
+    }, [navigation]);
 
     // Handle image picker
     const handleChooseProfilePicture = () => {

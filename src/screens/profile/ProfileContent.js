@@ -1,17 +1,35 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
     View,
     FlatList,
     RefreshControl,
     ActivityIndicator,
     StyleSheet,
-    Text
+    Text,
+    Animated,
+    ScrollView
 } from 'react-native';
 import PostItem from '../../hook/PostItem';
 import { CreatePostButton, EmptyContent } from '../../components/UIComponents';
 import usePosts from '../../hook/usePosts';
 
-const ProfileContent = ({ activeTab, onRefresh, isRefreshing, navigation }) => {
+// Import các thành phần UI khác
+import ProfileInfo from './ProfileInfo';
+import FriendsSection from '../../components/friends/FriendsSection';
+import ProfileTabs from './ProfileTabs';
+
+const ProfileContent = ({
+                            activeTab,
+                            onTabChange,
+                            onRefresh,
+                            isRefreshing,
+                            navigation,
+                            scrollY,
+                            onEditProfile,
+                            onViewIntro,
+                            onFindFriends,
+                            onViewAllFriends
+                        }) => {
     // Sử dụng custom hook để quản lý posts
     const {
         posts,
@@ -21,6 +39,9 @@ const ProfileContent = ({ activeTab, onRefresh, isRefreshing, navigation }) => {
         handleRefresh,
         handleImageError
     } = usePosts();
+
+    // Tham chiếu tới FlatList để kiểm soát scroll
+    const flatListRef = useRef(null);
 
     // Gọi API khi component mount hoặc activeTab thay đổi
     useEffect(() => {
@@ -49,6 +70,12 @@ const ProfileContent = ({ activeTab, onRefresh, isRefreshing, navigation }) => {
         // navigation.navigate('CommentScreen', { postId });
     };
 
+    // Xử lý chia sẻ bài viết
+    const handleSharePost = (postId) => {
+        console.log('Share post:', postId);
+        // Thêm logic chia sẻ tại đây
+    };
+
     // Render nút tạo bài viết
     const renderCreatePostButton = () => (
         <CreatePostButton
@@ -62,7 +89,30 @@ const ProfileContent = ({ activeTab, onRefresh, isRefreshing, navigation }) => {
             item={item}
             onLikePress={handleLikePost}
             onCommentPress={handleCommentPost}
+            onSharePress={handleSharePost}
         />
+    );
+
+    // Render header cho FlatList - đây là các thành phần nằm cố định ở đầu trang
+    const renderListHeader = () => (
+        <>
+            <ProfileInfo
+                onEditProfile={onEditProfile}
+                onViewIntro={onViewIntro}
+            />
+
+            <FriendsSection
+                onFindFriends={onFindFriends}
+                onViewAllFriends={onViewAllFriends}
+            />
+
+            <ProfileTabs
+                activeTab={activeTab}
+                onTabChange={onTabChange}
+            />
+
+            {activeTab === 'posts' && renderCreatePostButton()}
+        </>
     );
 
     // Render nội dung theo tab
@@ -71,11 +121,12 @@ const ProfileContent = ({ activeTab, onRefresh, isRefreshing, navigation }) => {
             case 'posts':
                 return (
                     <FlatList
+                        ref={flatListRef}
                         data={posts}
                         renderItem={renderPostItem}
                         keyExtractor={(item) => item.id.toString()}
                         contentContainerStyle={styles.postsList}
-                        ListHeaderComponent={renderCreatePostButton}
+                        ListHeaderComponent={renderListHeader}
                         refreshControl={
                             <RefreshControl
                                 refreshing={isRefreshing}
@@ -85,6 +136,11 @@ const ProfileContent = ({ activeTab, onRefresh, isRefreshing, navigation }) => {
                         }
                         onEndReached={handleLoadMore}
                         onEndReachedThreshold={0.5}
+                        onScroll={Animated.event(
+                            [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+                            { useNativeDriver: false }
+                        )}
+                        scrollEventThrottle={16}
                         ListFooterComponent={
                             loading && !isRefreshing ? (
                                 <ActivityIndicator size="small" color="#1877F2" style={styles.loader} />
@@ -100,7 +156,10 @@ const ProfileContent = ({ activeTab, onRefresh, isRefreshing, navigation }) => {
             case 'photos':
                 return (
                     <FlatList
+                        ref={flatListRef}
                         data={[]} // Không có dữ liệu ảnh
+                        ListHeaderComponent={renderListHeader}
+                        contentContainerStyle={styles.centeredContainer}
                         refreshControl={
                             <RefreshControl
                                 refreshing={isRefreshing}
@@ -108,7 +167,11 @@ const ProfileContent = ({ activeTab, onRefresh, isRefreshing, navigation }) => {
                                 colors={['#1877F2']}
                             />
                         }
-                        contentContainerStyle={styles.centeredContainer}
+                        onScroll={Animated.event(
+                            [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+                            { useNativeDriver: false }
+                        )}
+                        scrollEventThrottle={16}
                         ListEmptyComponent={
                             <View style={styles.centeredContent}>
                                 <EmptyContent message="Không có ảnh nào" />
@@ -119,7 +182,10 @@ const ProfileContent = ({ activeTab, onRefresh, isRefreshing, navigation }) => {
             default:
                 return (
                     <FlatList
+                        ref={flatListRef}
                         data={[]} // Không có dữ liệu
+                        ListHeaderComponent={renderListHeader}
+                        contentContainerStyle={styles.centeredContainer}
                         refreshControl={
                             <RefreshControl
                                 refreshing={isRefreshing}
@@ -127,7 +193,11 @@ const ProfileContent = ({ activeTab, onRefresh, isRefreshing, navigation }) => {
                                 colors={['#1877F2']}
                             />
                         }
-                        contentContainerStyle={styles.centeredContainer}
+                        onScroll={Animated.event(
+                            [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+                            { useNativeDriver: false }
+                        )}
+                        scrollEventThrottle={16}
                         ListEmptyComponent={
                             <View style={styles.centeredContent}>
                                 <Text>Tính năng đang phát triển</Text>
@@ -143,15 +213,13 @@ const ProfileContent = ({ activeTab, onRefresh, isRefreshing, navigation }) => {
 
 const styles = StyleSheet.create({
     postsList: {
-        padding: 10,
+        paddingBottom: 20,
     },
     loader: {
         marginVertical: 20,
     },
     centeredContainer: {
-        flexGrow: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
+        paddingBottom: 20,
     },
     centeredContent: {
         padding: 20,

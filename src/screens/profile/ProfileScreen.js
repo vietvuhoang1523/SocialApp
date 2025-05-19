@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import {
     SafeAreaView,
     View,
@@ -6,16 +6,14 @@ import {
     Animated,
     StatusBar,
     Platform,
-    Alert,
-    RefreshControl
+    Alert
 } from 'react-native';
 import ProfileHeader from './ProfileHeader';
-import ProfileInfo from './ProfileInfo';
-import FriendsSection from './FriendsSection';
-import ProfileTabs from './ProfileTabs';
-import ProfileContent from './ProfileContent';
 import AuthService from '../../services/AuthService';
 import { ProfileProvider } from '../../components/ProfileContext';
+
+// Import các component đã xây dựng
+import ProfileContent from './ProfileContent';
 
 const ProfileScreen = ({ navigation }) => {
     // States
@@ -75,7 +73,7 @@ const ProfileScreen = ({ navigation }) => {
 
     // Navigate đến màn hình chỉnh sửa profile
     const handleEditProfile = useCallback(() => {
-        navigation.navigate('EditProfileScreen', {
+        navigation.navigate('EditProfile', {
             onProfileUpdated: handleRefresh
         });
     }, [navigation, handleRefresh]);
@@ -95,6 +93,11 @@ const ProfileScreen = ({ navigation }) => {
         navigation.navigate('ProfileIntroScreen');
     }, [navigation]);
 
+    // Thay đổi active tab
+    const handleTabChange = (tab) => {
+        setActiveTab(tab);
+    };
+
     // Wrap everything with ProfileProvider for context
     return (
         <ProfileProvider>
@@ -111,35 +114,19 @@ const ProfileScreen = ({ navigation }) => {
                     scrollY={scrollY}
                 />
 
-                <View style={styles.contentContainer}>
-                    {/* Profile Info Section */}
-                    <ProfileInfo
-                        onEditProfile={handleEditProfile}
-                        onViewIntro={handleViewIntro}
-                    />
-
-                    {/* Friends Section */}
-                    <FriendsSection
-                        onFindFriends={handleFindFriends}
-                        onViewAllFriends={handleViewAllFriends}
-                    />
-
-                    {/* Profile Tabs */}
-                    <ProfileTabs
-                        activeTab={activeTab}
-                        onTabChange={(tab) => {
-                            setActiveTab(tab);
-                        }}
-                    />
-
-                    {/* Profile Content (Posts, Photos, etc.) */}
-                    <ProfileContent
-                        activeTab={activeTab}
-                        onRefresh={handleRefresh}
-                        isRefreshing={isRefreshing}
-                        navigation={navigation}
-                    />
-                </View>
+                {/* Thay đổi cấu trúc: Đưa tất cả nội dung vào ProfileContent để quản lý */}
+                <ProfileContent
+                    activeTab={activeTab}
+                    onTabChange={handleTabChange}
+                    onRefresh={handleRefresh}
+                    isRefreshing={isRefreshing}
+                    navigation={navigation}
+                    scrollY={scrollY}
+                    onEditProfile={handleEditProfile}
+                    onViewIntro={handleViewIntro}
+                    onFindFriends={handleFindFriends}
+                    onViewAllFriends={handleViewAllFriends}
+                />
             </SafeAreaView>
         </ProfileProvider>
     );
@@ -149,9 +136,6 @@ const styles = StyleSheet.create({
     container: {
         flex: 1,
         backgroundColor: '#F0F2F5',
-    },
-    contentContainer: {
-        flex: 1,
     }
 });
 
