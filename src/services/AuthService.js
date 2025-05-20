@@ -10,8 +10,53 @@ class AuthService {
             timeout: DEFAULT_TIMEOUT,
             headers: DEFAULT_HEADERS,
         });
+        this._isAuthenticated = false;
+        this.checkInitialAuthStatus();
+    }
+// Kiểm tra trạng thái xác thực ban đầu khi khởi tạo
+    async checkInitialAuthStatus() {
+        try {
+            const token = await AsyncStorage.getItem('accessToken');
+            this._isAuthenticated = !!token;
+        } catch (error) {
+            console.error('Initial auth status check failed:', error);
+            this._isAuthenticated = false;
+        }
+    }
+    // Phương thức async để kiểm tra chi tiết
+    async checkAuthentication() {
+        try {
+            const token = await AsyncStorage.getItem('accessToken');
+
+            if (!token) {
+                this._isAuthenticated = false;
+                return false;
+            }
+
+            // Kiểm tra token với backend (nếu cần)
+            try {
+                const response = await this.api.post('/introspect', { token });
+                this._isAuthenticated = response.data.valid === true;
+                return this._isAuthenticated;
+            } catch (introspectError) {
+                console.error('Token introspection error:', introspectError);
+                this._isAuthenticated = false;
+                return false;
+            }
+        } catch (error) {
+            console.error('Authentication check failed:', error);
+            this._isAuthenticated = false;
+            return false;
+        }
     }
 
+    // Phương thức instance đồng bộ
+    isAuthenticated(): boolean {
+        return this._isAuthenticated;
+    }
+    updateAuthStatus(status: boolean) {
+        this._isAuthenticated = status;
+    }
     /**
      * Đăng ký người dùng mới
      * @param {Object} userData - Thông tin đăng ký
@@ -110,6 +155,17 @@ class AuthService {
         }
     }
 
+
+    // async login(email, password) {
+    //     try {
+    //         const response = await super.login(email, password);
+    //         this._isAuthenticated = true;
+    //         return response;
+    //     } catch (error) {
+    //         this._isAuthenticated = false;
+    //         throw error;
+    //     }
+    // }
     /**
      * Xác minh tài khoản với mã xác nhận
      * @param {string} email - Email của người dùng
@@ -332,31 +388,40 @@ class AuthService {
         }
     }
 
+    // async logout() {
+    //     try {
+    //         await super.logout();
+    //         this._isAuthenticated = false;
+    //     } catch (error) {
+    //         console.error('Logout error:', error);
+    //     }
+    // }
+
     /**
      * Kiểm tra xem người dùng đã đăng nhập chưa
      * @returns {Promise<boolean>} Trạng thái đăng nhập
      */
-    static async isAuthenticated() {
-        try {
-            const token = await AsyncStorage.getItem('accessToken');
-
-            // Nếu không có token, trả về false
-            if (!token) return false;
-
-            // Thêm logic kiểm tra token hợp lệ với backend (nếu cần)
-            // Ví dụ: gọi API kiểm tra token
-            const response = await axios.get('/api/validate-token', {
-                headers: {
-                    'Authorization': `Bearer ${token}`
-                }
-            });
-
-            return response.status === 200;
-        } catch (error) {
-            console.error('Authentication check failed:', error);
-            return false;
-        }
-    }
+    // static async isAuthenticated() {
+    //     try {
+    //         const token = await AsyncStorage.getItem('accessToken');
+    //
+    //         // Nếu không có token, trả về false
+    //         if (!token) return false;
+    //
+    //         // Thêm logic kiểm tra token hợp lệ với backend (nếu cần)
+    //         // Ví dụ: gọi API kiểm tra token
+    //         const response = await axios.get('/api/validate-token', {
+    //             headers: {
+    //                 'Authorization': `Bearer ${token}`
+    //             }
+    //         });
+    //
+    //         return response.status === 200;
+    //     } catch (error) {
+    //         console.error('Authentication check failed:', error);
+    //         return false;
+    //     }
+    // }
 
     /**
      * Lấy thông tin token hiện tại

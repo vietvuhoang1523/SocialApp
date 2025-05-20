@@ -1,15 +1,44 @@
 import React from 'react';
 import { View, Text, Image, Modal, TouchableOpacity, StyleSheet } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { determineFriendData } from '../../utils/friendUtils';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const DEFAULT_PROFILE_IMAGE = 'https://cdn.pixabay.com/photo/2015/10/05/22/37/blank-profile-picture-973460_1280.png';
 
 const FriendDetailModal = ({ friend, visible, onClose, currentUserId }) => {
+    const navigation = useNavigation();
+
     if (!friend) return null;
 
     const friendData = determineFriendData(friend, currentUserId);
     if (!friendData) return null;
+
+    const handleStartChat = async () => {
+        try {
+            // Get current user data
+            const userData = await AsyncStorage.getItem('userData');
+            const currentUser = userData ? JSON.parse(userData) : { id: currentUserId };
+
+            // Prepare friend user object for ChatScreen
+            const friendForChat = {
+                id: friendData.id,
+                username: friendData.fullName || "Người dùng",
+                profilePicture: friendData.avatarUrl,
+                email: friendData.email
+            };
+
+            // Close modal and navigate to ChatScreen
+            onClose();
+            navigation.navigate('Chat', {
+                user: friendForChat,
+                currentUser: currentUser
+            });
+        } catch (error) {
+            console.error('Error starting chat:', error);
+        }
+    };
 
     return (
         <Modal
@@ -37,7 +66,10 @@ const FriendDetailModal = ({ friend, visible, onClose, currentUserId }) => {
                     </Text>
 
                     <View style={styles.modalActionButtons}>
-                        <TouchableOpacity style={styles.modalActionButton}>
+                        <TouchableOpacity
+                            style={styles.modalActionButton}
+                            onPress={handleStartChat}
+                        >
                             <Ionicons name="chatbubble" size={20} color="#1877F2" />
                             <Text style={styles.modalActionButtonText}>Nhắn tin</Text>
                         </TouchableOpacity>
@@ -51,7 +83,6 @@ const FriendDetailModal = ({ friend, visible, onClose, currentUserId }) => {
         </Modal>
     );
 };
-
 
 const styles = StyleSheet.create({
     modalBackground: {

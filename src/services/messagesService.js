@@ -1,12 +1,13 @@
-// MessagesService.js
+// MessagesService.js - Cập nhật
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { BASE_URL, DEFAULT_TIMEOUT, DEFAULT_HEADERS } from './api';
 
 class MessagesService {
     constructor() {
+        // Cập nhật baseURL để phù hợp với API của backend
         this.api = axios.create({
-            baseURL: `${BASE_URL}/messages`,
+            baseURL: `${BASE_URL}/api/messages`,
             timeout: DEFAULT_TIMEOUT,
             headers: DEFAULT_HEADERS,
         });
@@ -40,8 +41,22 @@ class MessagesService {
         this.api.interceptors.response.use(
             (response) => {
                 console.log('Response Status:', response.status);
-                console.log('Response Data:', JSON.stringify(response.data).substring(0, 200) + '...');
-                return response;
+                // Ghi log dữ liệu phản hồi một cách an toàn
+                try {
+                    const logData = typeof response.data === 'object'
+                        ? JSON.stringify(response.data).substring(0, 200) + '...'
+                        : response.data;
+                    console.log('Response Data:', logData);
+                } catch (e) {
+                    console.log('Response Data: [Unable to stringify]');
+                }
+
+                // Xử lý định dạng dữ liệu trả về
+                if (response.data && response.data.data) {
+                    // Nếu dữ liệu được đóng gói trong field "data"
+                    return response.data.data;
+                }
+                return response.data;
             },
             async (error) => {
                 console.error('API Error:', error);
@@ -64,11 +79,14 @@ class MessagesService {
                                     const response = await this.refreshToken(refreshToken);
 
                                     // Lưu token mới
-                                    await AsyncStorage.setItem('accessToken', response.data.token);
+                                    const newToken = response.token || response.data?.token;
+                                    if (newToken) {
+                                        await AsyncStorage.setItem('accessToken', newToken);
 
-                                    // Thử lại request với token mới
-                                    originalRequest.headers.Authorization = `Bearer ${response.data.token}`;
-                                    return this.api(originalRequest);
+                                        // Thử lại request với token mới
+                                        originalRequest.headers.Authorization = `Bearer ${newToken}`;
+                                        return this.api(originalRequest);
+                                    }
                                 }
                             }
                         } catch (refreshError) {
@@ -89,13 +107,13 @@ class MessagesService {
      * @returns {Promise} - Token mới
      */
     async refreshToken(refreshToken) {
-        const response = await axios.post(`${BASE_URL}/auth/refresh-token`, {
+        const response = await axios.post(`${BASE_URL}/api/auth/refresh-token`, {
             refreshToken
         }, {
             headers: DEFAULT_HEADERS
         });
 
-        return response;
+        return response.data;
     }
 
     /**
@@ -109,16 +127,10 @@ class MessagesService {
             console.log(`Đang lấy tin nhắn giữa người dùng ${user1Id} và ${user2Id}`);
 
             const response = await this.api.get(`/${user1Id}/${user2Id}`);
-
-            console.log('Phản hồi từ API lấy tin nhắn:', response.data);
-            return response.data;
+            return this.normalizeMessages(response);
         } catch (error) {
             console.error('Lỗi khi lấy tin nhắn giữa hai người dùng:', error);
-            if (error.response) {
-                console.error('Error status:', error.response.status);
-                console.error('Error data:', error.response.data);
-            }
-            throw error;
+            throw this.normalizeError(error);
         }
     }
 
@@ -135,20 +147,16 @@ class MessagesService {
 
             const params = {
                 page: pagination.page || 0,
-                size: pagination.size || 20
+                size: pagination.size || 20,
+                sortBy: 'timestamp',
+                order: 'desc'
             };
 
             const response = await this.api.get(`/${user1Id}/${user2Id}/paginated`, { params });
-
-            console.log('Phản hồi từ API lấy tin nhắn phân trang:', response.data);
-            return response.data;
+            return this.normalizePagedMessages(response);
         } catch (error) {
             console.error('Lỗi khi lấy tin nhắn phân trang:', error);
-            if (error.response) {
-                console.error('Error status:', error.response.status);
-                console.error('Error data:', error.response.data);
-            }
-            throw error;
+            throw this.normalizeError(error);
         }
     }
 
@@ -161,17 +169,19 @@ class MessagesService {
         try {
             console.log('Đang gửi tin nhắn:', messageData);
 
-            const response = await this.api.post('', messageData);
+            // Tạo bản sao để không thay đổi dữ liệu gốc
+            const payload = { ...messageData };
 
-            console.log('Phản hồi từ API gửi tin nhắn:', response.data);
-            return response.data;
+            // Đảm bảo rằng payload có định dạng phù hợp với API
+            if (!payload.content && messageData.attachmentUrl) {
+                payload.content = ''; // Đảm bảo có nội dung tin nhắn (rỗng nếu chỉ có file đính kèm)
+            }
+
+            const response = await this.api.post('', payload);
+            return this.normalizeMessage(response);
         } catch (error) {
             console.error('Lỗi khi gửi tin nhắn:', error);
-            if (error.response) {
-                console.error('Error status:', error.response.status);
-                console.error('Error data:', error.response.data);
-            }
-            throw error;
+            throw this.normalizeError(error);
         }
     }
 
@@ -185,16 +195,27 @@ class MessagesService {
             console.log(`Đang lấy tin nhắn chưa đọc của người dùng ${userId}`);
 
             const response = await this.api.get(`/unread/${userId}`);
-
-            console.log('Phản hồi từ API lấy tin nhắn chưa đọc:', response.data);
-            return response.data;
+            return this.normalizeMessages(response);
         } catch (error) {
             console.error('Lỗi khi lấy tin nhắn chưa đọc:', error);
-            if (error.response) {
-                console.error('Error status:', error.response.status);
-                console.error('Error data:', error.response.data);
-            }
-            throw error;
+            throw this.normalizeError(error);
+        }
+    }
+
+    /**
+     * Lấy số lượng tin nhắn chưa đọc
+     * @param {number} userId - ID người dùng
+     * @returns {Promise<number>} - Số lượng tin nhắn chưa đọc
+     */
+    async getUnreadMessagesCount(userId) {
+        try {
+            console.log(`Đang lấy số lượng tin nhắn chưa đọc của người dùng ${userId}`);
+
+            const response = await this.api.get(`/unread-count/${userId}`);
+            return response.count || 0;
+        } catch (error) {
+            console.error('Lỗi khi lấy số lượng tin nhắn chưa đọc:', error);
+            return 0; // Trả về 0 nếu có lỗi
         }
     }
 
@@ -207,17 +228,11 @@ class MessagesService {
         try {
             console.log(`Đang đánh dấu tin nhắn ${messageId} là đã đọc`);
 
-            const response = await this.api.put(`/${messageId}/read`);
-
-            console.log('Phản hồi từ API đánh dấu tin nhắn đã đọc:', response.data);
-            return response.data;
+            await this.api.put(`/${messageId}/read`);
+            return true;
         } catch (error) {
             console.error('Lỗi khi đánh dấu tin nhắn đã đọc:', error);
-            if (error.response) {
-                console.error('Error status:', error.response.status);
-                console.error('Error data:', error.response.data);
-            }
-            throw error;
+            throw this.normalizeError(error);
         }
     }
 
@@ -231,88 +246,160 @@ class MessagesService {
         try {
             console.log(`Đang đánh dấu tất cả tin nhắn giữa ${senderId} và ${receiverId} là đã đọc`);
 
-            const response = await this.api.put(`/${senderId}/${receiverId}/read-all`);
-
-            console.log('Phản hồi từ API đánh dấu tất cả tin nhắn đã đọc:', response.data);
-            return response.data;
+            await this.api.put(`/${senderId}/${receiverId}/read-all`);
+            return true;
         } catch (error) {
             console.error('Lỗi khi đánh dấu tất cả tin nhắn đã đọc:', error);
-            if (error.response) {
-                console.error('Error status:', error.response.status);
-                console.error('Error data:', error.response.data);
-            }
-            throw error;
+            throw this.normalizeError(error);
         }
     }
 
     /**
-     * Lấy thông tin người dùng từ AsyncStorage
-     * @returns {Promise<Object|null>} - Thông tin người dùng hoặc null
+     * Đánh dấu tin nhắn đã nhận
+     * @param {string} messageId - ID tin nhắn
+     * @returns {Promise} - Kết quả
      */
-    async getCurrentUser() {
+    async markMessageAsDelivered(messageId) {
         try {
-            const userData = await AsyncStorage.getItem('userData');
-            return userData ? JSON.parse(userData) : null;
+            console.log(`Đang đánh dấu tin nhắn ${messageId} là đã nhận`);
+
+            await this.api.put(`/${messageId}/delivered`);
+            return true;
         } catch (error) {
-            console.error('Lỗi khi lấy thông tin người dùng từ AsyncStorage:', error);
-            return null;
+            console.error('Lỗi khi đánh dấu tin nhắn đã nhận:', error);
+            return false; // Trả về false nếu có lỗi
         }
     }
 
     /**
-     * Lấy tất cả cuộc trò chuyện của người dùng (phương thức giả lập vì không có trong API)
-     * @param {number} userId - ID người dùng
-     * @returns {Promise} - Danh sách cuộc trò chuyện
+     * Xóa tin nhắn
+     * @param {string} messageId - ID tin nhắn
+     * @param {boolean} deleteForEveryone - Xóa cho tất cả (true) hoặc chỉ cho bản thân (false)
+     * @returns {Promise} - Kết quả
      */
-    async getConversations(userId) {
+    async deleteMessage(messageId, deleteForEveryone = false) {
         try {
-            console.log(`Đang lấy cuộc trò chuyện của người dùng ${userId}`);
+            console.log(`Đang xóa tin nhắn ${messageId}, xóa cho tất cả: ${deleteForEveryone}`);
 
-            // Giả lập api call - trong thực tế cần endpoint riêng hoặc xử lý ở client
-            // Lấy tin nhắn chưa đọc
-            const unreadMessages = await this.getUnreadMessages(userId);
-
-            // Tạo danh sách các người dùng duy nhất từ tin nhắn
-            const userIds = new Set();
-            unreadMessages.forEach(msg => {
-                if (msg.senderId !== userId) {
-                    userIds.add(msg.senderId);
-                } else if (msg.receiverId !== userId) {
-                    userIds.add(msg.receiverId);
-                }
-            });
-
-            // Khởi tạo danh sách cuộc trò chuyện
-            const conversations = [];
-
-            // Với mỗi người dùng, lấy tin nhắn gần nhất
-            for (const partnerId of userIds) {
-                const messages = await this.getMessagesBetweenUsers(userId, partnerId);
-
-                if (messages && messages.length > 0) {
-                    // Sắp xếp tin nhắn theo thời gian để lấy tin nhắn mới nhất
-                    messages.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-
-                    const lastMessage = messages[0];
-                    const unreadCount = messages.filter(msg => msg.receiverId === userId && !msg.read).length;
-
-                    conversations.push({
-                        partnerId,
-                        lastMessage,
-                        unreadCount,
-                        updatedAt: lastMessage.createdAt
-                    });
-                }
-            }
-
-            // Sắp xếp theo thời gian tin nhắn mới nhất
-            conversations.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
-
-            return conversations;
+            await this.api.delete(`/${messageId}?deleteForEveryone=${deleteForEveryone}`);
+            return true;
         } catch (error) {
-            console.error('Lỗi khi lấy cuộc trò chuyện:', error);
-            throw error;
+            console.error('Lỗi khi xóa tin nhắn:', error);
+            throw this.normalizeError(error);
         }
+    }
+
+    // Phương thức hỗ trợ chuẩn hóa dữ liệu
+
+    /**
+     * Chuẩn hóa danh sách tin nhắn
+     * @param {Array|Object} response - Phản hồi từ API
+     * @returns {Array} - Danh sách tin nhắn đã chuẩn hóa
+     */
+    normalizeMessages(response) {
+        // Kiểm tra và chuyển đổi response thành mảng
+        let messages = [];
+
+        if (Array.isArray(response)) {
+            messages = response;
+        } else if (response && response.content && Array.isArray(response.content)) {
+            messages = response.content;
+        } else if (response && typeof response === 'object') {
+            // Trường hợp response là object duy nhất
+            messages = [response];
+        }
+
+        // Chuẩn hóa từng tin nhắn
+        return messages.map(msg => this.normalizeMessage(msg));
+    }
+
+    /**
+     * Chuẩn hóa dữ liệu tin nhắn có phân trang
+     * @param {Object} response - Phản hồi từ API
+     * @returns {Object} - Dữ liệu tin nhắn phân trang đã chuẩn hóa
+     */
+    normalizePagedMessages(response) {
+        if (!response) return { content: [], last: true, totalElements: 0 };
+
+        // Xử lý trường hợp response có cấu trúc Spring Data Page
+        if (response.content && Array.isArray(response.content)) {
+            return {
+                content: this.normalizeMessages(response.content),
+                last: response.last !== undefined ? response.last : true,
+                totalElements: response.totalElements || 0,
+                totalPages: response.totalPages || 1,
+                size: response.size || 20,
+                number: response.number || 0
+            };
+        }
+
+        // Xử lý trường hợp response là mảng đơn giản
+        if (Array.isArray(response)) {
+            return {
+                content: this.normalizeMessages(response),
+                last: true,
+                totalElements: response.length,
+                totalPages: 1,
+                size: response.length,
+                number: 0
+            };
+        }
+
+        // Trường hợp không xác định
+        return { content: [], last: true, totalElements: 0 };
+    }
+
+    /**
+     * Chuẩn hóa dữ liệu tin nhắn đơn
+     * @param {Object} message - Tin nhắn từ API
+     * @returns {Object} - Tin nhắn đã chuẩn hóa
+     */
+    normalizeMessage(message) {
+        if (!message) return null;
+
+        // Đảm bảo các trường cần thiết tồn tại
+        return {
+            id: message.id || `temp-${Date.now()}`,
+            content: message.content || '',
+            senderId: message.senderId,
+            receiverId: message.receiverId,
+            createdAt: message.timestamp || message.createdAt || new Date().toISOString(),
+            read: message.read || false,
+            delivered: message.delivered || false,
+            attachmentUrl: message.attachmentUrl || null,
+            attachmentType: message.attachmentType || null,
+            deletedForAll: message.deletedForAll || false
+        };
+    }
+
+    /**
+     * Chuẩn hóa lỗi
+     * @param {Error} error - Lỗi gốc
+     * @returns {Error} - Lỗi đã chuẩn hóa
+     */
+    normalizeError(error) {
+        if (error.response && error.response.data) {
+            // Trích xuất thông báo lỗi từ phản hồi
+            const errorMessage = error.response.data.message ||
+                error.response.data.error ||
+                'Đã xảy ra lỗi khi gọi API';
+
+            const customError = new Error(errorMessage);
+            customError.status = error.response.status;
+            customError.originalError = error;
+            return customError;
+        }
+
+        // Nếu là lỗi network
+        if (error.request) {
+            const networkError = new Error('Không thể kết nối đến server. Vui lòng kiểm tra kết nối internet của bạn.');
+            networkError.isNetworkError = true;
+            networkError.originalError = error;
+            return networkError;
+        }
+
+        // Lỗi khác
+        return error;
     }
 }
 
