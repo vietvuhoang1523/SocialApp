@@ -2,12 +2,12 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { BASE_URL, DEFAULT_TIMEOUT, DEFAULT_HEADERS } from './api';
-
+import webSocketService from './WebSocketService';
 class MessagesService {
     constructor() {
         // Cập nhật baseURL để phù hợp với API của backend
         this.api = axios.create({
-            baseURL: `${BASE_URL}/api/messages`,
+            baseURL: `${BASE_URL}/messages`,
             timeout: DEFAULT_TIMEOUT,
             headers: DEFAULT_HEADERS,
         });
@@ -165,6 +165,7 @@ class MessagesService {
      * @param {Object} messageData - Dữ liệu tin nhắn (content, senderId, receiverId)
      * @returns {Promise} - Tin nhắn đã gửi
      */
+    // Cập nhật phương thức sendMessage để sử dụng WebSocket khi có thể
     async sendMessage(messageData) {
         try {
             console.log('Đang gửi tin nhắn:', messageData);
@@ -177,6 +178,20 @@ class MessagesService {
                 payload.content = ''; // Đảm bảo có nội dung tin nhắn (rỗng nếu chỉ có file đính kèm)
             }
 
+            // Thử gửi tin nhắn qua WebSocket
+            const sentViaWebSocket = webSocketService.sendMessage(payload);
+
+            // Nếu gửi qua WebSocket thành công, trả về tin nhắn tạm thời
+            if (sentViaWebSocket) {
+                return this.normalizeMessage({
+                    ...payload,
+                    id: `temp-${Date.now()}`,
+                    createdAt: new Date().toISOString(),
+                    isSending: true
+                });
+            }
+
+            // Nếu không thành công, fallback về REST API
             const response = await this.api.post('', payload);
             return this.normalizeMessage(response);
         } catch (error) {
@@ -224,10 +239,23 @@ class MessagesService {
      * @param {string} messageId - ID tin nhắn
      * @returns {Promise} - Kết quả
      */
+    // Cập nhật phương thức markMessageAsRead để sử dụng WebSocket
     async markMessageAsRead(messageId) {
         try {
             console.log(`Đang đánh dấu tin nhắn ${messageId} là đã đọc`);
 
+            // Lấy thông tin về message từ cache hoặc state
+            const message = await this.getMessageById(messageId);
+
+            // Nếu có thông tin về người gửi, gửi read receipt qua WebSocket
+            if (message && message.senderId) {
+                const sentViaWebSocket = webSocketService.sendReadReceipt(messageId, message.senderId);
+                if (sentViaWebSocket) {
+                    return true;
+                }
+            }
+
+            // Fallback về REST API nếu cần
             await this.api.put(`/${messageId}/read`);
             return true;
         } catch (error) {
@@ -235,6 +263,20 @@ class MessagesService {
             throw this.normalizeError(error);
         }
     }
+    // Thêm hàm mới để lấy tin nhắn theo ID (có thể cần cache để làm việc này)
+    async getMessageById(messageId) {
+        // Thực hiện từ cache nếu có
+        // Hoặc gọi API để lấy thông tin message
+        // Đây là implementation đơn giản
+        try {
+            const response = await this.api.get(`/${messageId}`);
+            return this.normalizeMessage(response);
+        } catch (error) {
+            console.error(`Lỗi khi lấy tin nhắn ID ${messageId}:`, error);
+            return null;
+        }
+    }
+
 
     /**
      * Đánh dấu tất cả tin nhắn giữa hai người dùng là đã đọc

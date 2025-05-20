@@ -2,6 +2,7 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { BASE_URL, DEFAULT_TIMEOUT, DEFAULT_HEADERS } from './api';
+import webSocketService from './WebSocketService';
 
 class AuthService {
     constructor() {
@@ -136,6 +137,8 @@ class AuthService {
             } else {
                 console.error('Không tìm thấy token trong phản hồi');
             }
+            // Sau khi đăng nhập thành công, kết nối WebSocket
+            webSocketService.connect();
 
             return response.data;
         } catch (error) {
@@ -366,6 +369,10 @@ class AuthService {
                             Authorization: `Bearer ${token}`
                         }
                     });
+                    // Ngắt kết nối WebSocket khi đăng xuất
+                    webSocketService.disconnect();
+
+                    return { success: true };
                 } catch (logoutError) {
                     console.warn('Logout API error:', logoutError);
                     // Tiếp tục xóa token dù có lỗi API

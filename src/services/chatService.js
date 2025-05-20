@@ -7,7 +7,7 @@ import messagesService from './messagesService';
 class ChatService {
     constructor() {
         this.api = axios.create({
-            baseURL: `${BASE_URL}/api`,  // Cập nhật baseURL để phù hợp với API của backend
+            baseURL: `${BASE_URL}`,  // Cập nhật baseURL để phù hợp với API của backend
             timeout: DEFAULT_TIMEOUT,
             headers: DEFAULT_HEADERS,
         });

@@ -19,6 +19,8 @@ import messagesService from '../../services/messagesService';
 import chatService from '../../services/chatService';
 import ImageService from '../../services/ImageService';
 import * as ImagePicker from 'expo-image-picker';
+import webSocketService from '../../services/WebSocketService';
+import useChatWebSocket from '../../hook/useChatWebSocket';
 
 const ChatScreen = ({ route, navigation }) => {
     const { user, currentUser } = route.params;
@@ -42,6 +44,9 @@ const ChatScreen = ({ route, navigation }) => {
 
     // Thiết lập interval để tự động làm mới tin nhắn
     useEffect(() => {
+        // Nếu WebSocket đã kết nối, không cần polling
+        if (wsConnected) return;
+
         const interval = setInterval(() => {
             if (currentUser?.id && user?.id) {
                 fetchNewMessages();
@@ -49,8 +54,51 @@ const ChatScreen = ({ route, navigation }) => {
         }, 10000); // Cập nhật mỗi 10 giây
 
         return () => clearInterval(interval);
-    }, [currentUser, user, messages]);
+    }, [currentUser, user, messages, wsConnected]);
 
+
+// Xử lý tin nhắn mới từ WebSocket
+    const handleNewWebSocketMessage = useCallback((newMessage) => {
+        setMessages(prevMessages => {
+            // Kiểm tra xem tin nhắn đã tồn tại chưa
+            const messageExists = prevMessages.some(msg => msg.id === newMessage.id);
+
+            // Kiểm tra xem có tin nhắn tạm thời đang gửi không
+            const tempIndex = prevMessages.findIndex(msg =>
+                msg.id.startsWith('temp-') &&
+                msg.content === newMessage.content &&
+                msg.senderId === newMessage.senderId
+            );
+
+            if (tempIndex >= 0) {
+                // Thay thế tin nhắn tạm thời bằng tin nhắn thật
+                const updatedMessages = [...prevMessages];
+                updatedMessages[tempIndex] = newMessage;
+                return updatedMessages;
+            } else if (!messageExists) {
+                // Thêm tin nhắn mới
+                return [newMessage, ...prevMessages];
+            }
+
+            return prevMessages;
+        });
+    }, []);
+    // Sử dụng hook WebSocket
+    const {
+        isTyping,
+        wsConnected,
+        sendMessageViaWebSocket,
+        sendTypingNotification,
+        markMessageAsRead
+    } = useChatWebSocket(currentUser, user, handleNewWebSocketMessage);
+    // Cập nhật hàm xử lý nhập text để gửi thông báo typing
+    const handleMessageTextChange = (text) => {
+        setMessageText(text);
+        // Gửi thông báo typing nếu WebSocket đã kết nối
+        if (wsConnected) {
+            sendTypingNotification(true);
+        }
+    };
     // Lấy tất cả tin nhắn
     const loadMessages = async (refresh = false) => {
         try {
@@ -146,7 +194,7 @@ const ChatScreen = ({ route, navigation }) => {
         }
     };
 
-    // Gửi tin nhắn
+    // Cập nhật hàm gửi tin nhắn để sử dụng WebSocket
     const sendMessage = async () => {
         if (messageText.trim() === '' && !attachment) return;
 
@@ -178,7 +226,7 @@ const ChatScreen = ({ route, navigation }) => {
                 flatListRef.current?.scrollToEnd({ animated: true });
             }, 100);
 
-            // Dữ liệu tin nhắn để gửi lên server
+            // Dữ liệu tin nhắn để gửi
             const messageData = {
                 content: messageText,
                 senderId: currentUser.id,
@@ -196,26 +244,32 @@ const ChatScreen = ({ route, navigation }) => {
                 }
             }
 
-            // Gửi tin nhắn lên server
-            const response = await messagesService.sendMessage(messageData);
+            // Thử gửi tin nhắn qua WebSocket trước
+            const sentViaWebSocket = wsConnected ? sendMessageViaWebSocket(messageData) : false;
 
-            // Cập nhật tin nhắn với ID thật từ server
-            setMessages(prevMessages =>
-                prevMessages.map(msg =>
-                    msg.id === tempId
-                        ? { ...response, isSending: false }
-                        : msg
-                )
-            );
+            let response;
+            // Nếu gửi qua WebSocket thất bại, sử dụng REST API
+            if (!sentViaWebSocket) {
+                response = await messagesService.sendMessage(messageData);
 
-            console.log('Tin nhắn đã được gửi thành công:', response);
+                // Cập nhật tin nhắn với ID thật từ server
+                setMessages(prevMessages =>
+                    prevMessages.map(msg =>
+                        msg.id === tempId
+                            ? { ...response, isSending: false }
+                            : msg
+                    )
+                );
+            }
+
+            console.log('Tin nhắn đã được gửi thành công');
         } catch (error) {
             console.error('Lỗi khi gửi tin nhắn:', error);
 
             // Cập nhật trạng thái tin nhắn thành lỗi
             setMessages(prevMessages =>
                 prevMessages.map(msg =>
-                    msg.id.startsWith('temp-')
+                    msg.id.startsWith('temp-') && msg.content === messageText
                         ? { ...msg, isSending: false, isError: true }
                         : msg
                 )
@@ -384,7 +438,9 @@ const ChatScreen = ({ route, navigation }) => {
                         />
                         <View>
                             <Text style={styles.chatUsername}>{user.username}</Text>
-                            <Text style={styles.chatUserStatus}>Hoạt động gần đây</Text>
+                            <Text style={styles.chatUserStatus}>
+                                {isTyping ? 'Đang nhập...' : 'Hoạt động gần đây'}
+                            </Text>
                         </View>
                     </TouchableOpacity>
                 </View>
@@ -405,6 +461,11 @@ const ChatScreen = ({ route, navigation }) => {
             {loading && !refreshing && (
                 <View style={styles.loaderContainer}>
                     <ActivityIndicator size="large" color="#0095F6" />
+                </View>
+            )}
+            {isTyping && (
+                <View style={styles.typingContainer}>
+                    <Text style={styles.typingText}>{user.username} đang nhập tin nhắn...</Text>
                 </View>
             )}
 
@@ -470,7 +531,7 @@ const ChatScreen = ({ route, navigation }) => {
                         style={styles.textInput}
                         placeholder="Tin nhắn..."
                         value={messageText}
-                        onChangeText={setMessageText}
+                        onChangeText={handleMessageTextChange}
                         multiline
                         editable={!sending}
                     />
@@ -714,6 +775,20 @@ const styles = StyleSheet.create({
     },
     cameraButton: {
         paddingHorizontal: 5,
+    },
+    typingContainer: {
+        padding: 8,
+        paddingHorizontal: 12,
+        backgroundColor: '#f0f0f0',
+        borderRadius: 16,
+        marginHorizontal: 10,
+        marginBottom: 8,
+        alignSelf: 'flex-start',
+    },
+    typingText: {
+        fontSize: 12,
+        color: '#666',
+        fontStyle: 'italic',
     },
 });
 

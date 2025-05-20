@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useState } from 'react';
 import { NavigationContainer } from "@react-navigation/native";
 import { createStackNavigator } from "@react-navigation/stack";
 import InstagramHomeScreen from "./src/screens/InstagramHomeScreen";
@@ -23,7 +23,8 @@ import ProfileHeader from "./src/screens/profile/ProfileHeader";
 import FriendsSection from "./src/components/friends/FriendsSection";
 import MessagesScreen from "./src/screens/Messages/MessagesScreen";
 import ChatScreen from "./src/screens/Messages/ChatScreen";
-
+import webSocketService from './src/services/WebSocketService';
+import AuthService from './src/services/AuthService';
 const Stack = createStackNavigator();
 
 export default function App() {
@@ -36,6 +37,7 @@ export default function App() {
     Light: require("./src/assets/fonts/NunitoSans-Light.ttf"),
     SemiBold: require("./src/assets/fonts/NunitoSans-SemiBold.ttf"),
   });
+  const [isLoading, setIsLoading] = useState(true);
 
   if (!fontsLoaded) {
     return (
@@ -44,6 +46,26 @@ export default function App() {
         </View>
     );
   }
+  useEffect(() => {
+    const checkAuthAndSetupWebSocket = async () => {
+      try {
+        const isAuthenticated = await AuthService.checkAuthentication();
+        if (isAuthenticated) {
+          // Nếu đã đăng nhập, kết nối WebSocket
+          webSocketService.connect();
+        }
+      } catch (error) {
+        console.error('Auth check error:', error);
+      }
+    };
+
+    checkAuthAndSetupWebSocket();
+
+    // Cleanup khi unmount
+    return () => {
+      webSocketService.disconnect();
+    };
+  }, []);
 
   return (
       <NavigationContainer>

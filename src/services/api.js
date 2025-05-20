@@ -172,3 +172,9 @@ export const formatTimeAgo = (date) => {
 
     return messageDate.toLocaleDateString('vi-VN');
 };
+export const WS_CONFIG = {
+    ENDPOINT: `${BASE_URL.replace('http', 'ws')}/ws`, // hoặc custom endpoint tùy vào server
+    RECONNECT_DELAY: 5000, // 5 giây
+    HEARTBEAT_INCOMING: 4000,
+    HEARTBEAT_OUTGOING: 4000
+};
