@@ -32,7 +32,7 @@
 // File cấu hình cho các API calls
 
 // URL cơ sở cho backend API
-export const BASE_URL = 'http://192.168.0.100:8082/api'; // Thay thế bằng URL thực tế của bạn
+export const BASE_URL = 'http://192.168.1.73:8082/api'; // Thay thế bằng URL thực tế của bạn
 
 // Timeout mặc định cho các requests (30 giây)
 export const DEFAULT_TIMEOUT = 30000;

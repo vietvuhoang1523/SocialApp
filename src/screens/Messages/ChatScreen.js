@@ -1,230 +1,70 @@
-// ChatScreen.js - Màn hình tin nhắn chi tiết
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+// ChatScreen.js - Màn hình tin nhắn chi tiết (đã cải thiện và tách thành nhiều thành phần)
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
     View,
     Text,
-    Image,
-    StyleSheet,
-    TouchableOpacity,
-    FlatList,
-    TextInput,
-    KeyboardAvoidingView,
-    Platform,
     ActivityIndicator,
     Alert,
-    RefreshControl
+    RefreshControl,
+    KeyboardAvoidingView,
+    Platform,
+    FlatList,
+    AppState,
+    StyleSheet
 } from 'react-native';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import messagesService from '../../services/messagesService';
-import chatService from '../../services/chatService';
-import ImageService from '../../services/ImageService';
 import * as ImagePicker from 'expo-image-picker';
-import webSocketService from '../../services/WebSocketService';
+
+// Components
+import ChatHeader from '../../components/chat/ChatHeader';
+import MessageItem from '../../components/chat/MessageItem';
+import MessageInput from '../../components/chat/MessageInput';
+import AttachmentPreview from '../../components/chat/AttachmentPreview';
+
+// Custom Hooks
 import useChatWebSocket from '../../hook/useChatWebSocket';
+import useMessageManagement from '../../hook/useMessageManagement';
+import useMessageHandlers from '../../hook/useMessageHandlers';
+import useConnection from '../../hook/useConnection';
+
+// Utils
+import ImageUtils from '../../utils/ImageUtils';
+
+// Services
+import webSocketService from '../../services/WebSocketService';
 
 const ChatScreen = ({ route, navigation }) => {
     const { user, currentUser } = route.params;
-    const [messages, setMessages] = useState([]);
     const [messageText, setMessageText] = useState('');
-    const [loading, setLoading] = useState(true);
-    const [sending, setSending] = useState(false);
-    const [refreshing, setRefreshing] = useState(false);
-    const [page, setPage] = useState(0);
-    const [hasMore, setHasMore] = useState(true);
     const [attachment, setAttachment] = useState(null);
+    const [isTyping, setIsTyping] = useState(false);
+
     const flatListRef = useRef(null);
+    const lastPollingTimeRef = useRef(Date.now());
+    const messagePollingRef = useRef(null);
+    const keyboardShowListener = useRef(null);
+    const keyboardHideListener = useRef(null);
 
-    // Lấy tin nhắn khi màn hình được mount
-    useEffect(() => {
-        if (currentUser?.id && user?.id) {
-            loadMessages();
-            markAllMessagesAsRead();
-        }
-    }, [currentUser, user]);
-
-    // Thiết lập interval để tự động làm mới tin nhắn
-    useEffect(() => {
-        // Nếu WebSocket đã kết nối, không cần polling
-        if (wsConnected) return;
-
-        const interval = setInterval(() => {
-            if (currentUser?.id && user?.id) {
-                fetchNewMessages();
-            }
-        }, 10000); // Cập nhật mỗi 10 giây
-
-        return () => clearInterval(interval);
-    }, [currentUser, user, messages, wsConnected]);
-
-
-// Xử lý tin nhắn mới từ WebSocket
-    const handleNewWebSocketMessage = useCallback((newMessage) => {
-        setMessages(prevMessages => {
-            // Kiểm tra xem tin nhắn đã tồn tại chưa
-            const messageExists = prevMessages.some(msg => msg.id === newMessage.id);
-
-            // Kiểm tra xem có tin nhắn tạm thời đang gửi không
-            const tempIndex = prevMessages.findIndex(msg =>
-                msg.id.startsWith('temp-') &&
-                msg.content === newMessage.content &&
-                msg.senderId === newMessage.senderId
-            );
-
-            if (tempIndex >= 0) {
-                // Thay thế tin nhắn tạm thời bằng tin nhắn thật
-                const updatedMessages = [...prevMessages];
-                updatedMessages[tempIndex] = newMessage;
-                return updatedMessages;
-            } else if (!messageExists) {
-                // Thêm tin nhắn mới
-                return [newMessage, ...prevMessages];
-            }
-
-            return prevMessages;
-        });
-    }, []);
-    // Sử dụng hook WebSocket
-    const {
-        isTyping,
-        wsConnected,
-        sendMessageViaWebSocket,
-        sendTypingNotification,
-        markMessageAsRead
-    } = useChatWebSocket(currentUser, user, handleNewWebSocketMessage);
-    // Cập nhật hàm xử lý nhập text để gửi thông báo typing
-    const handleMessageTextChange = (text) => {
-        setMessageText(text);
-        // Gửi thông báo typing nếu WebSocket đã kết nối
-        if (wsConnected) {
-            sendTypingNotification(true);
-        }
-    };
-    // Lấy tất cả tin nhắn
-    const loadMessages = async (refresh = false) => {
-        try {
-            setLoading(true);
-            const currentPage = refresh ? 0 : page;
-            console.log(`Đang lấy tin nhắn trang ${currentPage}...`);
-
-            // Sử dụng service để lấy tin nhắn
-            const response = await messagesService.getMessagesBetweenUsersPaginated(
-                currentUser.id,
-                user.id,
-                {
-                    page: currentPage,
-                    size: 20
-                }
-            );
-
-            // Xử lý phân trang
-            const newMessages = response.content || [];
-            if (refresh) {
-                setMessages(newMessages);
-                setPage(1);
-            } else {
-                setMessages(prevMessages => [...prevMessages, ...newMessages]);
-                setPage(currentPage + 1);
-            }
-
-            // Kiểm tra xem còn tin nhắn để tải không
-            setHasMore(!response.last);
-
-            // Nếu là làm mới, cuộn xuống tin nhắn mới nhất
-            if (refresh && newMessages.length > 0) {
-                setTimeout(() => {
-                    flatListRef.current?.scrollToEnd({ animated: false });
-                }, 100);
-            }
-        } catch (error) {
-            console.error('Lỗi khi tải tin nhắn:', error);
-            Alert.alert('Lỗi', 'Không thể tải tin nhắn. Vui lòng thử lại sau.');
-        } finally {
-            setLoading(false);
-            setRefreshing(false);
-        }
-    };
-
-    // Lấy tin nhắn mới
-    const fetchNewMessages = async () => {
-        if (messages.length === 0) return;
-
-        try {
-            // Lấy thời điểm tin nhắn mới nhất hiện tại
-            const latestMessage = messages[0];
-            const latestTimestamp = latestMessage?.createdAt || new Date().toISOString();
-
-            // Lấy tất cả tin nhắn và lọc những tin nhắn mới hơn
-            const allMessages = await messagesService.getMessagesBetweenUsers(
-                currentUser.id,
-                user.id
-            );
-
-            const newMessages = allMessages.filter(msg =>
-                new Date(msg.createdAt) > new Date(latestTimestamp)
-            );
-
-            if (newMessages.length > 0) {
-                setMessages(prevMessages => [...newMessages, ...prevMessages]);
-                markAllMessagesAsRead();
-            }
-        } catch (error) {
-            console.error('Lỗi khi làm mới tin nhắn:', error);
-        }
-    };
-
-    // Đánh dấu tất cả tin nhắn là đã đọc
-    const markAllMessagesAsRead = async () => {
-        try {
-            await messagesService.markAllMessagesAsRead(user.id, currentUser.id);
-        } catch (error) {
-            console.error('Lỗi khi đánh dấu tin nhắn đã đọc:', error);
-        }
-    };
-
-    // Xử lý khi làm mới danh sách tin nhắn
-    const onRefresh = useCallback(() => {
-        setRefreshing(true);
-        loadMessages(true);
-    }, [currentUser, user]);
-
-    // Xử lý khi tải thêm tin nhắn cũ
-    const loadMoreMessages = () => {
-        if (!loading && hasMore) {
-            loadMessages();
-        }
-    };
-
-    // Cập nhật hàm gửi tin nhắn để sử dụng WebSocket
+    // Tạo chat key một lần để tránh tạo lại trong các dependency
+    const chatKey = useMemo(() =>
+            `chat_${String(currentUser?.id || '')}_${String(user?.id || '')}`,
+        [currentUser?.id, user?.id]
+    );
     const sendMessage = async () => {
         if (messageText.trim() === '' && !attachment) return;
 
         try {
-            setSending(true);
-            console.log('Đang gửi tin nhắn...');
-
-            // Tạo ID tạm thời cho tin nhắn
-            const tempId = `temp-${Date.now()}`;
-
-            // Tạo tin nhắn tạm để hiển thị ngay (optimistic UI)
+            // Tạo tin nhắn để hiển thị ngay
             const optimisticMessage = {
-                id: tempId,
+                id: `temp-${Date.now()}`,
                 senderId: currentUser.id,
                 receiverId: user.id,
                 content: messageText,
                 createdAt: new Date().toISOString(),
-                read: true,
                 isSending: true
             };
 
-            // Thêm vào state
+            // Thêm tin nhắn tạm vào danh sách
             setMessages(prevMessages => [optimisticMessage, ...prevMessages]);
-            setMessageText('');
-            setAttachment(null);
-
-            // Cuộn xuống tin nhắn mới nhất
-            setTimeout(() => {
-                flatListRef.current?.scrollToEnd({ animated: true });
-            }, 100);
 
             // Dữ liệu tin nhắn để gửi
             const messageData = {
@@ -233,184 +73,217 @@ const ChatScreen = ({ route, navigation }) => {
                 receiverId: user.id
             };
 
-            // Nếu có file đính kèm, tải lên trước
-            let attachmentUrl = null;
+            // Thêm file đính kèm nếu có
             if (attachment) {
-                try {
-                    attachmentUrl = await chatService.uploadAttachment(attachment);
-                    messageData.attachmentUrl = attachmentUrl;
-                } catch (attachmentError) {
-                    console.error('Lỗi khi tải lên tệp đính kèm:', attachmentError);
-                }
+                messageData.attachmentUrl = attachment.uri;
             }
 
-            // Thử gửi tin nhắn qua WebSocket trước
-            const sentViaWebSocket = wsConnected ? sendMessageViaWebSocket(messageData) : false;
+            // Thử gửi tin nhắn qua WebSocket
+            const sentViaWebSocket = await sendMessageViaWebSocket(messageData);
 
-            let response;
-            // Nếu gửi qua WebSocket thất bại, sử dụng REST API
             if (!sentViaWebSocket) {
-                response = await messagesService.sendMessage(messageData);
+                // Nếu gửi qua WebSocket thất bại, dùng REST API
+                const response = await messagesService.sendMessage(messageData);
 
-                // Cập nhật tin nhắn với ID thật từ server
+                // Cập nhật tin nhắn với ID từ server
                 setMessages(prevMessages =>
                     prevMessages.map(msg =>
-                        msg.id === tempId
+                        msg.id === optimisticMessage.id
                             ? { ...response, isSending: false }
                             : msg
                     )
                 );
             }
 
-            console.log('Tin nhắn đã được gửi thành công');
+            // Reset form
+            setMessageText('');
+            setAttachment(null);
         } catch (error) {
             console.error('Lỗi khi gửi tin nhắn:', error);
 
-            // Cập nhật trạng thái tin nhắn thành lỗi
+            // Cập nhật trạng thái tin nhắn lỗi
             setMessages(prevMessages =>
                 prevMessages.map(msg =>
-                    msg.id.startsWith('temp-') && msg.content === messageText
+                    msg.id === optimisticMessage.id
                         ? { ...msg, isSending: false, isError: true }
                         : msg
                 )
             );
-
-            Alert.alert('Lỗi', 'Không thể gửi tin nhắn. Vui lòng thử lại sau.');
-        } finally {
-            setSending(false);
         }
     };
+    // Quản lý tin nhắn (tải, phân trang, làm mới)
+    const {
+        messages,
+        setMessages,
+        loading,
+        refreshing,
+        hasMore,
+        fetchMessages,
+        loadMessages,
+        fetchNewMessages,
+        onRefresh,
+        loadMoreMessages,
+        handleNewWebSocketMessage,
+        lastMessageTimeRef
+    } = useMessageManagement(currentUser, user);
 
-    // Gửi lại tin nhắn bị lỗi
-    const resendMessage = (failedMessage) => {
-        // Xóa tin nhắn lỗi
-        setMessages(prevMessages => prevMessages.filter(msg => msg.id !== failedMessage.id));
+    // Xử lý kết nối WebSocket và tự động kết nối lại
+    const handleReconnect = useCallback(() => {
+        console.log("Kết nối lại thành công, đăng ký lại các callbacks");
 
-        // Đặt lại nội dung tin nhắn
-        setMessageText(failedMessage.content);
+        // Đăng ký lại các WebSocket listeners
+        if (chatKey) {
+            const messageCallback = (newMessage) => handleNewWebSocketMessage(newMessage);
+            const typingCallback = (notification) => {
+                if (notification.senderId === user?.id) {
+                    setIsTyping(notification.typing);
+                }
+            };
 
-        // Nếu có tệp đính kèm
-        if (failedMessage.attachmentUrl) {
-            setAttachment({
-                uri: failedMessage.attachmentUrl,
-                type: 'image/jpeg',
-                fileName: 'attachment.jpg'
-            });
+            webSocketService.onMessage(chatKey, messageCallback);
+            webSocketService.onTyping(chatKey, typingCallback);
         }
-    };
+
+        // Làm mới tin nhắn để đồng bộ hóa
+        fetchNewMessages();
+    }, [chatKey, handleNewWebSocketMessage, fetchNewMessages, user?.id]);
+
+    const {
+        connectionStatus,
+        reconnecting
+    } = useConnection(currentUser, user, chatKey, handleReconnect);
+
+    // Sử dụng hook WebSocket
+    const {
+        isTyping: wsIsTyping,
+        wsConnected,
+        sendMessageViaWebSocket,
+        sendTypingNotification,
+        markMessageAsRead
+    } = useChatWebSocket(currentUser, user, handleNewWebSocketMessage);
+
+    // Xử lý gửi tin nhắn, đánh dấu đã đọc...
+    const {
+        sending,
+        formatTime,
+        resendMessage,
+        sendMessage: sendMessageHandler,
+        markAllMessagesAsRead
+    } = useMessageHandlers(
+        currentUser,
+        user,
+        setMessages,
+        setAttachment,
+        setMessageText,
+        wsConnected,
+        sendMessageViaWebSocket,
+        flatListRef
+    );
+
+    // Đồng bộ hóa trạng thái isTyping với wsIsTyping
+    useEffect(() => {
+        setIsTyping(wsIsTyping);
+    }, [wsIsTyping]);
+
+    // Thiết lập cơ bản và polling khi component được mount
+    useEffect(() => {
+        let isMounted = true;
+
+        // Thiết lập ban đầu
+        const setupInitial = async () => {
+            // Tải tin nhắn
+            await fetchMessages();
+
+            if (!isMounted) return;
+
+            // Đánh dấu tin nhắn đã đọc
+            markAllMessagesAsRead();
+
+            // Thiết lập kiểm tra tin nhắn định kỳ (fallback nếu WebSocket không hoạt động)
+            startMessagePolling();
+        };
+
+        // Bắt đầu polling để kiểm tra tin nhắn mới (phương án dự phòng)
+        const startMessagePolling = () => {
+            // Kiểm tra tin nhắn mới mỗi 15 giây
+            messagePollingRef.current = setInterval(() => {
+                // Chỉ polling khi WebSocket không hoạt động và cách lần cuối cùng ít nhất 15 giây
+                if (connectionStatus !== 'connected' && (Date.now() - lastPollingTimeRef.current > 15000)) {
+                    console.log('WebSocket không hoạt động, kiểm tra tin nhắn mới qua API...');
+                    fetchNewMessages();
+                    lastPollingTimeRef.current = Date.now();
+                }
+            }, 15000);
+        };
+
+        // Thực hiện thiết lập ban đầu
+        setupInitial();
+
+        // Cleanup khi component unmount
+        return () => {
+            isMounted = false;
+
+            // Hủy polling
+            if (messagePollingRef.current) {
+                clearInterval(messagePollingRef.current);
+            }
+        };
+    }, [fetchMessages, markAllMessagesAsRead, fetchNewMessages, connectionStatus]);
+
+    // Cập nhật hàm xử lý nhập text để gửi thông báo typing
+    const handleMessageTextChange = useCallback((text) => {
+        setMessageText(text);
+        // Gửi thông báo typing nếu WebSocket đã kết nối
+        if (wsConnected && text.trim().length > 0) {
+            sendTypingNotification(true);
+        }
+    }, [wsConnected, sendTypingNotification]);
 
     // Chọn hình ảnh từ thư viện
-    const pickImage = async () => {
-        try {
-            const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
-
-            if (permissionResult.granted === false) {
-                Alert.alert('Quyền truy cập', 'Bạn cần cấp quyền truy cập thư viện ảnh để sử dụng tính năng này.');
-                return;
-            }
-
-            const result = await ImagePicker.launchImageLibraryAsync({
-                mediaTypes: ImagePicker.MediaTypeOptions.Images,
-                allowsEditing: true,
-                aspect: [4, 3],
-                quality: 0.8,
-            });
-
-            if (!result.canceled) {
-                setAttachment({
-                    uri: result.assets[0].uri,
-                    type: 'image/jpeg',
-                    fileName: `attachment_${Date.now()}.jpg`
-                });
-            }
-        } catch (error) {
-            console.error('Lỗi khi chọn ảnh:', error);
-            Alert.alert('Lỗi', 'Không thể chọn ảnh. Vui lòng thử lại sau.');
+    const pickImage = useCallback(async () => {
+        const result = await ImageUtils.pickImageFromLibrary();
+        if (result) {
+            setAttachment(result);
         }
-    };
+    }, []);
 
-    // Định dạng thời gian tin nhắn
-    const formatTime = (dateTimeStr) => {
-        try {
-            const date = new Date(dateTimeStr);
-            return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        } catch (error) {
-            return '';
-        }
-    };
+    // Gửi tin nhắn
+    const sendMessageAction = useCallback(() => {
+        sendMessageHandler(messageText, attachment);
+    }, [sendMessageHandler, messageText, attachment]);
 
-    // Render item cho FlatList
-    const renderMessageItem = ({ item }) => {
-        const isCurrentUser = item.senderId === currentUser.id;
+    // Render từng item tin nhắn
+    const renderMessageItem = useCallback(({ item }) => (
+        <MessageItem
+            item={item}
+            currentUser={currentUser}
+            chatPartner={user}
+            formatTime={formatTime}
+            resendMessage={resendMessage}
+            navigation={navigation}
+        />
+    ), [currentUser, user, formatTime, resendMessage, navigation]);
 
-        return (
-            <View style={[
-                styles.messageContainer,
-                isCurrentUser ? styles.sentMessageContainer : styles.receivedMessageContainer
-            ]}>
-                {!isCurrentUser && (
-                    <Image
-                        source={
-                            user.profilePicture
-                                ? ImageService.getProfileImageSource(user.profilePicture)
-                                : { uri: 'https://randomuser.me/api/portraits/men/1.jpg' }
-                        }
-                        style={styles.messageBubbleAvatar}
-                    />
-                )}
-                <View style={[
-                    styles.messageBubble,
-                    isCurrentUser ? styles.sentMessageBubble : styles.receivedMessageBubble,
-                    item.isSending && styles.sendingMessageBubble,
-                    item.isError && styles.errorMessageBubble
-                ]}>
-                    {/* Hiển thị hình ảnh đính kèm nếu có */}
-                    {item.attachmentUrl && (
-                        <Image
-                            source={{ uri: item.attachmentUrl }}
-                            style={styles.attachmentImage}
-                            resizeMode="cover"
-                        />
-                    )}
+    // Memoize keyExtractor để tránh rerender không cần thiết
+    const keyExtractor = useCallback((item) => String(item.id), []);
 
-                    {/* Nội dung tin nhắn */}
-                    {item.content && (
-                        <Text style={[
-                            styles.messageText,
-                            isCurrentUser ? styles.sentMessageText : styles.receivedMessageText
-                        ]}>
-                            {item.content}
-                        </Text>
-                    )}
+    // Empty component cho FlatList
+    const ListEmptyComponent = useCallback(() => (
+        <View style={styles.emptyContainer}>
+            <Text style={styles.emptyText}>
+                Chưa có tin nhắn nào. Hãy bắt đầu cuộc trò chuyện!
+            </Text>
+        </View>
+    ), []);
 
-                    {/* Chỉ báo đang gửi */}
-                    {item.isSending && (
-                        <View style={styles.sendingIndicator}>
-                            <ActivityIndicator size="small" color={isCurrentUser ? "white" : "#0095F6"} />
-                        </View>
-                    )}
-
-                    {/* Nút thử lại khi gửi lỗi */}
-                    {item.isError && (
-                        <TouchableOpacity
-                            style={styles.retryButton}
-                            onPress={() => resendMessage(item)}
-                        >
-                            <Icon name="refresh" size={16} color="red" />
-                        </TouchableOpacity>
-                    )}
-                </View>
-
-                {/* Thời gian gửi */}
-                <Text style={[
-                    styles.messageTime,
-                    isCurrentUser ? styles.sentMessageTime : styles.receivedMessageTime
-                ]}>
-                    {formatTime(item.createdAt)}
-                </Text>
+    // Footer component cho FlatList
+    const ListFooterComponent = useCallback(() => (
+        hasMore && !loading ? (
+            <View style={styles.footerLoading}>
+                <ActivityIndicator size="small" color="#0095F6" />
             </View>
-        );
-    };
+        ) : null
+    ), [hasMore, loading]);
 
     return (
         <KeyboardAvoidingView
@@ -419,43 +292,20 @@ const ChatScreen = ({ route, navigation }) => {
             keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
         >
             {/* Header */}
-            <View style={styles.chatHeader}>
-                <View style={styles.chatHeaderLeft}>
-                    <TouchableOpacity onPress={() => navigation.goBack()}>
-                        <Icon name="arrow-left" size={24} color="black" />
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                        style={styles.chatUserInfo}
-                        onPress={() => navigation.navigate('Profile', { userId: user.id })}
-                    >
-                        <Image
-                            source={
-                                user.profilePicture
-                                    ? ImageService.getProfileImageSource(user.profilePicture)
-                                    : { uri: 'https://randomuser.me/api/portraits/men/1.jpg' }
-                            }
-                            style={styles.chatUserAvatar}
-                        />
-                        <View>
-                            <Text style={styles.chatUsername}>{user.username}</Text>
-                            <Text style={styles.chatUserStatus}>
-                                {isTyping ? 'Đang nhập...' : 'Hoạt động gần đây'}
-                            </Text>
-                        </View>
-                    </TouchableOpacity>
+            <ChatHeader
+                navigation={navigation}
+                user={user}
+                isTyping={isTyping}
+            />
+
+            {/* Connection Status */}
+            {connectionStatus === 'disconnected' && (
+                <View style={styles.connectionStatus}>
+                    <Text style={styles.connectionStatusText}>
+                        {reconnecting ? 'Đang kết nối lại...' : 'Mất kết nối. Tin nhắn sẽ được gửi khi có kết nối.'}
+                    </Text>
                 </View>
-                <View style={styles.chatHeaderRight}>
-                    <TouchableOpacity style={styles.chatHeaderButton}>
-                        <Icon name="phone-outline" size={24} color="black" />
-                    </TouchableOpacity>
-                    <TouchableOpacity style={styles.chatHeaderButton}>
-                        <Icon name="video-outline" size={24} color="black" />
-                    </TouchableOpacity>
-                    <TouchableOpacity style={styles.chatHeaderButton}>
-                        <Icon name="information-outline" size={24} color="black" />
-                    </TouchableOpacity>
-                </View>
-            </View>
+            )}
 
             {/* Loading Indicator */}
             {loading && !refreshing && (
@@ -463,6 +313,8 @@ const ChatScreen = ({ route, navigation }) => {
                     <ActivityIndicator size="large" color="#0095F6" />
                 </View>
             )}
+
+            {/* Typing Indicator */}
             {isTyping && (
                 <View style={styles.typingContainer}>
                     <Text style={styles.typingText}>{user.username} đang nhập tin nhắn...</Text>
@@ -475,7 +327,7 @@ const ChatScreen = ({ route, navigation }) => {
                     ref={flatListRef}
                     data={messages}
                     renderItem={renderMessageItem}
-                    keyExtractor={(item) => item.id.toString()}
+                    keyExtractor={keyExtractor}
                     showsVerticalScrollIndicator={false}
                     contentContainerStyle={styles.chatListContainer}
                     inverted={true}
@@ -488,130 +340,40 @@ const ChatScreen = ({ route, navigation }) => {
                             colors={['#0095F6']}
                         />
                     }
-                    ListEmptyComponent={
-                        <View style={styles.emptyContainer}>
-                            <Text style={styles.emptyText}>
-                                Chưa có tin nhắn nào. Hãy bắt đầu cuộc trò chuyện!
-                            </Text>
-                        </View>
-                    }
-                    ListFooterComponent={
-                        hasMore && !loading ? (
-                            <View style={styles.footerLoading}>
-                                <ActivityIndicator size="small" color="#0095F6" />
-                            </View>
-                        ) : null
-                    }
+                    ListEmptyComponent={ListEmptyComponent}
+                    ListFooterComponent={ListFooterComponent}
+                    removeClippedSubviews={true}
+                    initialNumToRender={15}
+                    maxToRenderPerBatch={10}
+                    windowSize={15}
                 />
             )}
 
             {/* File Attachment Preview */}
-            {attachment && (
-                <View style={styles.attachmentPreview}>
-                    <Image
-                        source={{ uri: attachment.uri }}
-                        style={styles.attachmentPreviewImage}
-                    />
-                    <TouchableOpacity
-                        style={styles.attachmentRemoveButton}
-                        onPress={() => setAttachment(null)}
-                    >
-                        <Icon name="close-circle" size={20} color="white" />
-                    </TouchableOpacity>
-                </View>
-            )}
+            <AttachmentPreview
+                attachment={attachment}
+                setAttachment={setAttachment}
+            />
 
             {/* Message Input */}
-            <View style={styles.inputContainer}>
-                <View style={styles.inputWrapper}>
-                    <TouchableOpacity style={styles.cameraButton} onPress={pickImage}>
-                        <Icon name="camera-outline" size={24} color="#0095F6" />
-                    </TouchableOpacity>
-                    <TextInput
-                        style={styles.textInput}
-                        placeholder="Tin nhắn..."
-                        value={messageText}
-                        onChangeText={handleMessageTextChange}
-                        multiline
-                        editable={!sending}
-                    />
-                    {messageText.trim() === '' && !attachment ? (
-                        <View style={styles.inputActions}>
-                            <TouchableOpacity style={styles.inputActionButton}>
-                                <Icon name="microphone-outline" size={24} color="#0095F6" />
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                                style={styles.inputActionButton}
-                                onPress={pickImage}
-                            >
-                                <Icon name="image-outline" size={24} color="#0095F6" />
-                            </TouchableOpacity>
-                            <TouchableOpacity style={styles.inputActionButton}>
-                                <Icon name="sticker-emoji" size={24} color="#0095F6" />
-                            </TouchableOpacity>
-                        </View>
-                    ) : (
-                        <TouchableOpacity
-                            style={styles.sendButton}
-                            onPress={sendMessage}
-                            disabled={sending}
-                        >
-                            {sending ? (
-                                <ActivityIndicator size="small" color="#0095F6" />
-                            ) : (
-                                <Text style={styles.sendButtonText}>Gửi</Text>
-                            )}
-                        </TouchableOpacity>
-                    )}
-                </View>
-            </View>
+            <MessageInput
+                messageText={messageText}
+                handleMessageTextChange={handleMessageTextChange}
+                sending={sending}
+                attachment={attachment}
+                pickImage={pickImage}
+                sendMessage={sendMessageAction}
+                setAttachment={setAttachment}
+            />
         </KeyboardAvoidingView>
     );
 };
 
+// Styles
 const styles = StyleSheet.create({
     container: {
         flex: 1,
         backgroundColor: 'white',
-    },
-    chatHeader: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        paddingHorizontal: 15,
-        paddingVertical: 10,
-        borderBottomWidth: 0.5,
-        borderBottomColor: '#DEDEDE',
-    },
-    chatHeaderLeft: {
-        flexDirection: 'row',
-        alignItems: 'center',
-    },
-    chatUserInfo: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginLeft: 12,
-    },
-    chatUserAvatar: {
-        width: 32,
-        height: 32,
-        borderRadius: 16,
-        marginRight: 10,
-    },
-    chatUsername: {
-        fontSize: 16,
-        fontWeight: '500',
-    },
-    chatUserStatus: {
-        fontSize: 12,
-        color: '#8E8E8E',
-    },
-    chatHeaderRight: {
-        flexDirection: 'row',
-        alignItems: 'center',
-    },
-    chatHeaderButton: {
-        marginLeft: 15,
     },
     loaderContainer: {
         flex: 1,
@@ -622,106 +384,6 @@ const styles = StyleSheet.create({
         paddingHorizontal: 10,
         paddingVertical: 10,
         flexGrow: 1,
-    },
-    messageContainer: {
-        flexDirection: 'row',
-        alignItems: 'flex-end',
-        marginBottom: 10,
-    },
-    sentMessageContainer: {
-        justifyContent: 'flex-end',
-        marginLeft: 50,
-    },
-    receivedMessageContainer: {
-        justifyContent: 'flex-start',
-        marginRight: 50,
-    },
-    messageBubbleAvatar: {
-        width: 28,
-        height: 28,
-        borderRadius: 14,
-        marginRight: 8,
-    },
-    messageBubble: {
-        maxWidth: '70%',
-        borderRadius: 18,
-        paddingHorizontal: 12,
-        paddingVertical: 8,
-    },
-    sentMessageBubble: {
-        backgroundColor: '#0095F6',
-    },
-    receivedMessageBubble: {
-        backgroundColor: '#F2F2F2',
-    },
-    sendingMessageBubble: {
-        opacity: 0.7,
-    },
-    errorMessageBubble: {
-        borderWidth: 1,
-        borderColor: 'red',
-    },
-    messageText: {
-        fontSize: 14,
-        lineHeight: 20,
-    },
-    sentMessageText: {
-        color: 'white',
-    },
-    receivedMessageText: {
-        color: 'black',
-    },
-    messageTime: {
-        fontSize: 10,
-        color: '#8E8E8E',
-        marginTop: 2,
-    },
-    sentMessageTime: {
-        marginLeft: 8,
-        alignSelf: 'flex-end',
-    },
-    receivedMessageTime: {
-        marginRight: 8,
-        alignSelf: 'flex-start',
-    },
-    inputContainer: {
-        paddingHorizontal: 10,
-        paddingVertical: 8,
-        borderTopWidth: 0.5,
-        borderTopColor: '#DEDEDE',
-    },
-    inputWrapper: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: '#F2F2F2',
-        borderRadius: 22,
-        paddingHorizontal: 10,
-        paddingVertical: 6,
-    },
-    textInput: {
-        flex: 1,
-        maxHeight: 100,
-        fontSize: 16,
-        marginHorizontal: 8,
-    },
-    inputActions: {
-        flexDirection: 'row',
-        alignItems: 'center',
-    },
-    inputActionButton: {
-        marginLeft: 8,
-    },
-    sendButton: {
-        marginLeft: 8,
-        paddingHorizontal: 10,
-        justifyContent: 'center',
-        alignItems: 'center',
-        height: 32,
-    },
-    sendButtonText: {
-        color: '#0095F6',
-        fontWeight: 'bold',
-        fontSize: 14,
     },
     emptyContainer: {
         flex: 1,
@@ -738,44 +400,6 @@ const styles = StyleSheet.create({
         paddingVertical: 20,
         alignItems: 'center',
     },
-    attachmentPreview: {
-        margin: 10,
-        width: 100,
-        height: 100,
-        borderRadius: 10,
-        position: 'relative',
-    },
-    attachmentPreviewImage: {
-        width: '100%',
-        height: '100%',
-        borderRadius: 10,
-    },
-    attachmentRemoveButton: {
-        position: 'absolute',
-        top: -10,
-        right: -10,
-        backgroundColor: 'rgba(0, 0, 0, 0.5)',
-        borderRadius: 12,
-    },
-    attachmentImage: {
-        width: '100%',
-        height: 150,
-        borderRadius: 10,
-        marginBottom: 8,
-    },
-    sendingIndicator: {
-        position: 'absolute',
-        right: -20,
-        bottom: 0,
-    },
-    retryButton: {
-        position: 'absolute',
-        right: -20,
-        bottom: 0,
-    },
-    cameraButton: {
-        paddingHorizontal: 5,
-    },
     typingContainer: {
         padding: 8,
         paddingHorizontal: 12,
@@ -789,6 +413,31 @@ const styles = StyleSheet.create({
         fontSize: 12,
         color: '#666',
         fontStyle: 'italic',
+    },
+    connectionStatus: {
+        backgroundColor: '#ffcc00',
+        padding: 8,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    connectionStatusText: {
+        fontSize: 12,
+        color: '#333',
+        fontWeight: '500',
+    },
+    retryButton: {
+        marginLeft: 8,
+        paddingHorizontal: 10,
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: '#0095F6',
+        borderRadius: 12,
+        height: 24,
+    },
+    retryButtonText: {
+        color: 'white',
+        fontSize: 12,
+        fontWeight: 'bold',
     },
 });
 

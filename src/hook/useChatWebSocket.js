@@ -1,138 +1,76 @@
-// src/hooks/useChatWebSocket.js
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import webSocketService from '../services/WebSocketService';
 
 const useChatWebSocket = (currentUser, chatPartner, onNewMessage) => {
-    const [isTyping, setIsTyping] = useState(false);
     const [wsConnected, setWsConnected] = useState(false);
-    const typingTimeoutRef = useRef(null);
+    const [isTyping, setIsTyping] = useState(false);
 
-    // Kết nối và theo dõi các sự kiện WebSocket
+    // In useChatWebSocket.js
     useEffect(() => {
-        if (!currentUser?.id || !chatPartner?.id) return;
+        const connectionKey = `chat_${currentUser.id}_${chatPartner.id}`;
 
-        // Kết nối WebSocket khi vào màn hình chat
-        const connectSocket = async () => {
-            try {
-                await webSocketService.connect();
-            } catch (error) {
-                console.error('Lỗi khi kết nối WebSocket:', error);
+        const handleConnectionChange = (connected) => {
+            console.log('WebSocket connection status changed:', connected);
+            setWsConnected(connected);
+
+            if (!connected) {
+                // Attempt to reconnect when connection is lost
+                setTimeout(() => {
+                    webSocketService.connect().catch(err => {
+                        console.error('Reconnection attempt failed:', err);
+                    });
+                }, 5000);
             }
         };
 
-        connectSocket();
+        const handleMessage = (message) => {
+            console.log('Received message:', message);
+            onNewMessage(message);
+        };
 
-        // Theo dõi trạng thái kết nối
-        const connectionKey = `chat_${currentUser.id}_${chatPartner.id}`;
-        webSocketService.onConnectionChange(connectionKey, (connected) => {
-            setWsConnected(connected);
-            console.log('WebSocket connection status:', connected);
+        // Setup listeners
+        webSocketService.onConnectionChange(handleConnectionChange);
+        webSocketService.onMessage(connectionKey, handleMessage);
+
+        // Initial connection
+        webSocketService.connect().catch(err => {
+            console.error('Initial WebSocket connection failed:', err);
         });
 
-        // Đăng ký nhận tin nhắn mới
-        webSocketService.onMessage(connectionKey, handleNewMessage);
-
-        // Đăng ký nhận thông báo typing
-        webSocketService.onTyping(connectionKey, handleTypingNotification);
-
-        // Đăng ký nhận read receipt
-        webSocketService.onReadReceipt(connectionKey, handleReadReceipt);
-
-        // Cleanup khi unmount
         return () => {
+            webSocketService.offConnectionChange(handleConnectionChange);
             webSocketService.offMessage(connectionKey);
-            webSocketService.offTyping(connectionKey);
-            webSocketService.offReadReceipt(connectionKey);
-            webSocketService.offConnectionChange(connectionKey);
-
-            // Hủy timeout nếu có
-            if (typingTimeoutRef.current) {
-                clearTimeout(typingTimeoutRef.current);
-            }
         };
-    }, [currentUser?.id, chatPartner?.id]);
+    }, [currentUser.id, chatPartner.id, onNewMessage]);
 
-    // Xử lý khi nhận tin nhắn mới từ WebSocket
-    const handleNewMessage = useCallback((newMessage) => {
-        // Kiểm tra xem tin nhắn có liên quan đến cuộc trò chuyện hiện tại không
-        if (
-            (newMessage.senderId === chatPartner.id && newMessage.receiverId === currentUser.id) ||
-            (newMessage.senderId === currentUser.id && newMessage.receiverId === chatPartner.id)
-        ) {
-            console.log('Received new message via WebSocket:', newMessage);
-
-            // Gọi callback để cập nhật UI
-            if (onNewMessage) {
-                onNewMessage(newMessage);
-            }
-
-            // Đánh dấu là đã đọc nếu tin nhắn đến từ người trò chuyện
-            if (newMessage.senderId === chatPartner.id) {
-                markMessageAsRead(newMessage.id);
-            }
-
-            // Reset trạng thái typing
-            setIsTyping(false);
+    // Gửi tin nhắn
+    const sendMessageViaWebSocket = useCallback(async (message) => {
+        try {
+            console.log('Sending WebSocket message:', message);
+            return await webSocketService.sendMessage(message);
+        } catch (error) {
+            console.error('Error sending WebSocket message:', error);
+            return false;
         }
-    }, [currentUser?.id, chatPartner?.id, onNewMessage]);
-
-    // Xử lý thông báo typing từ WebSocket
-    const handleTypingNotification = useCallback((notification) => {
-        // Chỉ xử lý thông báo từ người trò chuyện hiện tại
-        if (notification.senderId === chatPartner.id) {
-            setIsTyping(notification.typing);
-        }
-    }, [chatPartner?.id]);
-
-    // Xử lý khi nhận được read receipt
-    const handleReadReceipt = useCallback((receipt) => {
-        console.log('Received read receipt:', receipt);
-        // Xử lý logic khi tin nhắn đã được đọc
-        // Có thể thêm callback nếu cần
     }, []);
 
-    // Gửi tin nhắn qua WebSocket
-    const sendMessageViaWebSocket = useCallback((messageData) => {
-        if (wsConnected) {
-            console.log('Sending message via WebSocket:', messageData);
-            return webSocketService.sendMessage(messageData);
-        }
-        return false;
-    }, [wsConnected]);
-
-    // Gửi thông báo đang nhập tin nhắn
+    // Gửi thông báo typing
     const sendTypingNotification = useCallback((isTyping = true) => {
-        if (!wsConnected || !chatPartner?.id) return;
+        if (!wsConnected) return false;
 
-        // Hủy timeout cũ nếu có
-        if (typingTimeoutRef.current) {
-            clearTimeout(typingTimeoutRef.current);
+        try {
+            return webSocketService.sendTyping(chatPartner.id, isTyping);
+        } catch (error) {
+            console.error('Error sending typing notification:', error);
+            return false;
         }
-
-        // Gửi thông báo đang nhập
-        webSocketService.sendTyping(chatPartner.id, isTyping);
-
-        // Nếu đang nhập, đặt timeout để gửi thông báo dừng nhập sau 1.5s
-        if (isTyping) {
-            typingTimeoutRef.current = setTimeout(() => {
-                webSocketService.sendTyping(chatPartner.id, false);
-            }, 1500);
-        }
-    }, [wsConnected, chatPartner?.id]);
-
-    // Đánh dấu tin nhắn đã đọc qua WebSocket
-    const markMessageAsRead = useCallback((messageId) => {
-        if (wsConnected && chatPartner?.id) {
-            webSocketService.sendReadReceipt(messageId, chatPartner.id);
-        }
-    }, [wsConnected, chatPartner?.id]);
+    }, [wsConnected, chatPartner]);
 
     return {
-        isTyping,
         wsConnected,
+        isTyping,
         sendMessageViaWebSocket,
-        sendTypingNotification,
-        markMessageAsRead
+        sendTypingNotification
     };
 };
 
