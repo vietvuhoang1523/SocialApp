@@ -10,7 +10,8 @@ import {
     Platform,
     FlatList,
     AppState,
-    StyleSheet
+    StyleSheet,
+    TouchableOpacity
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 
@@ -36,7 +37,6 @@ const ChatScreen = ({ route, navigation }) => {
     const { user, currentUser } = route.params;
     const [messageText, setMessageText] = useState('');
     const [attachment, setAttachment] = useState(null);
-    const [isTyping, setIsTyping] = useState(false);
 
     const flatListRef = useRef(null);
     const lastPollingTimeRef = useRef(Date.now());
@@ -49,68 +49,7 @@ const ChatScreen = ({ route, navigation }) => {
             `chat_${String(currentUser?.id || '')}_${String(user?.id || '')}`,
         [currentUser?.id, user?.id]
     );
-    const sendMessage = async () => {
-        if (messageText.trim() === '' && !attachment) return;
 
-        try {
-            // Tạo tin nhắn để hiển thị ngay
-            const optimisticMessage = {
-                id: `temp-${Date.now()}`,
-                senderId: currentUser.id,
-                receiverId: user.id,
-                content: messageText,
-                createdAt: new Date().toISOString(),
-                isSending: true
-            };
-
-            // Thêm tin nhắn tạm vào danh sách
-            setMessages(prevMessages => [optimisticMessage, ...prevMessages]);
-
-            // Dữ liệu tin nhắn để gửi
-            const messageData = {
-                content: messageText,
-                senderId: currentUser.id,
-                receiverId: user.id
-            };
-
-            // Thêm file đính kèm nếu có
-            if (attachment) {
-                messageData.attachmentUrl = attachment.uri;
-            }
-
-            // Thử gửi tin nhắn qua WebSocket
-            const sentViaWebSocket = await sendMessageViaWebSocket(messageData);
-
-            if (!sentViaWebSocket) {
-                // Nếu gửi qua WebSocket thất bại, dùng REST API
-                const response = await messagesService.sendMessage(messageData);
-
-                // Cập nhật tin nhắn với ID từ server
-                setMessages(prevMessages =>
-                    prevMessages.map(msg =>
-                        msg.id === optimisticMessage.id
-                            ? { ...response, isSending: false }
-                            : msg
-                    )
-                );
-            }
-
-            // Reset form
-            setMessageText('');
-            setAttachment(null);
-        } catch (error) {
-            console.error('Lỗi khi gửi tin nhắn:', error);
-
-            // Cập nhật trạng thái tin nhắn lỗi
-            setMessages(prevMessages =>
-                prevMessages.map(msg =>
-                    msg.id === optimisticMessage.id
-                        ? { ...msg, isSending: false, isError: true }
-                        : msg
-                )
-            );
-        }
-    };
     // Quản lý tin nhắn (tải, phân trang, làm mới)
     const {
         messages,
@@ -136,7 +75,7 @@ const ChatScreen = ({ route, navigation }) => {
             const messageCallback = (newMessage) => handleNewWebSocketMessage(newMessage);
             const typingCallback = (notification) => {
                 if (notification.senderId === user?.id) {
-                    setIsTyping(notification.typing);
+                    // setIsTyping sẽ được handle trong useChatWebSocket
                 }
             };
 
@@ -153,13 +92,16 @@ const ChatScreen = ({ route, navigation }) => {
         reconnecting
     } = useConnection(currentUser, user, chatKey, handleReconnect);
 
-    // Sử dụng hook WebSocket
+    // Sử dụng hook WebSocket với error handling
     const {
-        isTyping: wsIsTyping,
         wsConnected,
+        isTyping,
+        connectionError,
         sendMessageViaWebSocket,
         sendTypingNotification,
-        markMessageAsRead
+        markMessageAsRead,
+        reconnect,
+        getConnectionStatus
     } = useChatWebSocket(currentUser, user, handleNewWebSocketMessage);
 
     // Xử lý gửi tin nhắn, đánh dấu đã đọc...
@@ -180,10 +122,16 @@ const ChatScreen = ({ route, navigation }) => {
         flatListRef
     );
 
-    // Đồng bộ hóa trạng thái isTyping với wsIsTyping
+    // Debug effect để theo dõi WebSocket
     useEffect(() => {
-        setIsTyping(wsIsTyping);
-    }, [wsIsTyping]);
+        console.log('=== ChatScreen WebSocket Debug ===');
+        console.log('Current User:', currentUser?.id, currentUser?.username);
+        console.log('Chat Partner:', user?.id, user?.username);
+        console.log('WebSocket Connected:', wsConnected);
+        console.log('Connection Error:', connectionError);
+        console.log('Connection Status:', getConnectionStatus());
+        console.log('=====================================');
+    }, [currentUser, user, wsConnected, connectionError]);
 
     // Thiết lập cơ bản và polling khi component được mount
     useEffect(() => {
@@ -208,7 +156,7 @@ const ChatScreen = ({ route, navigation }) => {
             // Kiểm tra tin nhắn mới mỗi 15 giây
             messagePollingRef.current = setInterval(() => {
                 // Chỉ polling khi WebSocket không hoạt động và cách lần cuối cùng ít nhất 15 giây
-                if (connectionStatus !== 'connected' && (Date.now() - lastPollingTimeRef.current > 15000)) {
+                if (!wsConnected && (Date.now() - lastPollingTimeRef.current > 15000)) {
                     console.log('WebSocket không hoạt động, kiểm tra tin nhắn mới qua API...');
                     fetchNewMessages();
                     lastPollingTimeRef.current = Date.now();
@@ -228,14 +176,19 @@ const ChatScreen = ({ route, navigation }) => {
                 clearInterval(messagePollingRef.current);
             }
         };
-    }, [fetchMessages, markAllMessagesAsRead, fetchNewMessages, connectionStatus]);
+    }, [fetchMessages, markAllMessagesAsRead, fetchNewMessages, wsConnected]);
 
     // Cập nhật hàm xử lý nhập text để gửi thông báo typing
     const handleMessageTextChange = useCallback((text) => {
         setMessageText(text);
+
         // Gửi thông báo typing nếu WebSocket đã kết nối
         if (wsConnected && text.trim().length > 0) {
+            console.log('Sending typing notification: true');
             sendTypingNotification(true);
+        } else if (wsConnected && text.trim().length === 0) {
+            console.log('Sending typing notification: false');
+            sendTypingNotification(false);
         }
     }, [wsConnected, sendTypingNotification]);
 
@@ -252,6 +205,27 @@ const ChatScreen = ({ route, navigation }) => {
         sendMessageHandler(messageText, attachment);
     }, [sendMessageHandler, messageText, attachment]);
 
+    // Test WebSocket function
+    const testWebSocket = useCallback(() => {
+        console.log('=== WebSocket Test ===');
+        console.log('Connected:', wsConnected);
+        console.log('Status:', getConnectionStatus());
+
+        if (connectionError) {
+            console.log('Connection Error:', connectionError);
+        }
+
+        // Test gửi tin nhắn
+        const testMessage = {
+            content: `Test message at ${new Date().toLocaleTimeString()}`,
+            senderId: currentUser.id,
+            receiverId: user.id
+        };
+
+        console.log('Sending test message:', testMessage);
+        sendMessageViaWebSocket(testMessage);
+    }, [wsConnected, connectionError, getConnectionStatus, sendMessageViaWebSocket, currentUser, user]);
+
     // Render từng item tin nhắn
     const renderMessageItem = useCallback(({ item }) => (
         <MessageItem
@@ -265,7 +239,10 @@ const ChatScreen = ({ route, navigation }) => {
     ), [currentUser, user, formatTime, resendMessage, navigation]);
 
     // Memoize keyExtractor để tránh rerender không cần thiết
-    const keyExtractor = useCallback((item) => String(item.id), []);
+    const keyExtractor = useCallback((item, index) => {
+        // Sử dụng kết hợp id, timestamp và index
+        return `${item.id || 'unknown'}-${item.timestamp || Date.now()}-${index}`;
+    }, []);
 
     // Empty component cho FlatList
     const ListEmptyComponent = useCallback(() => (
@@ -299,11 +276,38 @@ const ChatScreen = ({ route, navigation }) => {
             />
 
             {/* Connection Status */}
-            {connectionStatus === 'disconnected' && (
+            {!wsConnected && (
                 <View style={styles.connectionStatus}>
                     <Text style={styles.connectionStatusText}>
-                        {reconnecting ? 'Đang kết nối lại...' : 'Mất kết nối. Tin nhắn sẽ được gửi khi có kết nối.'}
+                        {connectionError
+                            ? `Lỗi kết nối: ${connectionError.message || 'Unknown error'}`
+                            : reconnecting
+                                ? 'Đang kết nối lại...'
+                                : 'Mất kết nối. Tin nhắn sẽ được gửi khi có kết nối.'
+                        }
                     </Text>
+                    {connectionError && (
+                        <TouchableOpacity
+                            style={styles.retryButton}
+                            onPress={reconnect}
+                        >
+                            <Text style={styles.retryButtonText}>Thử lại</Text>
+                        </TouchableOpacity>
+                    )}
+                </View>
+            )}
+
+            {/* Debug Panel - Chỉ hiển thị trong development */}
+            {__DEV__ && (
+                <View style={styles.debugPanel}>
+                    <TouchableOpacity
+                        style={styles.debugButton}
+                        onPress={testWebSocket}
+                    >
+                        <Text style={styles.debugButtonText}>
+                            Test WS ({wsConnected ? 'Connected' : 'Disconnected'})
+                        </Text>
+                    </TouchableOpacity>
                 </View>
             )}
 
@@ -419,22 +423,40 @@ const styles = StyleSheet.create({
         padding: 8,
         alignItems: 'center',
         justifyContent: 'center',
+        flexDirection: 'row',
     },
     connectionStatusText: {
         fontSize: 12,
         color: '#333',
         fontWeight: '500',
+        flex: 1,
     },
     retryButton: {
         marginLeft: 8,
         paddingHorizontal: 10,
-        justifyContent: 'center',
-        alignItems: 'center',
+        paddingVertical: 4,
         backgroundColor: '#0095F6',
         borderRadius: 12,
-        height: 24,
     },
     retryButtonText: {
+        color: 'white',
+        fontSize: 12,
+        fontWeight: 'bold',
+    },
+    // Debug styles - chỉ cho development
+    debugPanel: {
+        backgroundColor: '#f0f0f0',
+        padding: 8,
+        borderBottomWidth: 1,
+        borderBottomColor: '#ddd',
+    },
+    debugButton: {
+        backgroundColor: '#007AFF',
+        padding: 8,
+        borderRadius: 4,
+        alignItems: 'center',
+    },
+    debugButtonText: {
         color: 'white',
         fontSize: 12,
         fontWeight: 'bold',

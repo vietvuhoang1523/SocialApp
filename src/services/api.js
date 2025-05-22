@@ -1,38 +1,11 @@
-// // api.js
-// import appConfig from './config';
-//
-// // URL cơ sở của API từ config.js
-// export const BASE_URL = appConfig.extra.apiUrl;
-//
-// // Cài đặt timeout mặc định cho các yêu cầu API
-// export const DEFAULT_TIMEOUT = 10000; // 10 giây
-//
-// // Định dạng header mặc định cho các yêu cầu API
-// export const DEFAULT_HEADERS = {
-//     'Accept': 'application/json',
-//     'Content-Type': 'application/json',
-// };
-//
-// // Configuration cho FormData requests
-// export const FORM_DATA_HEADERS = {
-//     'Content-Type': 'multipart/form-data',
-// };
-//
-// // Các mã lỗi API và thông báo tương ứng
-// export const ERROR_MESSAGES = {
-//     400: 'Yêu cầu không hợp lệ.',
-//     401: 'Bạn cần đăng nhập để tiếp tục.',
-//     403: 'Bạn không có quyền truy cập vào tính năng này.',
-//     404: 'Không tìm thấy tài nguyên yêu cầu.',
-//     500: 'Đã xảy ra lỗi từ máy chủ. Vui lòng thử lại sau.',
-//     502: 'Dịch vụ tạm thời không khả dụng. Vui lòng thử lại sau.',
-//     default: 'Đã xảy ra lỗi. Vui lòng thử lại sau.'
-// };
-// api.js - Cập nhật
+// api.js - Cập nhật với WS_BASE_URL riêng biệt
 // File cấu hình cho các API calls
 
 // URL cơ sở cho backend API
-export const BASE_URL = 'http://192.168.1.73:8082/api'; // Thay thế bằng URL thực tế của bạn
+export const BASE_URL = 'http://192.168.100.193:8082/api'; // Cho HTTP API
+
+// URL cơ sở cho WebSocket (không có /api)
+export const WS_BASE_URL = 'http://192.168.100.193:8082'; // Cho WebSocket
 
 // Timeout mặc định cho các requests (30 giây)
 export const DEFAULT_TIMEOUT = 30000;
@@ -76,6 +49,14 @@ export const DEFAULT_PAGINATION = {
     size: 20,
     sortBy: ['timestamp'],
     order: 'desc'
+};
+
+// Cấu hình WebSocket
+export const WS_CONFIG = {
+    ENDPOINT: `${WS_BASE_URL}/ws`, // WebSocket endpoint
+    RECONNECT_DELAY: 5000, // 5 giây
+    HEARTBEAT_INCOMING: 10000,
+    HEARTBEAT_OUTGOING: 10000
 };
 
 // Định dạng response errors
@@ -171,10 +152,4 @@ export const formatTimeAgo = (date) => {
     if (diffInSeconds < 604800) return `${Math.floor(diffInSeconds / 86400)}d`;
 
     return messageDate.toLocaleDateString('vi-VN');
-};
-export const WS_CONFIG = {
-    ENDPOINT: `${BASE_URL.replace('http', 'ws')}/ws`, // hoặc custom endpoint tùy vào server
-    RECONNECT_DELAY: 5000, // 5 giây
-    HEARTBEAT_INCOMING: 4000,
-    HEARTBEAT_OUTGOING: 4000
 };

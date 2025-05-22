@@ -170,30 +170,37 @@ class MessagesService {
         try {
             console.log('Đang gửi tin nhắn:', messageData);
 
-            // Tạo bản sao để không thay đổi dữ liệu gốc
-            const payload = { ...messageData };
+            // Lấy thông tin user hiện tại từ AsyncStorage
+            const userData = await AsyncStorage.getItem('userData');
+            const currentUser = userData ? JSON.parse(userData) : null;
 
-            // Đảm bảo rằng payload có định dạng phù hợp với API
-            if (!payload.content && messageData.attachmentUrl) {
-                payload.content = ''; // Đảm bảo có nội dung tin nhắn (rỗng nếu chỉ có file đính kèm)
+            // Tạo payload phù hợp với MessageRequest của backend
+            const payload = {
+                content: messageData.content || '',
+                receiverId: messageData.receiverId,
+                attachmentUrl: messageData.attachmentUrl || null
+            };
+
+            // Ưu tiên gửi qua WebSocket
+            if (webSocketService.isConnected()) {
+                const success = webSocketService.sendMessage(payload);
+
+                if (success) {
+                    // Trả về tin nhắn tạm thời để hiển thị ngay lập tức
+                    return this.normalizeMessage({
+                        ...payload,
+                        id: `temp-${Date.now()}`,
+                        senderId: currentUser?.id,
+                        createdAt: new Date().toISOString(),
+                        isSending: true
+                    });
+                }
             }
 
-            // Thử gửi tin nhắn qua WebSocket
-            const sentViaWebSocket = webSocketService.sendMessage(payload);
-
-            // Nếu gửi qua WebSocket thành công, trả về tin nhắn tạm thời
-            if (sentViaWebSocket) {
-                return this.normalizeMessage({
-                    ...payload,
-                    id: `temp-${Date.now()}`,
-                    createdAt: new Date().toISOString(),
-                    isSending: true
-                });
-            }
-
-            // Nếu không thành công, fallback về REST API
+            // Fallback về REST API nếu WebSocket không hoạt động
             const response = await this.api.post('', payload);
             return this.normalizeMessage(response);
+
         } catch (error) {
             console.error('Lỗi khi gửi tin nhắn:', error);
             throw this.normalizeError(error);

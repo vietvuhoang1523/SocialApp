@@ -1,7 +1,7 @@
-// WebSocketService.js
+// WebSocketService.js - Updated để sử dụng WS_BASE_URL
 import { Client } from '@stomp/stompjs';
 import SockJS from 'sockjs-client';
-import { BASE_URL } from './api';
+import { WS_BASE_URL, WS_CONFIG } from './api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 class WebSocketService {
@@ -14,13 +14,16 @@ class WebSocketService {
         this.errorCallbacks = new Set();
         this.connectionCallbacks = new Set();
         this.subscriptions = {};
+        this.currentUserId = null;
+        this.reconnectAttempts = 0;
+        this.maxReconnectAttempts = 5;
     }
 
     // Kết nối đến server WebSocket
     async connect() {
         if (this.client && this.client.connected) {
             console.log('WebSocket đã kết nối');
-            return;
+            return Promise.resolve();
         }
 
         try {
@@ -29,77 +32,98 @@ class WebSocketService {
                 throw new Error('Không có token để kết nối WebSocket');
             }
 
+            // Lấy thông tin user hiện tại
+            const userData = await AsyncStorage.getItem('userData');
+            const currentUser = userData ? JSON.parse(userData) : null;
+            this.currentUserId = currentUser?.id;
+
+            if (!this.currentUserId) {
+                throw new Error('Không có thông tin user để kết nối WebSocket');
+            }
+
             // Đóng kết nối cũ nếu có
             if (this.client) {
                 this.disconnect();
             }
 
-            // Loại bỏ '/api' từ BASE_URL nếu có
-            const baseUrlWithoutApi = BASE_URL.includes('/api')
-                ? BASE_URL.substring(0, BASE_URL.indexOf('/api'))
-                : BASE_URL;
-
-            console.log('Connecting to WebSocket at:', `${baseUrlWithoutApi}/ws`);
-
-            // Lưu token để sử dụng trong connectHeaders
-            const authToken = token;
+            console.log('Connecting to WebSocket at:', WS_CONFIG.ENDPOINT);
 
             // Tạo socket connection
-            const socket = new SockJS(`${baseUrlWithoutApi}/ws`);
+            const socket = new SockJS(WS_CONFIG.ENDPOINT);
 
             // Tạo client STOMP với các tùy chọn
             this.client = new Client({
                 webSocketFactory: () => socket,
-                // QUAN TRỌNG: Đặt token vào connectHeaders đúng định dạng
                 connectHeaders: {
-                    Authorization: `Bearer ${authToken}`
+                    Authorization: `Bearer ${token}`
                 },
                 debug: function (str) {
                     console.log('STOMP: ' + str);
                 },
-                reconnectDelay: 5000,
-                heartbeatIncoming: 10000,
-                heartbeatOutgoing: 10000
+                reconnectDelay: WS_CONFIG.RECONNECT_DELAY,
+                heartbeatIncoming: WS_CONFIG.HEARTBEAT_INCOMING,
+                heartbeatOutgoing: WS_CONFIG.HEARTBEAT_OUTGOING
             });
 
-            // Xử lý khi kết nối thành công
-            this.client.onConnect = (frame) => {
-                console.log('Connected to WebSocket. Frame:', frame);
-                this.connected = true;
+            // Promise để theo dõi trạng thái kết nối
+            return new Promise((resolve, reject) => {
+                // Xử lý khi kết nối thành công
+                this.client.onConnect = (frame) => {
+                    console.log('Connected to WebSocket. Frame:', frame);
+                    this.connected = true;
+                    this.reconnectAttempts = 0;
 
-                // Đăng ký nhận tin nhắn sau khi kết nối thành công
-                this.subscribeToPersonalMessages();
+                    // Đăng ký nhận tin nhắn sau khi kết nối thành công
+                    this.subscribeToPersonalMessages();
 
-                // Thông báo cho các callbacks về kết nối thành công
-                this.connectionCallbacks.forEach(callback => callback(true));
-            };
+                    // Thông báo cho các callbacks về kết nối thành công
+                    this.connectionCallbacks.forEach(callback => callback(true));
 
-            // Xử lý lỗi STOMP
-            this.client.onStompError = (frame) => {
-                console.error('STOMP Error. Frame:', frame);
-                this.connected = false;
-                this.errorCallbacks.forEach(callback => callback(frame));
-            };
+                    resolve();
+                };
 
-            // Xử lý ngắt kết nối WebSocket
-            this.client.onWebSocketClose = (event) => {
-                console.log('WebSocket connection closed. Event:', event);
-                this.connected = false;
-                this.connectionCallbacks.forEach(callback => callback(false));
-            };
+                // Xử lý lỗi STOMP
+                this.client.onStompError = (frame) => {
+                    console.error('STOMP Error. Frame:', frame);
+                    this.connected = false;
+                    this.errorCallbacks.forEach(callback => callback(frame));
+                    reject(new Error(`STOMP Error: ${frame.headers.message || 'Unknown error'}`));
+                };
 
-            // Thêm xử lý lỗi WebSocket
-            this.client.onWebSocketError = (event) => {
-                console.error('WebSocket error. Event:', event);
-            };
+                // Xử lý ngắt kết nối WebSocket
+                this.client.onWebSocketClose = (event) => {
+                    console.log('WebSocket connection closed. Event:', event);
+                    this.connected = false;
+                    this.connectionCallbacks.forEach(callback => callback(false));
 
-            // Activate kết nối
-            this.client.activate();
-            console.log('WebSocket client activated');
+                    // Tự động kết nối lại nếu chưa vượt quá số lần thử
+                    if (this.reconnectAttempts < this.maxReconnectAttempts) {
+                        this.reconnectAttempts++;
+                        console.log(`Attempting to reconnect... (${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
+
+                        setTimeout(() => {
+                            this.connect().catch(error => {
+                                console.error('Reconnection failed:', error);
+                            });
+                        }, WS_CONFIG.RECONNECT_DELAY);
+                    }
+                };
+
+                // Xử lý lỗi WebSocket
+                this.client.onWebSocketError = (event) => {
+                    console.error('WebSocket error. Event:', event);
+                    reject(new Error('WebSocket connection failed'));
+                };
+
+                // Activate kết nối
+                this.client.activate();
+                console.log('WebSocket client activated');
+            });
         } catch (error) {
             console.error('WebSocket connection error:', error);
             this.connected = false;
             this.errorCallbacks.forEach(callback => callback(error));
+            throw error;
         }
     }
 
@@ -143,16 +167,12 @@ class WebSocketService {
                 return;
             }
 
-            // Lấy userId hiện tại
-            const userData = await AsyncStorage.getItem('userData');
-            const currentUser = userData ? JSON.parse(userData) : null;
-
-            if (!currentUser || !currentUser.id) {
-                console.warn('Không có thông tin người dùng, không thể subscribe');
+            if (!this.currentUserId) {
+                console.warn('Không có userId, không thể subscribe');
                 return;
             }
 
-            const userId = currentUser.id;
+            const userId = this.currentUserId;
             console.log('Subscribing to messages for user ID:', userId);
 
             try {
@@ -162,7 +182,9 @@ class WebSocketService {
                     (message) => {
                         try {
                             const receivedMessage = JSON.parse(message.body);
-                            console.log('Received message:', receivedMessage);
+                            console.log('Received message via WebSocket:', receivedMessage);
+
+                            // Gọi tất cả callbacks đã đăng ký
                             this.messageCallbacks.forEach((callback) => {
                                 callback(receivedMessage);
                             });
@@ -188,7 +210,6 @@ class WebSocketService {
                         }
                     }
                 );
-                console.log('Subscribed to typing with ID:', this.subscriptions.typing.id);
 
                 // Subscribe nhận read receipts
                 this.subscriptions.receipts = this.client.subscribe(
@@ -205,7 +226,6 @@ class WebSocketService {
                         }
                     }
                 );
-                console.log('Subscribed to receipts with ID:', this.subscriptions.receipts.id);
 
                 // Subscribe nhận thông báo lỗi
                 this.subscriptions.errors = this.client.subscribe(
@@ -222,7 +242,6 @@ class WebSocketService {
                         }
                     }
                 );
-                console.log('Subscribed to errors with ID:', this.subscriptions.errors.id);
 
                 // Subscribe nhận thông báo trạng thái người dùng
                 this.subscriptions.userStatus = this.client.subscribe(
@@ -236,7 +255,6 @@ class WebSocketService {
                         }
                     }
                 );
-                console.log('Subscribed to user status with ID:', this.subscriptions.userStatus.id);
 
                 console.log('Successfully subscribed to all topics');
             } catch (subError) {
@@ -250,18 +268,33 @@ class WebSocketService {
     // Gửi tin nhắn qua WebSocket
     sendMessage(message) {
         if (!this.client || !this.client.connected) {
-            console.warn('WebSocket chưa kết nối, đang thử kết nối...');
-            this.connect().then(() => {
-                setTimeout(() => {
-                    this.sendMessageInternal(message);
-                }, 1000); // Đợi 1 giây sau khi kết nối để đảm bảo kết nối ổn định
-            }).catch(error => {
-                console.error('Không thể kết nối để gửi tin nhắn:', error);
-            });
+            console.warn('WebSocket chưa kết nối, thử kết nối lại...');
             return false;
         }
 
-        return this.sendMessageInternal(message);
+        try {
+            console.log('Sending message via WebSocket:', message);
+
+            // Đảm bảo payload có đủ thông tin cần thiết
+            const payload = {
+                content: message.content || '',
+                receiverId: message.receiverId,
+                attachmentUrl: message.attachmentUrl || null
+            };
+
+            // Gửi tin nhắn tới endpoint `/app/send`
+            this.client.publish({
+                destination: '/app/send',
+                body: JSON.stringify(payload),
+                headers: { 'content-type': 'application/json' }
+            });
+
+            console.log('Message sent successfully via WebSocket');
+            return true;
+        } catch (error) {
+            console.error('Error sending message via WebSocket:', error);
+            return false;
+        }
     }
 
     // Hàm nội bộ để gửi tin nhắn
@@ -339,6 +372,7 @@ class WebSocketService {
     // Đăng ký callback khi nhận tin nhắn mới
     onMessage(key, callback) {
         this.messageCallbacks.set(key, callback);
+        console.log(`Registered message callback for key: ${key}`);
     }
 
     // Đăng ký callback khi có thông báo đang nhập
@@ -368,6 +402,7 @@ class WebSocketService {
     // Hủy đăng ký callback khi nhận tin nhắn mới
     offMessage(key) {
         this.messageCallbacks.delete(key);
+        console.log(`Unregistered message callback for key: ${key}`);
     }
 
     // Hủy đăng ký callback khi có thông báo đang nhập
@@ -405,14 +440,27 @@ class WebSocketService {
             status: this.client.connected ? 'CONNECTED' : 'DISCONNECTED',
             details: {
                 connected: this.client.connected,
-                connectedVersion: this.client.connectedVersion,
-                hasDebugEnabled: !!this.client.debug,
-                reconnectDelay: this.client.reconnectDelay,
-                heartbeatIncoming: this.client.heartbeatIncoming,
-                heartbeatOutgoing: this.client.heartbeatOutgoing,
-                subscriptions: Object.keys(this.subscriptions)
+                currentUserId: this.currentUserId,
+                reconnectAttempts: this.reconnectAttempts,
+                maxReconnectAttempts: this.maxReconnectAttempts,
+                subscriptions: Object.keys(this.subscriptions),
+                callbacksCount: {
+                    messages: this.messageCallbacks.size,
+                    typing: this.typingCallbacks.size,
+                    receipts: this.receiptCallbacks.size,
+                    errors: this.errorCallbacks.size,
+                    connections: this.connectionCallbacks.size
+                }
             }
         };
+    }
+
+    // Force reconnect
+    async forceReconnect() {
+        console.log('Force reconnecting WebSocket...');
+        this.disconnect();
+        this.reconnectAttempts = 0;
+        return this.connect();
     }
 }
 

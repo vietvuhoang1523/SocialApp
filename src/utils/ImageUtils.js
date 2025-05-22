@@ -2,103 +2,141 @@
 import * as ImagePicker from 'expo-image-picker';
 import { Alert } from 'react-native';
 
-export const pickImageFromLibrary = async () => {
-    try {
-        const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+class ImageUtils {
+    // Chọn ảnh từ thư viện
+    static async pickImageFromLibrary() {
+        try {
+            // Yêu cầu quyền truy cập thư viện ảnh
+            const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
 
-        if (permissionResult.granted === false) {
-            Alert.alert('Quyền truy cập', 'Bạn cần cấp quyền truy cập thư viện ảnh để sử dụng tính năng này.');
+            if (status !== 'granted') {
+                Alert.alert(
+                    'Quyền truy cập bị từ chối',
+                    'Ứng dụng cần quyền truy cập thư viện ảnh để chọn hình ảnh.'
+                );
+                return null;
+            }
+
+            // Mở thư viện ảnh
+            const result = await ImagePicker.launchImageLibraryAsync({
+                mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                allowsEditing: true,
+                aspect: [4, 3],
+                quality: 0.8,
+            });
+
+            if (!result.canceled && result.assets && result.assets.length > 0) {
+                const asset = result.assets[0];
+                return {
+                    uri: asset.uri,
+                    type: asset.type || 'image/jpeg',
+                    fileName: asset.fileName || `image_${Date.now()}.jpg`,
+                    fileSize: asset.fileSize,
+                    width: asset.width,
+                    height: asset.height
+                };
+            }
+
+            return null;
+        } catch (error) {
+            console.error('Error picking image from library:', error);
+            Alert.alert('Lỗi', 'Không thể chọn hình ảnh. Vui lòng thử lại.');
             return null;
         }
-
-        const result = await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: ImagePicker.MediaTypeOptions.Images,
-            allowsEditing: true,
-            aspect: [4, 3],
-            quality: 0.8,
-            allowsMultipleSelection: false
-        });
-
-        if (!result.canceled && result.assets && result.assets.length > 0) {
-            return {
-                uri: result.assets[0].uri,
-                type: 'image/jpeg',
-                fileName: `attachment_${Date.now()}.jpg`
-            };
-        }
-
-        return null;
-    } catch (error) {
-        console.error('Lỗi khi chọn ảnh:', error);
-        Alert.alert('Lỗi', 'Không thể chọn ảnh. Vui lòng thử lại sau.');
-        return null;
     }
-};
 
-// Chụp ảnh từ camera
-export const takePhoto = async () => {
-    try {
-        const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
+    // Chụp ảnh từ camera
+    static async takePhotoWithCamera() {
+        try {
+            // Yêu cầu quyền truy cập camera
+            const { status } = await ImagePicker.requestCameraPermissionsAsync();
 
-        if (permissionResult.granted === false) {
-            Alert.alert('Quyền truy cập', 'Bạn cần cấp quyền truy cập camera để sử dụng tính năng này.');
+            if (status !== 'granted') {
+                Alert.alert(
+                    'Quyền truy cập bị từ chối',
+                    'Ứng dụng cần quyền truy cập camera để chụp ảnh.'
+                );
+                return null;
+            }
+
+            // Mở camera
+            const result = await ImagePicker.launchCameraAsync({
+                allowsEditing: true,
+                aspect: [4, 3],
+                quality: 0.8,
+            });
+
+            if (!result.canceled && result.assets && result.assets.length > 0) {
+                const asset = result.assets[0];
+                return {
+                    uri: asset.uri,
+                    type: 'image/jpeg',
+                    fileName: `photo_${Date.now()}.jpg`,
+                    fileSize: asset.fileSize,
+                    width: asset.width,
+                    height: asset.height
+                };
+            }
+
+            return null;
+        } catch (error) {
+            console.error('Error taking photo with camera:', error);
+            Alert.alert('Lỗi', 'Không thể chụp ảnh. Vui lòng thử lại.');
             return null;
         }
-
-        const result = await ImagePicker.launchCameraAsync({
-            allowsEditing: true,
-            aspect: [4, 3],
-            quality: 0.8,
-        });
-
-        if (!result.canceled && result.assets && result.assets.length > 0) {
-            return {
-                uri: result.assets[0].uri,
-                type: 'image/jpeg',
-                fileName: `camera_${Date.now()}.jpg`
-            };
-        }
-
-        return null;
-    } catch (error) {
-        console.error('Lỗi khi chụp ảnh:', error);
-        Alert.alert('Lỗi', 'Không thể chụp ảnh. Vui lòng thử lại sau.');
-        return null;
     }
-};
 
-// Định dạng thời gian tin nhắn
-export const formatMessageTime = (dateTimeStr) => {
-    try {
-        const date = new Date(dateTimeStr);
-        const now = new Date();
-
-        // Nếu là hôm nay, chỉ hiển thị giờ:phút
-        if (date.toDateString() === now.toDateString()) {
-            return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        }
-
-        // Nếu là trong tuần này, hiển thị thứ và giờ
-        const diffDays = Math.floor((now - date) / (1000 * 60 * 60 * 24));
-
-        if (diffDays < 7) {
-            const dayNames = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
-            return `${dayNames[date.getDay()]} ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
-        }
-
-        // Nếu khác, hiển thị DD/MM/YYYY
-        return date.toLocaleDateString('vi-VN', {
-            day: '2-digit',
-            month: '2-digit',
-            year: 'numeric'
+    // Hiển thị ActionSheet để chọn nguồn ảnh
+    static async showImagePicker() {
+        return new Promise((resolve) => {
+            Alert.alert(
+                'Chọn hình ảnh',
+                'Bạn muốn chọn hình ảnh từ đâu?',
+                [
+                    {
+                        text: 'Hủy',
+                        style: 'cancel',
+                        onPress: () => resolve(null)
+                    },
+                    {
+                        text: 'Thư viện ảnh',
+                        onPress: async () => {
+                            const result = await this.pickImageFromLibrary();
+                            resolve(result);
+                        }
+                    },
+                    {
+                        text: 'Chụp ảnh',
+                        onPress: async () => {
+                            const result = await this.takePhotoWithCamera();
+                            resolve(result);
+                        }
+                    }
+                ]
+            );
         });
-    } catch (error) {
-        return '';
     }
-};
 
-export default {
-    pickImageFromLibrary,
-    takePhoto,
-    formatMessageTime
-};
+    // Resize ảnh (nếu cần)
+    static getResizedDimensions(originalWidth, originalHeight, maxWidth, maxHeight) {
+        let width = originalWidth;
+        let height = originalHeight;
+
+        // Tính toán tỷ lệ
+        const aspectRatio = width / height;
+
+        if (width > maxWidth) {
+            width = maxWidth;
+            height = width / aspectRatio;
+        }
+
+        if (height > maxHeight) {
+            height = maxHeight;
+            width = height * aspectRatio;
+        }
+
+        return { width: Math.round(width), height: Math.round(height) };
+    }
+}
+
+export default ImageUtils;

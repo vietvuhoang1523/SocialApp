@@ -1,4 +1,4 @@
-// AuthService.js - Bổ sung các router còn thiếu
+// AuthService.js - Updated phần WebSocket connection
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { BASE_URL, DEFAULT_TIMEOUT, DEFAULT_HEADERS } from './api';
@@ -14,7 +14,8 @@ class AuthService {
         this._isAuthenticated = false;
         this.checkInitialAuthStatus();
     }
-// Kiểm tra trạng thái xác thực ban đầu khi khởi tạo
+
+    // Kiểm tra trạng thái xác thực ban đầu khi khởi tạo
     async checkInitialAuthStatus() {
         try {
             const token = await AsyncStorage.getItem('accessToken');
@@ -24,6 +25,7 @@ class AuthService {
             this._isAuthenticated = false;
         }
     }
+
     // Phương thức async để kiểm tra chi tiết
     async checkAuthentication() {
         try {
@@ -52,16 +54,16 @@ class AuthService {
     }
 
     // Phương thức instance đồng bộ
-    isAuthenticated(): boolean {
+    isAuthenticated() {
         return this._isAuthenticated;
     }
-    updateAuthStatus(status: boolean) {
+
+    updateAuthStatus(status) {
         this._isAuthenticated = status;
     }
+
     /**
      * Đăng ký người dùng mới
-     * @param {Object} userData - Thông tin đăng ký
-     * @returns {Promise} Kết quả đăng ký
      */
     async register(userData) {
         try {
@@ -83,9 +85,6 @@ class AuthService {
 
     /**
      * Đăng nhập người dùng bằng email và mật khẩu
-     * @param {string} email - Email của người dùng
-     * @param {string} password - Mật khẩu
-     * @returns {Promise} Kết quả đăng nhập
      */
     async login(email, password) {
         try {
@@ -131,18 +130,36 @@ class AuthService {
                     await AsyncStorage.setItem('userData', JSON.stringify(tokenData.user));
                 }
 
+                // Cập nhật trạng thái authentication
+                this._isAuthenticated = true;
+
                 // Log lại token sau khi lưu để kiểm tra
                 const savedToken = await AsyncStorage.getItem('accessToken');
                 console.log('Token sau khi lưu:', savedToken);
+
+                // Sau khi đăng nhập thành công, kết nối WebSocket
+                try {
+                    console.log('Bắt đầu kết nối WebSocket sau khi đăng nhập...');
+                    await webSocketService.connect();
+                    console.log('WebSocket connected successfully after login');
+                } catch (wsError) {
+                    console.error('Failed to connect WebSocket after login:', wsError);
+                    // Không throw error vì login đã thành công
+                    // Có thể thử kết nối lại sau
+                    setTimeout(() => {
+                        webSocketService.connect().catch(retryError => {
+                            console.error('WebSocket retry connection failed:', retryError);
+                        });
+                    }, 3000);
+                }
             } else {
                 console.error('Không tìm thấy token trong phản hồi');
             }
-            // Sau khi đăng nhập thành công, kết nối WebSocket
-            webSocketService.connect();
 
             return response.data;
         } catch (error) {
             console.error('Login error:', error);
+            this._isAuthenticated = false;
 
             // Log chi tiết lỗi để debug
             if (error.response) {
@@ -158,22 +175,8 @@ class AuthService {
         }
     }
 
-
-    // async login(email, password) {
-    //     try {
-    //         const response = await super.login(email, password);
-    //         this._isAuthenticated = true;
-    //         return response;
-    //     } catch (error) {
-    //         this._isAuthenticated = false;
-    //         throw error;
-    //     }
-    // }
     /**
      * Xác minh tài khoản với mã xác nhận
-     * @param {string} email - Email của người dùng
-     * @param {string} verificationCode - Mã xác nhận
-     * @returns {Promise} Kết quả xác minh
      */
     async verifyAccount(email, verificationCode) {
         try {
@@ -198,8 +201,6 @@ class AuthService {
 
     /**
      * Gửi lại mã xác minh
-     * @param {string} email - Email cần gửi lại mã
-     * @returns {Promise} Kết quả gửi mã
      */
     async resendVerificationCode(email) {
         try {
@@ -223,8 +224,6 @@ class AuthService {
 
     /**
      * Yêu cầu đặt lại mật khẩu
-     * @param {string} email - Email cần đặt lại mật khẩu
-     * @returns {Promise} Kết quả yêu cầu
      */
     async requestPasswordReset(email) {
         try {
@@ -248,10 +247,6 @@ class AuthService {
 
     /**
      * Đặt lại mật khẩu với mã xác nhận
-     * @param {string} email - Email người dùng
-     * @param {string} resetToken - Mã xác nhận đặt lại mật khẩu
-     * @param {string} newPassword - Mật khẩu mới
-     * @returns {Promise} Kết quả đặt lại mật khẩu
      */
     async resetPassword(email, resetToken, newPassword) {
         try {
@@ -277,7 +272,6 @@ class AuthService {
 
     /**
      * Làm mới token
-     * @returns {Promise} Token mới
      */
     async refreshToken() {
         try {
@@ -305,6 +299,8 @@ class AuthService {
                 if (tokenData.refreshToken) {
                     await AsyncStorage.setItem('refreshToken', tokenData.refreshToken);
                 }
+
+                this._isAuthenticated = true;
             }
 
             return response.data;
@@ -320,8 +316,6 @@ class AuthService {
 
     /**
      * Kiểm tra tính hợp lệ của token
-     * @param {string} token - Token cần kiểm tra
-     * @returns {Promise} Thông tin về tính hợp lệ của token
      */
     async introspectToken(token = null) {
         try {
@@ -354,7 +348,6 @@ class AuthService {
 
     /**
      * Đăng xuất người dùng
-     * @returns {Promise} Kết quả đăng xuất
      */
     async logout() {
         try {
@@ -369,14 +362,19 @@ class AuthService {
                             Authorization: `Bearer ${token}`
                         }
                     });
-                    // Ngắt kết nối WebSocket khi đăng xuất
-                    webSocketService.disconnect();
-
-                    return { success: true };
                 } catch (logoutError) {
                     console.warn('Logout API error:', logoutError);
                     // Tiếp tục xóa token dù có lỗi API
                 }
+            }
+
+            // Ngắt kết nối WebSocket khi đăng xuất
+            try {
+                console.log('Ngắt kết nối WebSocket khi đăng xuất...');
+                webSocketService.disconnect();
+                console.log('WebSocket disconnected successfully');
+            } catch (wsError) {
+                console.error('Error disconnecting WebSocket:', wsError);
             }
 
             // Xóa token và dữ liệu người dùng
@@ -385,9 +383,11 @@ class AuthService {
             await AsyncStorage.removeItem('refreshToken');
             await AsyncStorage.removeItem('userData');
 
-            // Reset biến global
+            // Reset biến global và trạng thái
             global.authExpired = false;
+            this._isAuthenticated = false;
 
+            console.log('Đăng xuất thành công');
             return { success: true };
         } catch (error) {
             console.error('Logout error:', error);
@@ -395,44 +395,8 @@ class AuthService {
         }
     }
 
-    // async logout() {
-    //     try {
-    //         await super.logout();
-    //         this._isAuthenticated = false;
-    //     } catch (error) {
-    //         console.error('Logout error:', error);
-    //     }
-    // }
-
-    /**
-     * Kiểm tra xem người dùng đã đăng nhập chưa
-     * @returns {Promise<boolean>} Trạng thái đăng nhập
-     */
-    // static async isAuthenticated() {
-    //     try {
-    //         const token = await AsyncStorage.getItem('accessToken');
-    //
-    //         // Nếu không có token, trả về false
-    //         if (!token) return false;
-    //
-    //         // Thêm logic kiểm tra token hợp lệ với backend (nếu cần)
-    //         // Ví dụ: gọi API kiểm tra token
-    //         const response = await axios.get('/api/validate-token', {
-    //             headers: {
-    //                 'Authorization': `Bearer ${token}`
-    //             }
-    //         });
-    //
-    //         return response.status === 200;
-    //     } catch (error) {
-    //         console.error('Authentication check failed:', error);
-    //         return false;
-    //     }
-    // }
-
     /**
      * Lấy thông tin token hiện tại
-     * @returns {Promise<string|null>} Token hoặc null nếu không có
      */
     async getToken() {
         try {
@@ -445,7 +409,6 @@ class AuthService {
 
     /**
      * Lấy token với tiền tố Bearer để sử dụng trong header
-     * @returns {Promise<string|null>} Bearer token hoặc null
      */
     async getBearerToken() {
         try {
@@ -464,7 +427,6 @@ class AuthService {
 
     /**
      * Lấy thông tin người dùng đã lưu
-     * @returns {Promise<Object|null>} Thông tin người dùng hoặc null
      */
     async getUserData() {
         try {
