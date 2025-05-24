@@ -1,8 +1,8 @@
-// ChatService.js - Cập nhật (tiếp)
+// ChatService.js - Cập nhật để tích hợp với WebSocket
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { BASE_URL, DEFAULT_TIMEOUT, DEFAULT_HEADERS, FORM_DATA_HEADERS } from './api';
-import messagesService from './messagesService';
+import webSocketService from './WebSocketService';
 
 class ChatService {
     constructor() {
@@ -80,6 +80,57 @@ class ChatService {
                 return Promise.reject(this.normalizeError(error));
             }
         );
+
+        // Đăng ký các callback WebSocket cho conversations
+        this._registerWebSocketCallbacks();
+    }
+
+    /**
+     * Đăng ký callbacks cho WebSocket
+     * @private
+     */
+    _registerWebSocketCallbacks() {
+        // Đăng ký callback cho nhận danh sách cuộc trò chuyện qua WebSocket
+        webSocketService.onConversations('chatService', this._handleConversations.bind(this));
+
+        // Tạo Map để lưu trữ callbacks từ các thành phần client
+        this.conversationsCallbacks = new Map();
+    }
+
+    /**
+     * Xử lý danh sách cuộc trò chuyện nhận được qua WebSocket
+     * @param {Array} conversations - Danh sách cuộc trò chuyện
+     * @private
+     */
+    _handleConversations(conversations) {
+        // Chuẩn hóa danh sách cuộc trò chuyện
+        const normalizedConversations = this.normalizeConversations(conversations);
+
+        // Thông báo cho các subscribers
+        this.conversationsCallbacks.forEach(callback => {
+            try {
+                callback(normalizedConversations);
+            } catch (e) {
+                console.error('Error in conversations callback:', e);
+            }
+        });
+    }
+
+    /**
+     * Đăng ký callback cho danh sách cuộc trò chuyện
+     * @param {string} key - Khóa duy nhất cho callback
+     * @param {Function} callback - Hàm callback
+     */
+    onConversations(key, callback) {
+        this.conversationsCallbacks.set(key, callback);
+    }
+
+    /**
+     * Hủy đăng ký callback cho danh sách cuộc trò chuyện
+     * @param {string} key - Khóa duy nhất cho callback
+     */
+    offConversations(key) {
+        this.conversationsCallbacks.delete(key);
     }
 
     /**
@@ -119,6 +170,37 @@ class ChatService {
 
             if (!currentUser || !currentUser.id) {
                 throw new Error('Không có thông tin người dùng hiện tại');
+            }
+
+            // Tạo promise để đợi kết quả từ WebSocket
+            const getConversationsPromise = new Promise((resolve, reject) => {
+                // Timeout sau 5 giây
+                const timeoutId = setTimeout(() => {
+                    // Hủy đăng ký callback tạm thời
+                    this.offConversations('temp_conversations');
+                    reject(new Error('Timed out waiting for WebSocket response'));
+                }, 5000);
+
+                // Đăng ký callback tạm thời để nhận kết quả
+                this.onConversations('temp_conversations', (conversations) => {
+                    clearTimeout(timeoutId);
+                    this.offConversations('temp_conversations');
+                    resolve(conversations);
+                });
+            });
+
+            // Ưu tiên sử dụng WebSocket
+            if (webSocketService.isConnected()) {
+                const success = webSocketService.getConversations();
+                if (success) {
+                    try {
+                        // Đợi kết quả từ WebSocket
+                        return await getConversationsPromise;
+                    } catch (timeoutError) {
+                        console.log('WebSocket timeout, sử dụng phương pháp thay thế', timeoutError);
+                        // Tiếp tục với phương pháp thay thế nếu WebSocket timeout
+                    }
+                }
             }
 
             // Thử gọi API chuyên biệt cho cuộc trò chuyện trước

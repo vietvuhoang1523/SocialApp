@@ -17,7 +17,6 @@ import {
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import Ionicons from 'react-native-vector-icons/Ionicons';
-import messagesService from '../../services/messagesService';
 import chatService from '../../services/chatService';
 import FriendService from '../../services/FriendService';
 import ImageService from '../../services/ImageService';

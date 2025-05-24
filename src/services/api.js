@@ -2,10 +2,10 @@
 // File cấu hình cho các API calls
 
 // URL cơ sở cho backend API
-export const BASE_URL = 'http://192.168.100.193:8082/api'; // Cho HTTP API
+export const BASE_URL = 'http://192.168.0.125:8082/api'; // Cho HTTP API
 
 // URL cơ sở cho WebSocket (không có /api)
-export const WS_BASE_URL = 'http://192.168.100.193:8082'; // Cho WebSocket
+export const WS_BASE_URL = 'http://192.168.0.125:8082'; // Cho WebSocket
 
 // Timeout mặc định cho các requests (30 giây)
 export const DEFAULT_TIMEOUT = 30000;

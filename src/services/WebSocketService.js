@@ -1,25 +1,40 @@
-// WebSocketService.js - Updated để sử dụng WS_BASE_URL
 import { Client } from '@stomp/stompjs';
 import SockJS from 'sockjs-client';
-import { WS_BASE_URL, WS_CONFIG } from './api';
+import { WS_CONFIG } from './api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 class WebSocketService {
     constructor() {
         this.client = null;
         this.connected = false;
-        this.messageCallbacks = new Map();
-        this.typingCallbacks = new Map();
-        this.receiptCallbacks = new Map();
-        this.errorCallbacks = new Set();
-        this.connectionCallbacks = new Set();
-        this.subscriptions = {};
         this.currentUserId = null;
         this.reconnectAttempts = 0;
         this.maxReconnectAttempts = 5;
+        this.subscriptions = {};
+
+        // Tạo Map lưu trữ các callback
+        this.callbackMaps = {
+            message: new Map(),
+            messageHistory: new Map(),
+            paginatedMessages: new Map(),
+            unreadMessages: new Map(),
+            unreadCount: new Map(),
+            typing: new Map(),
+            receipt: new Map(),
+            readSuccess: new Map(),
+            readAllSuccess: new Map(),
+            conversations: new Map(),
+            deleteSuccess: new Map(),
+            deliveredSuccess: new Map(),
+            messageDeleted: new Map()
+        };
+
+        // Tạo Set lưu trữ các callback không cần key
+        this.errorCallbacks = new Set();
+        this.connectionCallbacks = new Set();
     }
 
-    // Kết nối đến server WebSocket
+    // Kết nối WebSocket
     async connect() {
         if (this.client && this.client.connected) {
             console.log('WebSocket đã kết nối');
@@ -27,102 +42,56 @@ class WebSocketService {
         }
 
         try {
+            // Lấy token và thông tin người dùng
             const token = await AsyncStorage.getItem('accessToken');
-            if (!token) {
-                throw new Error('Không có token để kết nối WebSocket');
-            }
-
-            // Lấy thông tin user hiện tại
             const userData = await AsyncStorage.getItem('userData');
+
+            if (!token) throw new Error('Không có token để kết nối WebSocket');
+
             const currentUser = userData ? JSON.parse(userData) : null;
             this.currentUserId = currentUser?.id;
 
-            if (!this.currentUserId) {
-                throw new Error('Không có thông tin user để kết nối WebSocket');
-            }
+            if (!this.currentUserId) throw new Error('Không có thông tin user để kết nối WebSocket');
 
             // Đóng kết nối cũ nếu có
-            if (this.client) {
-                this.disconnect();
-            }
+            if (this.client) this.disconnect();
 
-            console.log('Connecting to WebSocket at:', WS_CONFIG.ENDPOINT);
-
-            // Tạo socket connection
+            // Tạo socket và client STOMP
             const socket = new SockJS(WS_CONFIG.ENDPOINT);
-
-            // Tạo client STOMP với các tùy chọn
             this.client = new Client({
                 webSocketFactory: () => socket,
-                connectHeaders: {
-                    Authorization: `Bearer ${token}`
-                },
-                debug: function (str) {
-                    console.log('STOMP: ' + str);
-                },
+                connectHeaders: { Authorization: `Bearer ${token}` },
+                debug: str => console.log('STOMP: ' + str),
                 reconnectDelay: WS_CONFIG.RECONNECT_DELAY,
                 heartbeatIncoming: WS_CONFIG.HEARTBEAT_INCOMING,
                 heartbeatOutgoing: WS_CONFIG.HEARTBEAT_OUTGOING
             });
 
-            // Promise để theo dõi trạng thái kết nối
             return new Promise((resolve, reject) => {
-                // Xử lý khi kết nối thành công
-                this.client.onConnect = (frame) => {
-                    console.log('Connected to WebSocket. Frame:', frame);
+                // Xử lý kết nối thành công
+                this.client.onConnect = frame => {
+                    console.log('Connected to WebSocket');
                     this.connected = true;
                     this.reconnectAttempts = 0;
-
-                    // Đăng ký nhận tin nhắn sau khi kết nối thành công
                     this.subscribeToPersonalMessages();
-
-                    // Thông báo cho các callbacks về kết nối thành công
-                    this.connectionCallbacks.forEach(callback => callback(true));
-
-                    resolve();
+                    this.connectionCallbacks.forEach(cb => cb(true));
+                    resolve(true);
                 };
 
                 // Xử lý lỗi STOMP
-                this.client.onStompError = (frame) => {
-                    console.error('STOMP Error. Frame:', frame);
+                this.client.onStompError = frame => {
+                    console.error('STOMP Error');
                     this.connected = false;
-                    this.errorCallbacks.forEach(callback => callback(frame));
+                    this.errorCallbacks.forEach(cb => cb(frame));
                     reject(new Error(`STOMP Error: ${frame.headers.message || 'Unknown error'}`));
                 };
 
-                // Xử lý ngắt kết nối WebSocket
-                this.client.onWebSocketClose = (event) => {
-                    console.log('WebSocket connection closed. Event:', event);
-                    this.connected = false;
-                    this.connectionCallbacks.forEach(callback => callback(false));
-
-                    // Tự động kết nối lại nếu chưa vượt quá số lần thử
-                    if (this.reconnectAttempts < this.maxReconnectAttempts) {
-                        this.reconnectAttempts++;
-                        console.log(`Attempting to reconnect... (${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
-
-                        setTimeout(() => {
-                            this.connect().catch(error => {
-                                console.error('Reconnection failed:', error);
-                            });
-                        }, WS_CONFIG.RECONNECT_DELAY);
-                    }
-                };
-
-                // Xử lý lỗi WebSocket
-                this.client.onWebSocketError = (event) => {
-                    console.error('WebSocket error. Event:', event);
-                    reject(new Error('WebSocket connection failed'));
-                };
-
-                // Activate kết nối
                 this.client.activate();
-                console.log('WebSocket client activated');
             });
         } catch (error) {
             console.error('WebSocket connection error:', error);
             this.connected = false;
-            this.errorCallbacks.forEach(callback => callback(error));
+            this.errorCallbacks.forEach(cb => cb(error));
             throw error;
         }
     }
@@ -130,299 +99,257 @@ class WebSocketService {
     // Ngắt kết nối WebSocket
     disconnect() {
         if (this.client) {
-            // Hủy tất cả subscription trước
             this.unsubscribeAll();
-
-            // Deactivate client
             this.client.deactivate();
             console.log('WebSocket đã ngắt kết nối');
             this.connected = false;
-
-            // Thông báo cho callbacks
-            this.connectionCallbacks.forEach(callback => callback(false));
+            this.connectionCallbacks.forEach(cb => cb(false));
         }
     }
 
-    // Hủy tất cả các subscription
+    // Hủy tất cả đăng ký
     unsubscribeAll() {
-        Object.values(this.subscriptions).forEach(subscription => {
-            if (subscription && subscription.unsubscribe) {
+        Object.values(this.subscriptions).forEach(sub => {
+            if (sub && sub.unsubscribe) {
                 try {
-                    subscription.unsubscribe();
-                    console.log('Unsubscribed from:', subscription.id);
+                    sub.unsubscribe();
                 } catch (e) {
                     console.error('Error unsubscribing:', e);
                 }
             }
         });
-
         this.subscriptions = {};
     }
 
-    // Đăng ký nhận tin nhắn cá nhân
+    // Đăng ký nhận tin nhắn
     async subscribeToPersonalMessages() {
+        if (!this.client || !this.client.connected || !this.currentUserId) {
+            console.warn('Không thể subscribe: WebSocket chưa kết nối hoặc không có userId');
+            return;
+        }
+
+        const userId = this.currentUserId;
+
         try {
-            if (!this.client || !this.client.connected) {
-                console.warn('WebSocket chưa kết nối, không thể subscribe');
-                return;
+            // Danh sách các đăng ký cần thực hiện
+            const subscriptions = [
+                // Định dạng: [tên subscription, đường dẫn, callback map]
+                ['messages', `/user/${userId}/queue/messages`, 'message'],
+                ['messagesHistory', `/user/${userId}/queue/messages-history`, 'messageHistory'],
+                ['messagesPaginated', `/user/${userId}/queue/messages-paginated`, 'paginatedMessages'],
+                ['unreadMessages', `/user/${userId}/queue/unread-messages`, 'unreadMessages'],
+                ['unreadCount', `/user/${userId}/queue/unread-count`, 'unreadCount'],
+                ['receipts', `/user/${userId}/queue/receipts`, 'receipt'],
+                ['readSuccess', `/user/${userId}/queue/read-success`, 'readSuccess'],
+                ['readAllSuccess', `/user/${userId}/queue/read-all-success`, 'readAllSuccess'],
+                ['conversations', `/user/${userId}/queue/conversations`, 'conversations'],
+                ['deleteSuccess', `/user/${userId}/queue/delete-success`, 'deleteSuccess'],
+                ['deliveredSuccess', `/user/${userId}/queue/delivered-success`, 'deliveredSuccess'],
+                ['errors', `/user/${userId}/queue/errors`, null],
+                ['messageDeleted', `/topic/message-deleted`, 'messageDeleted'],
+                ['messageDeletedById', `/topic/message-deleted/${userId}`, 'messageDeleted'],
+                ['typing', `/topic/typing/${userId}`, 'typing']
+            ];
+
+            // Đăng ký từng subscription
+            for (const [key, destination, callbackType] of subscriptions) {
+                this.subscriptions[key] = this.client.subscribe(
+                    destination,
+                    message => {
+                        try {
+                            const data = JSON.parse(message.body);
+
+                            // Xử lý đặc biệt cho errors
+                            if (key === 'errors') {
+                                console.error('WebSocket error message:', data);
+                                this.errorCallbacks.forEach(cb => cb(data));
+                                return;
+                            }
+
+                            // Xử lý đặc biệt cho unreadCount
+                            const finalData = key === 'unreadCount' ? data.count : data;
+
+                            // Thông báo cho các callback đã đăng ký
+                            if (callbackType) {
+                                this.callbackMaps[callbackType].forEach(cb => cb(finalData));
+                            }
+                        } catch (error) {
+                            console.error(`Error parsing ${key} message:`, error);
+                        }
+                    }
+                );
             }
 
-            if (!this.currentUserId) {
-                console.warn('Không có userId, không thể subscribe');
-                return;
-            }
-
-            const userId = this.currentUserId;
-            console.log('Subscribing to messages for user ID:', userId);
-
-            try {
-                // Subscribe nhận tin nhắn
-                this.subscriptions.messages = this.client.subscribe(
-                    `/user/${userId}/queue/messages`,
-                    (message) => {
-                        try {
-                            const receivedMessage = JSON.parse(message.body);
-                            console.log('Received message via WebSocket:', receivedMessage);
-
-                            // Gọi tất cả callbacks đã đăng ký
-                            this.messageCallbacks.forEach((callback) => {
-                                callback(receivedMessage);
-                            });
-                        } catch (error) {
-                            console.error('Error parsing message:', error);
-                        }
-                    }
-                );
-                console.log('Subscribed to messages with ID:', this.subscriptions.messages.id);
-
-                // Subscribe nhận thông báo typing
-                this.subscriptions.typing = this.client.subscribe(
-                    `/user/${userId}/queue/typing`,
-                    (message) => {
-                        try {
-                            const typingData = JSON.parse(message.body);
-                            console.log('Typing notification:', typingData);
-                            this.typingCallbacks.forEach((callback) => {
-                                callback(typingData);
-                            });
-                        } catch (error) {
-                            console.error('Error parsing typing notification:', error);
-                        }
-                    }
-                );
-
-                // Subscribe nhận read receipts
-                this.subscriptions.receipts = this.client.subscribe(
-                    `/user/${userId}/queue/receipts`,
-                    (message) => {
-                        try {
-                            const receipt = JSON.parse(message.body);
-                            console.log('Read receipt:', receipt);
-                            this.receiptCallbacks.forEach((callback) => {
-                                callback(receipt);
-                            });
-                        } catch (error) {
-                            console.error('Error parsing read receipt:', error);
-                        }
-                    }
-                );
-
-                // Subscribe nhận thông báo lỗi
-                this.subscriptions.errors = this.client.subscribe(
-                    `/user/${userId}/queue/errors`,
-                    (message) => {
-                        try {
-                            const error = JSON.parse(message.body);
-                            console.error('WebSocket error message:', error);
-                            this.errorCallbacks.forEach(callback => {
-                                callback(error);
-                            });
-                        } catch (error) {
-                            console.error('Error parsing error message:', error);
-                        }
-                    }
-                );
-
-                // Subscribe nhận thông báo trạng thái người dùng
-                this.subscriptions.userStatus = this.client.subscribe(
-                    '/topic/user-status',
-                    (message) => {
-                        try {
-                            const statusData = JSON.parse(message.body);
-                            console.log('User status update:', statusData);
-                        } catch (error) {
-                            console.error('Error parsing user status:', error);
-                        }
-                    }
-                );
-
-                console.log('Successfully subscribed to all topics');
-            } catch (subError) {
-                console.error('Error during subscription process:', subError);
-            }
+            console.log('Đã đăng ký thành công tất cả các topic');
         } catch (error) {
-            console.error('Error in subscribeToPersonalMessages:', error);
+            console.error('Lỗi khi đăng ký các subscription:', error);
         }
     }
 
-    // Gửi tin nhắn qua WebSocket
-    sendMessage(message) {
+    // Hàm trợ giúp để kiểm tra kết nối và tạo payload
+    _prepareRequest(destination, payload = {}) {
         if (!this.client || !this.client.connected) {
-            console.warn('WebSocket chưa kết nối, thử kết nối lại...');
+            console.warn('WebSocket chưa kết nối, không thể gửi yêu cầu');
             return false;
         }
 
         try {
-            console.log('Sending message via WebSocket:', message);
-
-            // Đảm bảo payload có đủ thông tin cần thiết
-            const payload = {
-                content: message.content || '',
-                receiverId: message.receiverId,
-                attachmentUrl: message.attachmentUrl || null
-            };
-
-            // Gửi tin nhắn tới endpoint `/app/send`
             this.client.publish({
-                destination: '/app/send',
+                destination,
                 body: JSON.stringify(payload),
                 headers: { 'content-type': 'application/json' }
             });
-
-            console.log('Message sent successfully via WebSocket');
             return true;
         } catch (error) {
-            console.error('Error sending message via WebSocket:', error);
+            console.error(`Error sending request to ${destination}:`, error);
             return false;
         }
     }
 
-    // Hàm nội bộ để gửi tin nhắn
-    sendMessageInternal(message) {
-        try {
-            if (!this.client || !this.client.connected) {
-                console.error('Không thể gửi tin nhắn: WebSocket không kết nối');
-                return false;
-            }
+    // === CÁC PHƯƠNG THỨC GỬI YÊU CẦU ===
 
-            console.log('Sending message via WebSocket:', message);
-
-            this.client.publish({
-                destination: '/app/send',
-                body: JSON.stringify(message),
-                headers: { 'content-type': 'application/json' }
-            });
-
-            console.log('Message sent successfully');
-            return true;
-        } catch (error) {
-            console.error('Error sending message via WebSocket:', error);
-            return false;
-        }
+    // Gửi tin nhắn mới
+    sendMessage(message) {
+        const payload = {
+            content: message.content || '',
+            receiverId: message.receiverId,
+            attachmentUrl: message.attachmentUrl || null
+        };
+        return this._prepareRequest('/app/send', payload);
     }
 
-    // Gửi thông báo đang nhập tin nhắn
-    sendTyping(receiverId, isTyping = true) {
-        if (!this.client || !this.client.connected) {
-            return false;
-        }
-
-        try {
-            const notification = {
-                receiverId: receiverId,
-                typing: isTyping
-            };
-
-            this.client.publish({
-                destination: '/app/typing',
-                body: JSON.stringify(notification),
-                headers: { 'content-type': 'application/json' }
-            });
-            return true;
-        } catch (error) {
-            console.error('Error sending typing notification:', error);
-            return false;
-        }
+    // Lấy tin nhắn giữa hai người dùng
+    getMessagesBetweenUsers(user1Id, user2Id) {
+        return this._prepareRequest('/app/get-messages', { user1Id, user2Id });
     }
 
-    // Gửi xác nhận đã đọc tin nhắn
+    // Lấy tin nhắn phân trang
+    getMessagesBetweenUsersPaginated(user1Id, user2Id, pagination = {}) {
+        const payload = {
+            user1Id,
+            user2Id,
+            page: pagination.page || 0,
+            size: pagination.size || 20,
+            sortBy: pagination.sortBy || 'timestamp',
+            order: pagination.order || 'desc'
+        };
+        return this._prepareRequest('/app/get-messages-paginated', payload);
+    }
+
+    // Lấy tin nhắn chưa đọc
+    getUnreadMessages() {
+        return this._prepareRequest('/app/get-unread');
+    }
+
+    // Lấy số lượng tin nhắn chưa đọc
+    getUnreadMessagesCount() {
+        return this._prepareRequest('/app/get-unread-count');
+    }
+
+    // Đánh dấu tin nhắn đã đọc
     sendReadReceipt(messageId, senderId) {
-        if (!this.client || !this.client.connected) {
-            return false;
-        }
+        return this._prepareRequest('/app/mark-read', { messageId, senderId });
+    }
 
-        try {
-            const receipt = {
-                messageId: messageId,
-                senderId: senderId
-            };
+    // Đánh dấu tất cả tin nhắn đã đọc
+    markAllMessagesAsRead(senderId, receiverId) {
+        return this._prepareRequest('/app/mark-all-read', { senderId, receiverId });
+    }
 
-            this.client.publish({
-                destination: '/app/mark-read',
-                body: JSON.stringify(receipt),
-                headers: { 'content-type': 'application/json' }
-            });
+    // Lấy danh sách cuộc trò chuyện
+    getConversations() {
+        return this._prepareRequest('/app/get-conversations');
+    }
+
+    // Xóa tin nhắn
+    deleteMessage(messageId, deleteForEveryone = false) {
+        return this._prepareRequest('/app/delete-message', { messageId, deleteForEveryone });
+    }
+
+    // Đánh dấu tin nhắn đã nhận
+    markMessageAsDelivered(messageId) {
+        return this._prepareRequest('/app/mark-delivered', { messageId });
+    }
+
+    // Gửi thông báo đang nhập
+    sendTyping(receiverId, isTyping = true) {
+        return this._prepareRequest('/app/typing', { receiverId, typing: isTyping });
+    }
+
+    // === PHƯƠNG THỨC ĐĂNG KÝ CALLBACK ===
+
+    // Hàm trợ giúp đăng ký callback
+    _registerCallback(mapName, key, callback) {
+        if (typeof callback === 'function') {
+            this.callbackMaps[mapName].set(key, callback);
             return true;
-        } catch (error) {
-            console.error('Error sending read receipt:', error);
-            return false;
         }
+        return false;
     }
 
-    // Đăng ký callback khi nhận tin nhắn mới
-    onMessage(key, callback) {
-        this.messageCallbacks.set(key, callback);
-        console.log(`Registered message callback for key: ${key}`);
+    // Hàm trợ giúp hủy đăng ký callback
+    _unregisterCallback(mapName, key) {
+        return this.callbackMaps[mapName].delete(key);
     }
 
-    // Đăng ký callback khi có thông báo đang nhập
-    onTyping(key, callback) {
-        this.typingCallbacks.set(key, callback);
-    }
+    // Tạo các phương thức đăng ký và hủy đăng ký callback
+    onMessage(key, callback) { return this._registerCallback('message', key, callback); }
+    onMessageHistory(key, callback) { return this._registerCallback('messageHistory', key, callback); }
+    onPaginatedMessages(key, callback) { return this._registerCallback('paginatedMessages', key, callback); }
+    onUnreadMessages(key, callback) { return this._registerCallback('unreadMessages', key, callback); }
+    onUnreadCount(key, callback) { return this._registerCallback('unreadCount', key, callback); }
+    onTyping(key, callback) { return this._registerCallback('typing', key, callback); }
+    onReadReceipt(key, callback) { return this._registerCallback('receipt', key, callback); }
+    onReadSuccess(key, callback) { return this._registerCallback('readSuccess', key, callback); }
+    onReadAllSuccess(key, callback) { return this._registerCallback('readAllSuccess', key, callback); }
+    onConversations(key, callback) { return this._registerCallback('conversations', key, callback); }
+    onDeleteSuccess(key, callback) { return this._registerCallback('deleteSuccess', key, callback); }
+    onDeliveredSuccess(key, callback) { return this._registerCallback('deliveredSuccess', key, callback); }
+    onMessageDeleted(key, callback) { return this._registerCallback('messageDeleted', key, callback); }
 
-    // Đăng ký callback khi có xác nhận đã đọc
-    onReadReceipt(key, callback) {
-        this.receiptCallbacks.set(key, callback);
-    }
+    offMessage(key) { return this._unregisterCallback('message', key); }
+    offMessageHistory(key) { return this._unregisterCallback('messageHistory', key); }
+    offPaginatedMessages(key) { return this._unregisterCallback('paginatedMessages', key); }
+    offUnreadMessages(key) { return this._unregisterCallback('unreadMessages', key); }
+    offUnreadCount(key) { return this._unregisterCallback('unreadCount', key); }
+    offTyping(key) { return this._unregisterCallback('typing', key); }
+    offReadReceipt(key) { return this._unregisterCallback('receipt', key); }
+    offReadSuccess(key) { return this._unregisterCallback('readSuccess', key); }
+    offReadAllSuccess(key) { return this._unregisterCallback('readAllSuccess', key); }
+    offConversations(key) { return this._unregisterCallback('conversations', key); }
+    offDeleteSuccess(key) { return this._unregisterCallback('deleteSuccess', key); }
+    offDeliveredSuccess(key) { return this._unregisterCallback('deliveredSuccess', key); }
+    offMessageDeleted(key) { return this._unregisterCallback('messageDeleted', key); }
 
-    // Đăng ký callback khi có lỗi
+    // Đăng ký callback cho lỗi
     onError(callback) {
-        this.errorCallbacks.add(callback);
-    }
-
-    // Đăng ký callback khi trạng thái kết nối thay đổi
-    onConnectionChange(callback) {
-        this.connectionCallbacks.add(callback);
-        // Gọi callback ngay với trạng thái hiện tại
-        if (callback && this.client) {
-            callback(this.client.connected);
+        if (typeof callback === 'function') {
+            this.errorCallbacks.add(callback);
+            return true;
         }
+        return false;
     }
 
-    // Hủy đăng ký callback khi nhận tin nhắn mới
-    offMessage(key) {
-        this.messageCallbacks.delete(key);
-        console.log(`Unregistered message callback for key: ${key}`);
-    }
-
-    // Hủy đăng ký callback khi có thông báo đang nhập
-    offTyping(key) {
-        this.typingCallbacks.delete(key);
-    }
-
-    // Hủy đăng ký callback khi có xác nhận đã đọc
-    offReadReceipt(key) {
-        this.receiptCallbacks.delete(key);
-    }
-
-    // Hủy đăng ký callback khi có lỗi
+    // Hủy đăng ký callback cho lỗi
     offError(callback) {
-        this.errorCallbacks.delete(callback);
+        return this.errorCallbacks.delete(callback);
     }
 
-    // Hủy đăng ký callback khi trạng thái kết nối thay đổi
+    // Đăng ký callback cho thay đổi trạng thái kết nối
+    onConnectionChange(callback) {
+        if (typeof callback === 'function') {
+            this.connectionCallbacks.add(callback);
+            if (this.client) {
+                callback(this.client.connected);
+            }
+            return true;
+        }
+        return false;
+    }
+
+    // Hủy đăng ký callback cho thay đổi trạng thái kết nối
     offConnectionChange(callback) {
-        this.connectionCallbacks.delete(callback);
+        return this.connectionCallbacks.delete(callback);
     }
 
     // Kiểm tra trạng thái kết nối
@@ -430,11 +357,19 @@ class WebSocketService {
         return this.client && this.client.connected;
     }
 
-    // Phương thức để giúp debug trạng thái kết nối
+    // Phương thức để debug trạng thái kết nối
     getConnectionStatus() {
         if (!this.client) {
             return { status: 'INACTIVE', details: 'Client chưa được khởi tạo' };
         }
+
+        // Tạo đối tượng chứa số lượng callback đã đăng ký
+        const callbackCounts = {};
+        Object.entries(this.callbackMaps).forEach(([key, map]) => {
+            callbackCounts[key] = map.size;
+        });
+        callbackCounts.errors = this.errorCallbacks.size;
+        callbackCounts.connections = this.connectionCallbacks.size;
 
         return {
             status: this.client.connected ? 'CONNECTED' : 'DISCONNECTED',
@@ -442,28 +377,21 @@ class WebSocketService {
                 connected: this.client.connected,
                 currentUserId: this.currentUserId,
                 reconnectAttempts: this.reconnectAttempts,
-                maxReconnectAttempts: this.maxReconnectAttempts,
                 subscriptions: Object.keys(this.subscriptions),
-                callbacksCount: {
-                    messages: this.messageCallbacks.size,
-                    typing: this.typingCallbacks.size,
-                    receipts: this.receiptCallbacks.size,
-                    errors: this.errorCallbacks.size,
-                    connections: this.connectionCallbacks.size
-                }
+                callbacksCount: callbackCounts
             }
         };
     }
 
-    // Force reconnect
+    // Kết nối lại
     async forceReconnect() {
-        console.log('Force reconnecting WebSocket...');
+        console.log('Kết nối lại WebSocket...');
         this.disconnect();
         this.reconnectAttempts = 0;
         return this.connect();
     }
 }
 
-// Tạo và export instance singleton
+// Tạo và export instance
 const webSocketService = new WebSocketService();
 export default webSocketService;

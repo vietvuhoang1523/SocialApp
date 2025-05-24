@@ -4,16 +4,13 @@ import {
     View,
     Text,
     ActivityIndicator,
-    Alert,
     RefreshControl,
     KeyboardAvoidingView,
     Platform,
     FlatList,
-    AppState,
     StyleSheet,
     TouchableOpacity
 } from 'react-native';
-import * as ImagePicker from 'expo-image-picker';
 
 // Components
 import ChatHeader from '../../components/chat/ChatHeader';
@@ -41,8 +38,6 @@ const ChatScreen = ({ route, navigation }) => {
     const flatListRef = useRef(null);
     const lastPollingTimeRef = useRef(Date.now());
     const messagePollingRef = useRef(null);
-    const keyboardShowListener = useRef(null);
-    const keyboardHideListener = useRef(null);
 
     // Tạo chat key một lần để tránh tạo lại trong các dependency
     const chatKey = useMemo(() =>
@@ -62,8 +57,7 @@ const ChatScreen = ({ route, navigation }) => {
         fetchNewMessages,
         onRefresh,
         loadMoreMessages,
-        handleNewWebSocketMessage,
-        lastMessageTimeRef
+        handleNewWebSocketMessage
     } = useMessageManagement(currentUser, user);
 
     // Xử lý kết nối WebSocket và tự động kết nối lại
@@ -124,6 +118,17 @@ const ChatScreen = ({ route, navigation }) => {
 
     // Debug effect để theo dõi WebSocket
     useEffect(() => {
+        // Thiết lập interval để làm mới tin nhắn định kỳ
+        const refreshInterval = setInterval(() => {
+            // Kiểm tra trạng thái kết nối WebSocket
+            if (!wsConnected) {
+                console.log('WebSocket không kết nối, đang làm mới tin nhắn...');
+                fetchNewMessages();
+            }
+        }, 5000); // Làm mới mỗi 5 giây
+        return () => {
+            clearInterval(refreshInterval);
+        };
         console.log('=== ChatScreen WebSocket Debug ===');
         console.log('Current User:', currentUser?.id, currentUser?.username);
         console.log('Chat Partner:', user?.id, user?.username);
@@ -131,9 +136,29 @@ const ChatScreen = ({ route, navigation }) => {
         console.log('Connection Error:', connectionError);
         console.log('Connection Status:', getConnectionStatus());
         console.log('=====================================');
-    }, [currentUser, user, wsConnected, connectionError]);
+    }, [wsConnected, fetchNewMessages]);
 
     // Thiết lập cơ bản và polling khi component được mount
+    // Trong ChatScreen.js
+
+// Thêm useEffect để tự động làm mới tin nhắn
+    useEffect(() => {
+        // Thiết lập interval để làm mới tin nhắn định kỳ
+        const refreshInterval = setInterval(() => {
+            // Kiểm tra trạng thái kết nối WebSocket
+            if (!wsConnected) {
+                console.log('WebSocket không kết nối, đang làm mới tin nhắn...');
+                fetchNewMessages();
+            }
+        }, 5000); // Làm mới mỗi 5 giây
+
+        // Cleanup interval khi component unmount
+        return () => {
+            clearInterval(refreshInterval);
+        };
+    }, [wsConnected, fetchNewMessages]);
+
+// Hoặc tích hợp vào useEffect đã có
     useEffect(() => {
         let isMounted = true;
 
@@ -148,20 +173,20 @@ const ChatScreen = ({ route, navigation }) => {
             markAllMessagesAsRead();
 
             // Thiết lập kiểm tra tin nhắn định kỳ (fallback nếu WebSocket không hoạt động)
-            startMessagePolling();
-        };
+            const startMessagePolling = () => {
+                // Kiểm tra tin nhắn mới mỗi 15 giây
+                messagePollingRef.current = setInterval(() => {
+                    // Chỉ polling khi WebSocket không hoạt động và cách lần cuối cùng ít nhất 15 giây
+                    if (!wsConnected && (Date.now() - lastPollingTimeRef.current > 15000)) {
+                        console.log('WebSocket không hoạt động, kiểm tra tin nhắn mới qua API...');
+                        fetchNewMessages();
+                        lastPollingTimeRef.current = Date.now();
+                    }
+                }, 15000);
+            };
 
-        // Bắt đầu polling để kiểm tra tin nhắn mới (phương án dự phòng)
-        const startMessagePolling = () => {
-            // Kiểm tra tin nhắn mới mỗi 15 giây
-            messagePollingRef.current = setInterval(() => {
-                // Chỉ polling khi WebSocket không hoạt động và cách lần cuối cùng ít nhất 15 giây
-                if (!wsConnected && (Date.now() - lastPollingTimeRef.current > 15000)) {
-                    console.log('WebSocket không hoạt động, kiểm tra tin nhắn mới qua API...');
-                    fetchNewMessages();
-                    lastPollingTimeRef.current = Date.now();
-                }
-            }, 15000);
+            // Bắt đầu polling
+            startMessagePolling();
         };
 
         // Thực hiện thiết lập ban đầu
@@ -177,6 +202,18 @@ const ChatScreen = ({ route, navigation }) => {
             }
         };
     }, [fetchMessages, markAllMessagesAsRead, fetchNewMessages, wsConnected]);
+
+// Tùy chọn: Thêm debug để theo dõi việc nhận tin nhắn
+    useEffect(() => {
+        console.log('=== Danh sách tin nhắn hiện tại ===');
+        console.log(messages.map(msg => ({
+            id: msg.id,
+            content: msg.content,
+            senderId: msg.senderId,
+            createdAt: msg.createdAt,
+            isSending: msg.isSending
+        })));
+    }, [messages]);
 
     // Cập nhật hàm xử lý nhập text để gửi thông báo typing
     const handleMessageTextChange = useCallback((text) => {
@@ -202,8 +239,24 @@ const ChatScreen = ({ route, navigation }) => {
 
     // Gửi tin nhắn
     const sendMessageAction = useCallback(() => {
-        sendMessageHandler(messageText, attachment);
-    }, [sendMessageHandler, messageText, attachment]);
+        // Kiểm tra kết nối WebSocket trước khi gửi
+        if (!wsConnected) {
+            // Thử kết nối lại
+            webSocketService.connect()
+                .then(() => {
+                    // Sau khi kết nối lại, gửi tin nhắn
+                    sendMessageHandler(messageText, attachment);
+                })
+                .catch(error => {
+                    console.error('Không thể kết nối WebSocket:', error);
+                    // Fallback gửi qua REST API
+                    sendMessageHandler(messageText, attachment);
+                });
+        } else {
+            // Nếu đã kết nối, gửi bình thường
+            sendMessageHandler(messageText, attachment);
+        }
+    }, [wsConnected, sendMessageHandler, messageText, attachment]);
 
     // Test WebSocket function
     const testWebSocket = useCallback(() => {

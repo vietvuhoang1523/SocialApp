@@ -144,35 +144,39 @@ const useMessageManagement = (currentUser, user) => {
         console.log('Nhận tin nhắn mới qua WebSocket:', newMessage);
 
         // Kiểm tra xem tin nhắn có thuộc cuộc trò chuyện hiện tại không
-        if (
-            !newMessage ||
-            !((newMessage.senderId === user?.id && newMessage.receiverId === currentUser?.id) ||
-                (newMessage.senderId === currentUser?.id && newMessage.receiverId === user?.id))
-        ) {
+        const isMessageForCurrentChat =
+            (newMessage.senderId === user?.id && newMessage.receiverId === currentUser?.id) ||
+            (newMessage.senderId === currentUser?.id && newMessage.receiverId === user?.id);
+
+        if (!isMessageForCurrentChat) {
+            console.log('Tin nhắn không thuộc cuộc trò chuyện hiện tại');
             return;
         }
 
         setMessages(prevMessages => {
             // Kiểm tra xem tin nhắn đã tồn tại chưa
-            const messageExists = prevMessages.some(msg => msg.id === newMessage.id);
-
-            // Kiểm tra xem có tin nhắn tạm thời đang gửi không
-            const tempIndex = prevMessages.findIndex(msg =>
-                msg.id.startsWith('temp-') &&
-                msg.content === newMessage.content &&
-                msg.senderId === newMessage.senderId
+            const messageExists = prevMessages.some(msg =>
+                msg.id === newMessage.id ||
+                (msg.content === newMessage.content &&
+                    msg.senderId === newMessage.senderId &&
+                    msg.createdAt === newMessage.createdAt)
             );
 
-            if (tempIndex >= 0) {
-                // Thay thế tin nhắn tạm thời bằng tin nhắn thật
-                const updatedMessages = [...prevMessages];
-                updatedMessages[tempIndex] = newMessage;
-                return updatedMessages;
-            } else if (!messageExists) {
-                // Cập nhật thời gian tin nhắn mới nhất
-                lastMessageTimeRef.current = newMessage.createdAt;
+            // Nếu tin nhắn chưa tồn tại, thêm vào
+            if (!messageExists) {
+                console.log('Thêm tin nhắn mới vào danh sách');
 
-                // Thêm tin nhắn mới
+                // Cập nhật thời gian tin nhắn mới nhất
+                if (lastMessageTimeRef.current) {
+                    const newMessageTime = new Date(newMessage.createdAt);
+                    const lastMessageTime = new Date(lastMessageTimeRef.current);
+
+                    if (newMessageTime > lastMessageTime) {
+                        lastMessageTimeRef.current = newMessage.createdAt;
+                    }
+                }
+
+                // Thêm tin nhắn mới vào đầu danh sách
                 return [newMessage, ...prevMessages];
             }
 

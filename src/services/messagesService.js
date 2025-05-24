@@ -1,18 +1,42 @@
-// MessagesService.js - Cập nhật
+// MessagesService.js - Phiên bản đơn giản tích hợp với WebSocketService
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { BASE_URL, DEFAULT_TIMEOUT, DEFAULT_HEADERS } from './api';
 import webSocketService from './WebSocketService';
+
 class MessagesService {
     constructor() {
-        // Cập nhật baseURL để phù hợp với API của backend
+        // Khởi tạo API client
         this.api = axios.create({
             baseURL: `${BASE_URL}/messages`,
             timeout: DEFAULT_TIMEOUT,
-            headers: DEFAULT_HEADERS,
+            headers: DEFAULT_HEADERS
         });
 
-        // Thêm interceptor để gắn token vào mỗi request
+        // Thiết lập interceptors
+        this._setupInterceptors();
+
+        // Khởi tạo cache cho tin nhắn
+        this.messagesCache = new Map();
+
+        // Khởi tạo các Map callback
+        this.callbacks = {
+            newMessage: new Map(),
+            messageHistory: new Map(),
+            paginatedMessages: new Map(),
+            unreadMessages: new Map(),
+            messageStatus: new Map()
+        };
+
+        // Đăng ký WebSocket callbacks nếu có WebSocketService
+        if (webSocketService) {
+            this._registerWebSocketCallbacks();
+        }
+    }
+
+    // Thiết lập interceptors
+    _setupInterceptors() {
+        // Request interceptor để thêm token
         this.api.interceptors.request.use(
             async (config) => {
                 try {
@@ -22,77 +46,39 @@ class MessagesService {
                     if (token) {
                         config.headers.Authorization = `${tokenType} ${token}`;
                     }
-
-                    console.log('Request URL:', config.baseURL + config.url);
-                    console.log('Request Headers:', JSON.stringify(config.headers));
-
-                    return config;
                 } catch (error) {
-                    console.error('Error setting auth token:', error);
-                    return config;
+                    console.error('Lỗi khi thiết lập token:', error);
                 }
+                return config;
             },
-            (error) => {
-                return Promise.reject(error);
-            }
+            (error) => Promise.reject(error)
         );
 
-        // Interceptor để xử lý phản hồi và lỗi
+        // Response interceptor để xử lý phản hồi và refresh token khi cần
         this.api.interceptors.response.use(
             (response) => {
-                console.log('Response Status:', response.status);
-                // Ghi log dữ liệu phản hồi một cách an toàn
-                try {
-                    const logData = typeof response.data === 'object'
-                        ? JSON.stringify(response.data).substring(0, 200) + '...'
-                        : response.data;
-                    console.log('Response Data:', logData);
-                } catch (e) {
-                    console.log('Response Data: [Unable to stringify]');
-                }
-
-                // Xử lý định dạng dữ liệu trả về
-                if (response.data && response.data.data) {
-                    // Nếu dữ liệu được đóng gói trong field "data"
-                    return response.data.data;
-                }
-                return response.data;
+                return response.data?.data !== undefined ? response.data.data : response.data;
             },
             async (error) => {
-                console.error('API Error:', error);
+                if (error.response?.status === 401) {
+                    try {
+                        if (!error.config._retry) {
+                            error.config._retry = true;
+                            const refreshToken = await AsyncStorage.getItem('refreshToken');
+                            if (refreshToken) {
+                                const newTokenResponse = await this.refreshToken(refreshToken);
+                                const newToken = newTokenResponse.token || newTokenResponse.data?.token;
 
-                if (error.response) {
-                    console.error('Error status:', error.response.status);
-                    console.error('Error data:', error.response.data);
-
-                    // Kiểm tra lỗi 401 (Unauthorized)
-                    if (error.response.status === 401) {
-                        // Thử refresh token
-                        try {
-                            const originalRequest = error.config;
-                            if (!originalRequest._retry) {
-                                originalRequest._retry = true;
-
-                                // Gọi API refresh token
-                                const refreshToken = await AsyncStorage.getItem('refreshToken');
-                                if (refreshToken) {
-                                    const response = await this.refreshToken(refreshToken);
-
-                                    // Lưu token mới
-                                    const newToken = response.token || response.data?.token;
-                                    if (newToken) {
-                                        await AsyncStorage.setItem('accessToken', newToken);
-
-                                        // Thử lại request với token mới
-                                        originalRequest.headers.Authorization = `Bearer ${newToken}`;
-                                        return this.api(originalRequest);
-                                    }
+                                if (newToken) {
+                                    await AsyncStorage.setItem('accessToken', newToken);
+                                    error.config.headers.Authorization = `Bearer ${newToken}`;
+                                    return this.api(error.config);
                                 }
                             }
-                        } catch (refreshError) {
-                            console.error('Token refresh failed:', refreshError);
-                            global.authExpired = true;
                         }
+                    } catch (refreshError) {
+                        console.error('Refresh token thất bại:', refreshError);
+                        global.authExpired = true;
                     }
                 }
 
@@ -101,50 +87,174 @@ class MessagesService {
         );
     }
 
-    /**
-     * Làm mới token
-     * @param {string} refreshToken - Token làm mới
-     * @returns {Promise} - Token mới
-     */
-    async refreshToken(refreshToken) {
-        const response = await axios.post(`${BASE_URL}/api/auth/refresh-token`, {
-            refreshToken
-        }, {
-            headers: DEFAULT_HEADERS
-        });
-
-        return response.data;
+    // Đăng ký callbacks với WebSocket
+    _registerWebSocketCallbacks() {
+        webSocketService.onMessage('messagesService', this._handleNewMessage.bind(this));
+        webSocketService.onMessageHistory('messagesService', this._handleMessageHistory.bind(this));
+        webSocketService.onPaginatedMessages('messagesService', this._handlePaginatedMessages.bind(this));
+        webSocketService.onUnreadMessages('messagesService', this._handleUnreadMessages.bind(this));
+        webSocketService.onReadReceipt('messagesService', this._handleReadReceipt.bind(this));
+        webSocketService.onMessageDeleted('messagesService', this._handleMessageDeleted.bind(this));
     }
 
-    /**
-     * Lấy danh sách tin nhắn giữa hai người dùng
-     * @param {number} user1Id - ID người dùng thứ nhất
-     * @param {number} user2Id - ID người dùng thứ hai
-     * @returns {Promise} - Danh sách tin nhắn
-     */
+    // Handler cho các sự kiện WebSocket
+    _handleNewMessage(message) {
+        if (!message?.id) return;
+        this._cacheMessage(message);
+        this._notifyCallbacks('newMessage', this.normalizeMessage(message));
+    }
+
+    _handleMessageHistory(messages) {
+        if (!Array.isArray(messages)) return;
+        messages.forEach(msg => this._cacheMessage(msg));
+        this._notifyCallbacks('messageHistory', this.normalizeMessages(messages));
+    }
+
+    _handlePaginatedMessages(pagedMessages) {
+        if (!pagedMessages?.content) return;
+        if (Array.isArray(pagedMessages.content)) {
+            pagedMessages.content.forEach(msg => this._cacheMessage(msg));
+        }
+        this._notifyCallbacks('paginatedMessages', this.normalizePagedMessages(pagedMessages));
+    }
+
+    _handleUnreadMessages(messages) {
+        if (!Array.isArray(messages)) return;
+        messages.forEach(msg => this._cacheMessage(msg));
+        this._notifyCallbacks('unreadMessages', this.normalizeMessages(messages));
+    }
+
+    _handleReadReceipt(receipt) {
+        if (!receipt?.messageId) return;
+
+        const message = this.messagesCache.get(receipt.messageId);
+        if (message) {
+            message.read = true;
+            this.messagesCache.set(receipt.messageId, message);
+        }
+
+        this._notifyCallbacks('messageStatus', {
+            messageId: receipt.messageId,
+            status: 'read',
+            timestamp: receipt.readTime
+        });
+    }
+
+    _handleMessageDeleted(data) {
+        if (!data?.messageId) return;
+
+        const message = this.messagesCache.get(data.messageId);
+        if (message) {
+            message.deleted = true;
+            message.deletedForAll = data.deleteForEveryone;
+            this.messagesCache.set(data.messageId, message);
+        }
+
+        this._notifyCallbacks('messageStatus', {
+            messageId: data.messageId,
+            status: 'deleted',
+            deleteForEveryone: data.deleteForEveryone
+        });
+    }
+
+    // Thông báo cho các callbacks đã đăng ký
+    _notifyCallbacks(type, data) {
+        if (!this.callbacks[type]) return;
+
+        this.callbacks[type].forEach(callback => {
+            try {
+                callback(data);
+            } catch (e) {
+                console.error(`Lỗi trong callback ${type}:`, e);
+            }
+        });
+    }
+
+    // Lưu tin nhắn vào cache
+    _cacheMessage(message) {
+        if (!message?.id) return;
+        this.messagesCache.set(message.id, message);
+    }
+
+    // Phương thức để tạo Promise đợi kết quả từ WebSocket
+    _createWebSocketPromise(callbackType, tempKey, timeout = 5000) {
+        return new Promise((resolve, reject) => {
+            const timeoutId = setTimeout(() => {
+                this.callbacks[callbackType].delete(tempKey);
+                reject(new Error('Timeout chờ phản hồi WebSocket'));
+            }, timeout);
+
+            this.callbacks[callbackType].set(tempKey, (result) => {
+                clearTimeout(timeoutId);
+                this.callbacks[callbackType].delete(tempKey);
+                resolve(result);
+            });
+        });
+    }
+
+    // PUBLIC METHODS
+
+    // Đăng ký/hủy đăng ký callbacks
+    onNewMessage(key, callback) { this.callbacks.newMessage.set(key, callback); }
+    onMessageHistory(key, callback) { this.callbacks.messageHistory.set(key, callback); }
+    onPaginatedMessages(key, callback) { this.callbacks.paginatedMessages.set(key, callback); }
+    onUnreadMessages(key, callback) { this.callbacks.unreadMessages.set(key, callback); }
+    onMessageStatus(key, callback) { this.callbacks.messageStatus.set(key, callback); }
+
+    offNewMessage(key) { this.callbacks.newMessage.delete(key); }
+    offMessageHistory(key) { this.callbacks.messageHistory.delete(key); }
+    offPaginatedMessages(key) { this.callbacks.paginatedMessages.delete(key); }
+    offUnreadMessages(key) { this.callbacks.unreadMessages.delete(key); }
+    offMessageStatus(key) { this.callbacks.messageStatus.delete(key); }
+
+    // Phương thức API với WebSocket + fallback
+
+    // Lấy tin nhắn giữa hai người dùng
     async getMessagesBetweenUsers(user1Id, user2Id) {
         try {
-            console.log(`Đang lấy tin nhắn giữa người dùng ${user1Id} và ${user2Id}`);
+            // Thử dùng WebSocket
+            if (webSocketService?.isConnected()) {
+                try {
+                    // Tạo promise để đợi kết quả
+                    const promise = this._createWebSocketPromise('messageHistory', 'temp_history');
 
+                    // Gửi yêu cầu qua WebSocket
+                    if (webSocketService.getMessagesBetweenUsers(user1Id, user2Id)) {
+                        return await promise;
+                    }
+                } catch (wsError) {
+                    console.log('Fallback to REST API:', wsError);
+                }
+            }
+
+            // Fallback sang REST API
             const response = await this.api.get(`/${user1Id}/${user2Id}`);
-            return this.normalizeMessages(response);
+            const messages = this.normalizeMessages(response);
+            messages.forEach(msg => this._cacheMessage(msg));
+            return messages;
         } catch (error) {
-            console.error('Lỗi khi lấy tin nhắn giữa hai người dùng:', error);
+            console.error('Lỗi khi lấy tin nhắn:', error);
             throw this.normalizeError(error);
         }
     }
 
-    /**
-     * Lấy danh sách tin nhắn giữa hai người dùng có phân trang
-     * @param {number} user1Id - ID người dùng thứ nhất
-     * @param {number} user2Id - ID người dùng thứ hai
-     * @param {Object} pagination - Thông tin phân trang
-     * @returns {Promise} - Danh sách tin nhắn phân trang
-     */
+    // Lấy tin nhắn phân trang
     async getMessagesBetweenUsersPaginated(user1Id, user2Id, pagination = {}) {
         try {
-            console.log(`Đang lấy tin nhắn phân trang giữa người dùng ${user1Id} và ${user2Id}`);
+            // Thử dùng WebSocket
+            if (webSocketService?.isConnected()) {
+                try {
+                    const promise = this._createWebSocketPromise('paginatedMessages', 'temp_paginated');
 
+                    if (webSocketService.getMessagesBetweenUsersPaginated(user1Id, user2Id, pagination)) {
+                        return await promise;
+                    }
+                } catch (wsError) {
+                    console.log('Fallback to REST API:', wsError);
+                }
+            }
+
+            // Fallback sang REST API
             const params = {
                 page: pagination.page || 0,
                 size: pagination.size || 20,
@@ -153,116 +263,130 @@ class MessagesService {
             };
 
             const response = await this.api.get(`/${user1Id}/${user2Id}/paginated`, { params });
-            return this.normalizePagedMessages(response);
+            const pagedMessages = this.normalizePagedMessages(response);
+            if (pagedMessages.content) {
+                pagedMessages.content.forEach(msg => this._cacheMessage(msg));
+            }
+            return pagedMessages;
         } catch (error) {
             console.error('Lỗi khi lấy tin nhắn phân trang:', error);
             throw this.normalizeError(error);
         }
     }
 
-    /**
-     * Gửi tin nhắn mới
-     * @param {Object} messageData - Dữ liệu tin nhắn (content, senderId, receiverId)
-     * @returns {Promise} - Tin nhắn đã gửi
-     */
-    // Cập nhật phương thức sendMessage để sử dụng WebSocket khi có thể
+    // Gửi tin nhắn mới
     async sendMessage(messageData) {
         try {
-            console.log('Đang gửi tin nhắn:', messageData);
-
-            // Lấy thông tin user hiện tại từ AsyncStorage
+            // Lấy thông tin user hiện tại
             const userData = await AsyncStorage.getItem('userData');
             const currentUser = userData ? JSON.parse(userData) : null;
 
-            // Tạo payload phù hợp với MessageRequest của backend
+            // Tạo payload
             const payload = {
                 content: messageData.content || '',
                 receiverId: messageData.receiverId,
                 attachmentUrl: messageData.attachmentUrl || null
             };
 
-            // Ưu tiên gửi qua WebSocket
-            if (webSocketService.isConnected()) {
-                const success = webSocketService.sendMessage(payload);
+            // Tạo tin nhắn tạm thời
+            const tempMessage = {
+                id: `temp-${Date.now()}`,
+                content: payload.content,
+                senderId: currentUser?.id || messageData.senderId,
+                receiverId: payload.receiverId,
+                createdAt: new Date().toISOString(),
+                read: false,
+                delivered: false,
+                attachmentUrl: payload.attachmentUrl,
+                isSending: true
+            };
 
-                if (success) {
-                    // Trả về tin nhắn tạm thời để hiển thị ngay lập tức
-                    return this.normalizeMessage({
-                        ...payload,
-                        id: `temp-${Date.now()}`,
-                        senderId: currentUser?.id,
-                        createdAt: new Date().toISOString(),
-                        isSending: true
-                    });
-                }
+            // Cache và thông báo tin nhắn tạm thời
+            this._cacheMessage(tempMessage);
+            this._notifyCallbacks('newMessage', tempMessage);
+
+            // Thử gửi qua WebSocket
+            if (webSocketService?.isConnected() && webSocketService.sendMessage(payload)) {
+                return tempMessage;
             }
 
-            // Fallback về REST API nếu WebSocket không hoạt động
+            // Fallback sang REST API
             const response = await this.api.post('', payload);
-            return this.normalizeMessage(response);
+            const savedMessage = this.normalizeMessage(response);
 
+            // Cache tin nhắn đã lưu
+            this._cacheMessage(savedMessage);
+
+            // Thông báo cập nhật tin nhắn tạm thời
+            this._notifyCallbacks('messageStatus', {
+                messageId: tempMessage.id,
+                status: 'saved',
+                newMessageId: savedMessage.id,
+                newMessage: savedMessage
+            });
+
+            return savedMessage;
         } catch (error) {
             console.error('Lỗi khi gửi tin nhắn:', error);
+
+            // Thông báo lỗi
+            this._notifyCallbacks('messageStatus', {
+                messageId: `temp-${Date.now()}`,
+                status: 'error',
+                error: error
+            });
+
             throw this.normalizeError(error);
         }
     }
 
-    /**
-     * Lấy tin nhắn chưa đọc của người dùng
-     * @param {number} userId - ID người dùng
-     * @returns {Promise} - Danh sách tin nhắn chưa đọc
-     */
+    // Lấy tin nhắn chưa đọc
     async getUnreadMessages(userId) {
         try {
-            console.log(`Đang lấy tin nhắn chưa đọc của người dùng ${userId}`);
+            // Thử dùng WebSocket
+            if (webSocketService?.isConnected()) {
+                try {
+                    const promise = this._createWebSocketPromise('unreadMessages', 'temp_unread');
 
+                    if (webSocketService.getUnreadMessages()) {
+                        return await promise;
+                    }
+                } catch (wsError) {
+                    console.log('Fallback to REST API:', wsError);
+                }
+            }
+
+            // Fallback sang REST API
             const response = await this.api.get(`/unread/${userId}`);
-            return this.normalizeMessages(response);
+            const messages = this.normalizeMessages(response);
+            messages.forEach(msg => this._cacheMessage(msg));
+            return messages;
         } catch (error) {
             console.error('Lỗi khi lấy tin nhắn chưa đọc:', error);
             throw this.normalizeError(error);
         }
     }
 
-    /**
-     * Lấy số lượng tin nhắn chưa đọc
-     * @param {number} userId - ID người dùng
-     * @returns {Promise<number>} - Số lượng tin nhắn chưa đọc
-     */
-    async getUnreadMessagesCount(userId) {
-        try {
-            console.log(`Đang lấy số lượng tin nhắn chưa đọc của người dùng ${userId}`);
-
-            const response = await this.api.get(`/unread-count/${userId}`);
-            return response.count || 0;
-        } catch (error) {
-            console.error('Lỗi khi lấy số lượng tin nhắn chưa đọc:', error);
-            return 0; // Trả về 0 nếu có lỗi
-        }
-    }
-
-    /**
-     * Đánh dấu tin nhắn đã đọc
-     * @param {string} messageId - ID tin nhắn
-     * @returns {Promise} - Kết quả
-     */
-    // Cập nhật phương thức markMessageAsRead để sử dụng WebSocket
+    // Đánh dấu tin nhắn đã đọc
     async markMessageAsRead(messageId) {
         try {
-            console.log(`Đang đánh dấu tin nhắn ${messageId} là đã đọc`);
+            // Lấy thông tin message
+            const message = this.messagesCache.get(messageId) || await this.getMessageById(messageId);
 
-            // Lấy thông tin về message từ cache hoặc state
-            const message = await this.getMessageById(messageId);
+            // Cập nhật cache
+            if (message) {
+                message.read = true;
+                this._cacheMessage(message);
+            }
 
-            // Nếu có thông tin về người gửi, gửi read receipt qua WebSocket
-            if (message && message.senderId) {
-                const sentViaWebSocket = webSocketService.sendReadReceipt(messageId, message.senderId);
-                if (sentViaWebSocket) {
+            // Thử dùng WebSocket
+            if (message?.senderId && webSocketService?.isConnected()) {
+                if (webSocketService.sendReadReceipt(messageId, message.senderId)) {
                     return true;
                 }
             }
 
-            // Fallback về REST API nếu cần
+            // Fallback sang REST API
             await this.api.put(`/${messageId}/read`);
             return true;
         } catch (error) {
@@ -270,31 +394,37 @@ class MessagesService {
             throw this.normalizeError(error);
         }
     }
-    // Thêm hàm mới để lấy tin nhắn theo ID (có thể cần cache để làm việc này)
-    async getMessageById(messageId) {
-        // Thực hiện từ cache nếu có
-        // Hoặc gọi API để lấy thông tin message
-        // Đây là implementation đơn giản
-        try {
-            const response = await this.api.get(`/${messageId}`);
-            return this.normalizeMessage(response);
-        } catch (error) {
-            console.error(`Lỗi khi lấy tin nhắn ID ${messageId}:`, error);
-            return null;
-        }
-    }
 
-
-    /**
-     * Đánh dấu tất cả tin nhắn giữa hai người dùng là đã đọc
-     * @param {number} senderId - ID người gửi
-     * @param {number} receiverId - ID người nhận
-     * @returns {Promise} - Kết quả
-     */
+    // Đánh dấu tất cả tin nhắn đã đọc
     async markAllMessagesAsRead(senderId, receiverId) {
         try {
-            console.log(`Đang đánh dấu tất cả tin nhắn giữa ${senderId} và ${receiverId} là đã đọc`);
+            // Thử dùng WebSocket
+            if (webSocketService?.isConnected()) {
+                try {
+                    // Tạo đối tượng Promise
+                    const promise = new Promise((resolve, reject) => {
+                        const timeoutId = setTimeout(() => {
+                            webSocketService.offReadAllSuccess('temp_read_all');
+                            reject(new Error('Timeout'));
+                        }, 5000);
 
+                        webSocketService.onReadAllSuccess('temp_read_all', (result) => {
+                            clearTimeout(timeoutId);
+                            webSocketService.offReadAllSuccess('temp_read_all');
+                            resolve(result);
+                        });
+                    });
+
+                    if (webSocketService.markAllMessagesAsRead(senderId, receiverId)) {
+                        await promise;
+                        return true;
+                    }
+                } catch (wsError) {
+                    console.log('Fallback to REST API:', wsError);
+                }
+            }
+
+            // Fallback sang REST API
             await this.api.put(`/${senderId}/${receiverId}/read-all`);
             return true;
         } catch (error) {
@@ -303,33 +433,43 @@ class MessagesService {
         }
     }
 
-    /**
-     * Đánh dấu tin nhắn đã nhận
-     * @param {string} messageId - ID tin nhắn
-     * @returns {Promise} - Kết quả
-     */
-    async markMessageAsDelivered(messageId) {
-        try {
-            console.log(`Đang đánh dấu tin nhắn ${messageId} là đã nhận`);
-
-            await this.api.put(`/${messageId}/delivered`);
-            return true;
-        } catch (error) {
-            console.error('Lỗi khi đánh dấu tin nhắn đã nhận:', error);
-            return false; // Trả về false nếu có lỗi
-        }
-    }
-
-    /**
-     * Xóa tin nhắn
-     * @param {string} messageId - ID tin nhắn
-     * @param {boolean} deleteForEveryone - Xóa cho tất cả (true) hoặc chỉ cho bản thân (false)
-     * @returns {Promise} - Kết quả
-     */
+    // Xóa tin nhắn
     async deleteMessage(messageId, deleteForEveryone = false) {
         try {
-            console.log(`Đang xóa tin nhắn ${messageId}, xóa cho tất cả: ${deleteForEveryone}`);
+            // Cập nhật cache
+            const message = this.messagesCache.get(messageId);
+            if (message) {
+                message.deleted = true;
+                message.deletedForAll = deleteForEveryone;
+                this._cacheMessage(message);
+            }
 
+            // Thử dùng WebSocket
+            if (webSocketService?.isConnected()) {
+                try {
+                    const promise = new Promise((resolve, reject) => {
+                        const timeoutId = setTimeout(() => {
+                            webSocketService.offDeleteSuccess('temp_delete');
+                            reject(new Error('Timeout'));
+                        }, 5000);
+
+                        webSocketService.onDeleteSuccess('temp_delete', (result) => {
+                            clearTimeout(timeoutId);
+                            webSocketService.offDeleteSuccess('temp_delete');
+                            resolve(result);
+                        });
+                    });
+
+                    if (webSocketService.deleteMessage(messageId, deleteForEveryone)) {
+                        await promise;
+                        return true;
+                    }
+                } catch (wsError) {
+                    console.log('Fallback to REST API:', wsError);
+                }
+            }
+
+            // Fallback sang REST API
             await this.api.delete(`/${messageId}?deleteForEveryone=${deleteForEveryone}`);
             return true;
         } catch (error) {
@@ -338,39 +478,52 @@ class MessagesService {
         }
     }
 
-    // Phương thức hỗ trợ chuẩn hóa dữ liệu
+    // Lấy tin nhắn theo ID
+    async getMessageById(messageId) {
+        // Kiểm tra cache trước
+        const cachedMessage = this.messagesCache.get(messageId);
+        if (cachedMessage) return cachedMessage;
 
-    /**
-     * Chuẩn hóa danh sách tin nhắn
-     * @param {Array|Object} response - Phản hồi từ API
-     * @returns {Array} - Danh sách tin nhắn đã chuẩn hóa
-     */
+        // Gọi API nếu không có trong cache
+        try {
+            const response = await this.api.get(`/${messageId}`);
+            const message = this.normalizeMessage(response);
+            this._cacheMessage(message);
+            return message;
+        } catch (error) {
+            console.error(`Lỗi khi lấy tin nhắn ID ${messageId}:`, error);
+            return null;
+        }
+    }
+
+    // Refresh token
+    async refreshToken(refreshToken) {
+        const response = await axios.post(`${BASE_URL}/api/auth/refresh-token`,
+            { refreshToken },
+            { headers: DEFAULT_HEADERS }
+        );
+        return response.data;
+    }
+
+    // CÁC PHƯƠNG THỨC CHUẨN HÓA DỮ LIỆU
+
     normalizeMessages(response) {
-        // Kiểm tra và chuyển đổi response thành mảng
         let messages = [];
 
         if (Array.isArray(response)) {
             messages = response;
-        } else if (response && response.content && Array.isArray(response.content)) {
+        } else if (response?.content && Array.isArray(response.content)) {
             messages = response.content;
         } else if (response && typeof response === 'object') {
-            // Trường hợp response là object duy nhất
             messages = [response];
         }
 
-        // Chuẩn hóa từng tin nhắn
         return messages.map(msg => this.normalizeMessage(msg));
     }
 
-    /**
-     * Chuẩn hóa dữ liệu tin nhắn có phân trang
-     * @param {Object} response - Phản hồi từ API
-     * @returns {Object} - Dữ liệu tin nhắn phân trang đã chuẩn hóa
-     */
     normalizePagedMessages(response) {
         if (!response) return { content: [], last: true, totalElements: 0 };
 
-        // Xử lý trường hợp response có cấu trúc Spring Data Page
         if (response.content && Array.isArray(response.content)) {
             return {
                 content: this.normalizeMessages(response.content),
@@ -382,7 +535,6 @@ class MessagesService {
             };
         }
 
-        // Xử lý trường hợp response là mảng đơn giản
         if (Array.isArray(response)) {
             return {
                 content: this.normalizeMessages(response),
@@ -394,19 +546,12 @@ class MessagesService {
             };
         }
 
-        // Trường hợp không xác định
         return { content: [], last: true, totalElements: 0 };
     }
 
-    /**
-     * Chuẩn hóa dữ liệu tin nhắn đơn
-     * @param {Object} message - Tin nhắn từ API
-     * @returns {Object} - Tin nhắn đã chuẩn hóa
-     */
     normalizeMessage(message) {
         if (!message) return null;
 
-        // Đảm bảo các trường cần thiết tồn tại
         return {
             id: message.id || `temp-${Date.now()}`,
             content: message.content || '',
@@ -417,18 +562,13 @@ class MessagesService {
             delivered: message.delivered || false,
             attachmentUrl: message.attachmentUrl || null,
             attachmentType: message.attachmentType || null,
-            deletedForAll: message.deletedForAll || false
+            deletedForAll: message.deletedForAll || false,
+            isSending: message.isSending || false
         };
     }
 
-    /**
-     * Chuẩn hóa lỗi
-     * @param {Error} error - Lỗi gốc
-     * @returns {Error} - Lỗi đã chuẩn hóa
-     */
     normalizeError(error) {
-        if (error.response && error.response.data) {
-            // Trích xuất thông báo lỗi từ phản hồi
+        if (error.response?.data) {
             const errorMessage = error.response.data.message ||
                 error.response.data.error ||
                 'Đã xảy ra lỗi khi gọi API';
@@ -439,15 +579,13 @@ class MessagesService {
             return customError;
         }
 
-        // Nếu là lỗi network
         if (error.request) {
-            const networkError = new Error('Không thể kết nối đến server. Vui lòng kiểm tra kết nối internet của bạn.');
+            const networkError = new Error('Không thể kết nối đến server. Vui lòng kiểm tra kết nối internet.');
             networkError.isNetworkError = true;
             networkError.originalError = error;
             return networkError;
         }
 
-        // Lỗi khác
         return error;
     }
 }
