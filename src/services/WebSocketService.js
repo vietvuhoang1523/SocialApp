@@ -11,6 +11,12 @@ class WebSocketService {
         this.reconnectAttempts = 0;
         this.maxReconnectAttempts = 5;
         this.subscriptions = {};
+        // Thêm biến theo dõi tin nhắn đã gửi để tránh trùng lặp
+        this.sentMessages = new Map();
+        this.messageDeduplicationWindow = 3000; // 3 giây
+
+        // Thêm biến theo dõi tin nhắn đã nhận
+        this.receivedMessages = new Map();
 
         // Tạo Map lưu trữ các callback
         this.callbackMaps = {
@@ -210,12 +216,55 @@ class WebSocketService {
 
     // Gửi tin nhắn mới
     sendMessage(message) {
-        const payload = {
-            content: message.content || '',
-            receiverId: message.receiverId,
-            attachmentUrl: message.attachmentUrl || null
-        };
-        return this._prepareRequest('/app/send', payload);
+        if (!this.client || !this.client.connected) {
+            console.warn('WebSocket chưa kết nối, không thể gửi tin nhắn');
+            return false;
+        }
+
+        try {
+            // Tạo mã băm đơn giản để nhận dạng tin nhắn
+            const messageHash = `${message.content || ''}_${message.receiverId}_${Date.now()}`;
+
+            // Kiểm tra xem tin nhắn này đã được gửi gần đây chưa
+            for (const [hash, timestamp] of this.sentMessages.entries()) {
+                // Nếu nội dung giống nhau và người nhận giống nhau
+                if (hash.startsWith(`${message.content || ''}_${message.receiverId}`)) {
+                    // Và thời gian gửi gần nhau (trong vòng 3 giây)
+                    if (Date.now() - timestamp < this.messageDeduplicationWindow) {
+                        console.warn('Phát hiện tin nhắn trùng lặp, bỏ qua:', message);
+                        return false;
+                    }
+                }
+            }
+
+            // Chuẩn bị payload
+            const payload = {
+                content: message.content || '',
+                receiverId: message.receiverId,
+                attachmentUrl: message.attachmentUrl || null,
+                _requestId: message._requestId || `req_${Date.now()}`
+            };
+
+            // Gửi tin nhắn
+            this.client.publish({
+                destination: '/app/send',
+                body: JSON.stringify(payload),
+                headers: { 'content-type': 'application/json' }
+            });
+
+            // Lưu tin nhắn vào cache để tránh gửi trùng lặp
+            this.sentMessages.set(messageHash, Date.now());
+
+            // Xóa các tin nhắn cũ từ cache sau một khoảng thời gian
+            setTimeout(() => {
+                this.sentMessages.delete(messageHash);
+            }, this.messageDeduplicationWindow * 2);
+
+            return true;
+        } catch (error) {
+            console.error('Lỗi khi gửi tin nhắn qua WebSocket:', error);
+            return false;
+        }
     }
 
     // Lấy tin nhắn giữa hai người dùng

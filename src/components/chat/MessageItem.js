@@ -1,4 +1,3 @@
-// src/components/chat/MessageItem.js
 import React, { memo } from 'react';
 import {
     View,
@@ -9,7 +8,6 @@ import {
     ActivityIndicator
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import ImageService from '../../services/ImageService';
 
 const MessageItem = ({
                          item,
@@ -19,163 +17,144 @@ const MessageItem = ({
                          resendMessage,
                          navigation
                      }) => {
-    const isCurrentUser = item.senderId === currentUser?.id;
+    const isOwn = item.senderId === currentUser?.id;
+
+    const getAvatarSource = () => {
+        if (chatPartner?.profilePicture) {
+            return { uri: chatPartner.profilePicture };
+        }
+        return { uri: 'https://randomuser.me/api/portraits/men/1.jpg' };
+    };
+
+    const MessageStatus = () => {
+        if (item.isSending) {
+            return <ActivityIndicator size="small" color={isOwn ? "#FFF" : "#0084FF"} />;
+        }
+
+        if (item.isError) {
+            return (
+                <TouchableOpacity onPress={() => resendMessage(item)}>
+                    <Icon name="refresh" size={16} color="#FF3B30" />
+                </TouchableOpacity>
+            );
+        }
+
+        return null;
+    };
 
     return (
-        <View style={[
-            styles.messageContainer,
-            isCurrentUser ? styles.sentMessageContainer : styles.receivedMessageContainer
-        ]}>
-            {!isCurrentUser && (
-                <Image
-                    source={
-                        chatPartner?.profilePicture
-                            ? ImageService.getProfileImageSource(chatPartner.profilePicture)
-                            : { uri: 'https://randomuser.me/api/portraits/men/1.jpg' }
-                    }
-                    style={styles.messageBubbleAvatar}
-                />
+        <View style={[styles.container, isOwn ? styles.ownMessage : styles.otherMessage]}>
+            {!isOwn && (
+                <Image source={getAvatarSource()} style={styles.avatar} />
             )}
+
             <View style={[
-                styles.messageBubble,
-                isCurrentUser ? styles.sentMessageBubble : styles.receivedMessageBubble,
-                item.isSending && styles.sendingMessageBubble,
-                item.isError && styles.errorMessageBubble
+                styles.bubble,
+                isOwn ? styles.ownBubble : styles.otherBubble,
+                item.isSending && styles.sendingBubble,
+                item.isError && styles.errorBubble
             ]}>
-                {/* Hiển thị hình ảnh đính kèm nếu có */}
                 {item.attachmentUrl && (
                     <TouchableOpacity
-                        onPress={() => {
-                            // Phóng to hình ảnh hoặc mở trong trình xem hình ảnh
-                            navigation.navigate('ImageViewer', { imageUrl: item.attachmentUrl });
-                        }}
+                        onPress={() => navigation.navigate('ImageViewer', {
+                            imageUrl: item.attachmentUrl
+                        })}
                     >
                         <Image
                             source={{ uri: item.attachmentUrl }}
-                            style={styles.attachmentImage}
+                            style={styles.attachment}
                             resizeMode="cover"
                         />
                     </TouchableOpacity>
                 )}
 
-                {/* Nội dung tin nhắn */}
                 {item.content && (
-                    <Text style={[
-                        styles.messageText,
-                        isCurrentUser ? styles.sentMessageText : styles.receivedMessageText
-                    ]}>
+                    <Text style={[styles.text, isOwn ? styles.ownText : styles.otherText]}>
                         {item.content}
                     </Text>
                 )}
 
-                {/* Chỉ báo đang gửi */}
-                {item.isSending && (
-                    <View style={styles.sendingIndicator}>
-                        <ActivityIndicator size="small" color={isCurrentUser ? "white" : "#0095F6"} />
-                    </View>
-                )}
-
-                {/* Nút thử lại khi gửi lỗi */}
-                {item.isError && (
-                    <TouchableOpacity
-                        style={styles.retryButton}
-                        onPress={() => resendMessage(item)}
-                    >
-                        <Icon name="refresh" size={16} color="red" />
-                    </TouchableOpacity>
-                )}
+                <View style={styles.messageFooter}>
+                    <Text style={[styles.time, isOwn ? styles.ownTime : styles.otherTime]}>
+                        {formatTime(item.createdAt)}
+                    </Text>
+                    <MessageStatus />
+                </View>
             </View>
-
-            {/* Thời gian gửi */}
-            <Text style={[
-                styles.messageTime,
-                isCurrentUser ? styles.sentMessageTime : styles.receivedMessageTime
-            ]}>
-                {formatTime(item.createdAt)}
-            </Text>
         </View>
     );
 };
 
 const styles = StyleSheet.create({
-    messageContainer: {
+    container: {
         flexDirection: 'row',
-        alignItems: 'flex-end',
-        marginBottom: 10,
+        marginVertical: 2,
+        paddingHorizontal: 12,
     },
-    sentMessageContainer: {
+    ownMessage: {
         justifyContent: 'flex-end',
-        marginLeft: 50,
     },
-    receivedMessageContainer: {
+    otherMessage: {
         justifyContent: 'flex-start',
-        marginRight: 50,
     },
-    messageBubbleAvatar: {
+    avatar: {
         width: 28,
         height: 28,
         borderRadius: 14,
         marginRight: 8,
-    },
-    messageBubble: {
-        maxWidth: '70%',
-        borderRadius: 18,
-        paddingHorizontal: 12,
-        paddingVertical: 8,
-    },
-    sentMessageBubble: {
-        backgroundColor: '#0095F6',
-    },
-    receivedMessageBubble: {
-        backgroundColor: '#F2F2F2',
-    },
-    sendingMessageBubble: {
-        opacity: 0.7,
-    },
-    errorMessageBubble: {
-        borderWidth: 1,
-        borderColor: 'red',
-    },
-    messageText: {
-        fontSize: 14,
-        lineHeight: 20,
-    },
-    sentMessageText: {
-        color: 'white',
-    },
-    receivedMessageText: {
-        color: 'black',
-    },
-    messageTime: {
-        fontSize: 10,
-        color: '#8E8E8E',
-        marginTop: 2,
-    },
-    sentMessageTime: {
-        marginLeft: 8,
         alignSelf: 'flex-end',
     },
-    receivedMessageTime: {
-        marginRight: 8,
-        alignSelf: 'flex-start',
+    bubble: {
+        maxWidth: '75%',
+        borderRadius: 18,
+        paddingHorizontal: 14,
+        paddingVertical: 8,
     },
-    attachmentImage: {
-        width: '100%',
+    ownBubble: {
+        backgroundColor: '#0084FF',
+    },
+    otherBubble: {
+        backgroundColor: '#E5E5EA',
+    },
+    sendingBubble: {
+        opacity: 0.7,
+    },
+    errorBubble: {
+        borderWidth: 1,
+        borderColor: '#FF3B30',
+    },
+    text: {
+        fontSize: 16,
+        lineHeight: 20,
+    },
+    ownText: {
+        color: '#FFF',
+    },
+    otherText: {
+        color: '#000',
+    },
+    attachment: {
+        width: 200,
         height: 150,
-        borderRadius: 10,
-        marginBottom: 8,
+        borderRadius: 12,
+        marginBottom: 4,
     },
-    sendingIndicator: {
-        position: 'absolute',
-        right: -20,
-        bottom: 0,
+    messageFooter: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginTop: 4,
     },
-    retryButton: {
-        position: 'absolute',
-        right: -20,
-        bottom: 0,
+    time: {
+        fontSize: 11,
+        opacity: 0.7,
+    },
+    ownTime: {
+        color: '#FFF',
+    },
+    otherTime: {
+        color: '#666',
     },
 });
 
-// Tối ưu với memo để tránh render lại không cần thiết
 export default memo(MessageItem);

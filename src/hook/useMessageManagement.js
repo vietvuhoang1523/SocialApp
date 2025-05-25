@@ -155,16 +155,33 @@ const useMessageManagement = (currentUser, user) => {
 
         setMessages(prevMessages => {
             // Kiểm tra xem tin nhắn đã tồn tại chưa
-            const messageExists = prevMessages.some(msg =>
-                msg.id === newMessage.id ||
-                (msg.content === newMessage.content &&
-                    msg.senderId === newMessage.senderId &&
-                    msg.createdAt === newMessage.createdAt)
-            );
+            const messageExists = prevMessages.some(msg => {
+                // Kiểm tra theo ID
+                if (msg.id && newMessage.id && msg.id === newMessage.id) {
+                    return true;
+                }
+
+                // Kiểm tra theo nội dung và thời gian
+                if (msg.content === newMessage.content &&
+                    msg.senderId === newMessage.senderId) {
+
+                    // Nếu thời gian tạo được cung cấp, so sánh thời gian
+                    if (msg.createdAt && newMessage.createdAt) {
+                        const msgTime = new Date(msg.createdAt).getTime();
+                        const newMsgTime = new Date(newMessage.createdAt).getTime();
+                        // Nếu thời gian gần nhau (trong vòng 3 giây)
+                        return Math.abs(msgTime - newMsgTime) < 3000;
+                    }
+
+                    return true;
+                }
+
+                return false;
+            });
 
             // Nếu tin nhắn chưa tồn tại, thêm vào
             if (!messageExists) {
-                console.log('Thêm tin nhắn mới vào danh sách');
+                console.log('Thêm tin nhắn mới vào danh sách:', newMessage);
 
                 // Cập nhật thời gian tin nhắn mới nhất
                 if (lastMessageTimeRef.current) {
@@ -180,6 +197,7 @@ const useMessageManagement = (currentUser, user) => {
                 return [newMessage, ...prevMessages];
             }
 
+            console.log('Phát hiện tin nhắn trùng lặp, không thêm vào danh sách');
             return prevMessages;
         });
     }, [currentUser?.id, user?.id]);

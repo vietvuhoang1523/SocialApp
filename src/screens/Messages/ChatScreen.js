@@ -1,4 +1,4 @@
-// ChatScreen.js - Màn hình tin nhắn chi tiết (đã cải thiện và tách thành nhiều thành phần)
+// ChatScreen.js - Đã xóa chức năng Test WS
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
     View,
@@ -129,36 +129,9 @@ const ChatScreen = ({ route, navigation }) => {
         return () => {
             clearInterval(refreshInterval);
         };
-        console.log('=== ChatScreen WebSocket Debug ===');
-        console.log('Current User:', currentUser?.id, currentUser?.username);
-        console.log('Chat Partner:', user?.id, user?.username);
-        console.log('WebSocket Connected:', wsConnected);
-        console.log('Connection Error:', connectionError);
-        console.log('Connection Status:', getConnectionStatus());
-        console.log('=====================================');
     }, [wsConnected, fetchNewMessages]);
 
     // Thiết lập cơ bản và polling khi component được mount
-    // Trong ChatScreen.js
-
-// Thêm useEffect để tự động làm mới tin nhắn
-    useEffect(() => {
-        // Thiết lập interval để làm mới tin nhắn định kỳ
-        const refreshInterval = setInterval(() => {
-            // Kiểm tra trạng thái kết nối WebSocket
-            if (!wsConnected) {
-                console.log('WebSocket không kết nối, đang làm mới tin nhắn...');
-                fetchNewMessages();
-            }
-        }, 5000); // Làm mới mỗi 5 giây
-
-        // Cleanup interval khi component unmount
-        return () => {
-            clearInterval(refreshInterval);
-        };
-    }, [wsConnected, fetchNewMessages]);
-
-// Hoặc tích hợp vào useEffect đã có
     useEffect(() => {
         let isMounted = true;
 
@@ -203,18 +176,6 @@ const ChatScreen = ({ route, navigation }) => {
         };
     }, [fetchMessages, markAllMessagesAsRead, fetchNewMessages, wsConnected]);
 
-// Tùy chọn: Thêm debug để theo dõi việc nhận tin nhắn
-    useEffect(() => {
-        console.log('=== Danh sách tin nhắn hiện tại ===');
-        console.log(messages.map(msg => ({
-            id: msg.id,
-            content: msg.content,
-            senderId: msg.senderId,
-            createdAt: msg.createdAt,
-            isSending: msg.isSending
-        })));
-    }, [messages]);
-
     // Cập nhật hàm xử lý nhập text để gửi thông báo typing
     const handleMessageTextChange = useCallback((text) => {
         setMessageText(text);
@@ -239,45 +200,15 @@ const ChatScreen = ({ route, navigation }) => {
 
     // Gửi tin nhắn
     const sendMessageAction = useCallback(() => {
-        // Kiểm tra kết nối WebSocket trước khi gửi
-        if (!wsConnected) {
-            // Thử kết nối lại
-            webSocketService.connect()
-                .then(() => {
-                    // Sau khi kết nối lại, gửi tin nhắn
-                    sendMessageHandler(messageText, attachment);
-                })
-                .catch(error => {
-                    console.error('Không thể kết nối WebSocket:', error);
-                    // Fallback gửi qua REST API
-                    sendMessageHandler(messageText, attachment);
-                });
-        } else {
-            // Nếu đã kết nối, gửi bình thường
-            sendMessageHandler(messageText, attachment);
-        }
-    }, [wsConnected, sendMessageHandler, messageText, attachment]);
-
-    // Test WebSocket function
-    const testWebSocket = useCallback(() => {
-        console.log('=== WebSocket Test ===');
-        console.log('Connected:', wsConnected);
-        console.log('Status:', getConnectionStatus());
-
-        if (connectionError) {
-            console.log('Connection Error:', connectionError);
+        // Nếu không có nội dung hoặc đang gửi, bỏ qua
+        if ((messageText.trim().length === 0 && !attachment) || sending) {
+            return;
         }
 
-        // Test gửi tin nhắn
-        const testMessage = {
-            content: `Test message at ${new Date().toLocaleTimeString()}`,
-            senderId: currentUser.id,
-            receiverId: user.id
-        };
+        // Gửi tin nhắn một lần duy nhất
+        sendMessageHandler(messageText, attachment);
 
-        console.log('Sending test message:', testMessage);
-        sendMessageViaWebSocket(testMessage);
-    }, [wsConnected, connectionError, getConnectionStatus, sendMessageViaWebSocket, currentUser, user]);
+    }, [messageText, attachment, sending, sendMessageHandler]);
 
     // Render từng item tin nhắn
     const renderMessageItem = useCallback(({ item }) => (
@@ -347,20 +278,6 @@ const ChatScreen = ({ route, navigation }) => {
                             <Text style={styles.retryButtonText}>Thử lại</Text>
                         </TouchableOpacity>
                     )}
-                </View>
-            )}
-
-            {/* Debug Panel - Chỉ hiển thị trong development */}
-            {__DEV__ && (
-                <View style={styles.debugPanel}>
-                    <TouchableOpacity
-                        style={styles.debugButton}
-                        onPress={testWebSocket}
-                    >
-                        <Text style={styles.debugButtonText}>
-                            Test WS ({wsConnected ? 'Connected' : 'Disconnected'})
-                        </Text>
-                    </TouchableOpacity>
                 </View>
             )}
 
@@ -492,24 +409,6 @@ const styles = StyleSheet.create({
         borderRadius: 12,
     },
     retryButtonText: {
-        color: 'white',
-        fontSize: 12,
-        fontWeight: 'bold',
-    },
-    // Debug styles - chỉ cho development
-    debugPanel: {
-        backgroundColor: '#f0f0f0',
-        padding: 8,
-        borderBottomWidth: 1,
-        borderBottomColor: '#ddd',
-    },
-    debugButton: {
-        backgroundColor: '#007AFF',
-        padding: 8,
-        borderRadius: 4,
-        alignItems: 'center',
-    },
-    debugButtonText: {
         color: 'white',
         fontSize: 12,
         fontWeight: 'bold',

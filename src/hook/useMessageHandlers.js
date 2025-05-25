@@ -52,44 +52,47 @@ const useMessageHandlers = (
         }, 300);
     }, [setMessages, setMessageText, setAttachment]);
 
-    // Gửi tin nhắn
+    // Gửi tin nhắn (đã tối ưu)
     const sendMessage = useCallback(async (messageText, attachment) => {
-        if (messageText.trim() === '' && !attachment) return;
+        // Kiểm tra nếu không có nội dung hoặc đang trong quá trình gửi thì bỏ qua
+        if ((messageText.trim() === '' && !attachment) || sending) {
+            return;
+        }
+
         if (!currentUser?.id || !user?.id) {
             Alert.alert('Lỗi', 'Không thể gửi tin nhắn: thiếu thông tin người dùng');
             return;
         }
 
+        // Tạo ID duy nhất để theo dõi tin nhắn này
+        const tempId = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+        // Lưu lại nội dung để tránh thay đổi trong quá trình gửi
+        const messageContent = messageText.trim();
+
         try {
             setSending(true);
-            console.log('Đang gửi tin nhắn...');
 
-            // Tạo ID tạm thời cho tin nhắn
-            const tempId = `temp-${Date.now()}`;
-
-            // Lưu lại nội dung để tránh thay đổi trong quá trình gửi
-            const messageContent = messageText.trim();
-
-            // Tạo tin nhắn tạm để hiển thị ngay (optimistic UI)
+            // Tạo tin nhắn tạm thời để hiển thị ngay (optimistic UI)
             const optimisticMessage = {
                 id: tempId,
                 senderId: currentUser.id,
                 receiverId: user.id,
                 content: messageContent,
                 createdAt: new Date().toISOString(),
-                read: true,
+                read: false,
                 isSending: true
             };
 
-            // Thêm vào state
+            // Cập nhật UI ngay lập tức
             setMessages(prevMessages => [optimisticMessage, ...prevMessages]);
             setMessageText('');
             setAttachment(null);
 
             // Cuộn xuống tin nhắn mới nhất
-            setTimeout(() => {
-                flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
-            }, 100);
+            if (flatListRef.current) {
+                flatListRef.current.scrollToOffset({ offset: 0, animated: true });
+            }
 
             // Dữ liệu tin nhắn để gửi
             const messageData = {
@@ -98,61 +101,55 @@ const useMessageHandlers = (
                 receiverId: user.id
             };
 
-            // Nếu có file đính kèm, tải lên trước
+            // Xử lý file đính kèm nếu có
             if (attachment) {
                 try {
                     const attachmentUrl = await chatService.uploadAttachment(attachment);
                     messageData.attachmentUrl = attachmentUrl;
-                } catch (attachmentError) {
-                    console.error('Lỗi khi tải lên tệp đính kèm:', attachmentError);
-                    Alert.alert('Cảnh báo', 'Không thể tải lên tệp đính kèm, tin nhắn sẽ được gửi không kèm hình ảnh');
+                    optimisticMessage.attachmentUrl = attachmentUrl;
+                } catch (error) {
+                    console.error('Lỗi khi tải lên tệp đính kèm:', error);
                 }
             }
 
-            // Thử kết nối WebSocket nếu chưa kết nối
-            let sentViaWebSocket = false;
+            // Biến để theo dõi trạng thái gửi
+            let messageSent = false;
 
-            if (!wsConnected) {
+            // Thử gửi qua WebSocket nếu đã kết nối
+            if (wsConnected) {
                 try {
-                    console.log('WebSocket chưa kết nối, đang kết nối lại...');
-                    await webSocketService.connect();
-                    console.log('Đã kết nối lại WebSocket, đang thử gửi tin nhắn...');
+                    console.log('Thử gửi tin nhắn qua WebSocket');
+                    const success = await sendMessageViaWebSocket(messageData);
+                    messageSent = success;
+
+                    if (success) {
+                        console.log('Đã gửi tin nhắn thành công qua WebSocket');
+                    }
                 } catch (wsError) {
-                    console.error('Không thể kết nối lại WebSocket:', wsError);
+                    console.error('Lỗi khi gửi qua WebSocket:', wsError);
+                    messageSent = false;
                 }
             }
 
-            // Thử gửi tin nhắn qua WebSocket
-            try {
-                if (wsConnected || webSocketService.isConnected()) {
-                    sentViaWebSocket = await sendMessageViaWebSocket(messageData);
-                    console.log('Kết quả gửi qua WebSocket:', sentViaWebSocket ? 'Thành công' : 'Thất bại');
-                }
-            } catch (wsError) {
-                console.error('Lỗi khi gửi tin nhắn qua WebSocket:', wsError);
-                sentViaWebSocket = false;
-            }
-
-            // Nếu gửi qua WebSocket thất bại, sử dụng REST API
-            if (!sentViaWebSocket) {
-                console.log('Gửi qua WebSocket thất bại, chuyển sang gửi qua REST API...');
+            // Nếu WebSocket thất bại hoặc không kết nối, sử dụng REST API
+            if (!messageSent) {
                 try {
+                    console.log('Gửi tin nhắn qua REST API...');
                     const response = await messagesService.sendMessage(messageData);
-                    console.log('Đã gửi tin nhắn qua REST API thành công');
+                    messageSent = true;
 
-                    // Cập nhật tin nhắn với ID thật từ server
-                    setMessages(prevMessages =>
-                        prevMessages.map(msg =>
-                            msg.id === tempId
-                                ? { ...response, isSending: false }
-                                : msg
-                        )
-                    );
-
-                    // Cập nhật thời gian tin nhắn mới nhất
-                    lastMessageTimeRef.current = response.createdAt;
-                } catch (restError) {
-                    console.error('Lỗi khi gửi tin nhắn qua REST API:', restError);
+                    if (response) {
+                        // Cập nhật tin nhắn với ID thật từ server
+                        setMessages(prevMessages =>
+                            prevMessages.map(msg =>
+                                msg.id === tempId
+                                    ? { ...response, isSending: false }
+                                    : msg
+                            )
+                        );
+                    }
+                } catch (apiError) {
+                    console.error('Lỗi khi gửi qua REST API:', apiError);
 
                     // Đánh dấu tin nhắn là lỗi
                     setMessages(prevMessages =>
@@ -165,18 +162,13 @@ const useMessageHandlers = (
 
                     Alert.alert(
                         'Lỗi gửi tin nhắn',
-                        'Không thể gửi tin nhắn. Bạn có thể thử lại sau hoặc kiểm tra kết nối mạng.',
-                        [
-                            { text: 'OK' }
-                        ]
+                        'Không thể gửi tin nhắn. Vui lòng thử lại sau.',
+                        [{ text: 'OK' }]
                     );
                 }
-            } else {
-                console.log('Đã gửi tin nhắn qua WebSocket thành công');
             }
         } catch (error) {
             console.error('Lỗi khi gửi tin nhắn:', error);
-            Alert.alert('Lỗi', 'Không thể gửi tin nhắn. Vui lòng thử lại sau.');
         } finally {
             setSending(false);
         }

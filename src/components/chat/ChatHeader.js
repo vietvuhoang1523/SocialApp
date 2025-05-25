@@ -1,96 +1,103 @@
-// src/components/chat/ChatHeader.js
 import React from 'react';
-import {
-    View,
-    Text,
-    Image,
-    StyleSheet,
-    TouchableOpacity
-} from 'react-native';
+import { View, Text, Image, StyleSheet, TouchableOpacity } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import ImageService from '../../services/ImageService';
 
 const ChatHeader = ({ navigation, user, isTyping }) => {
+    const getAvatarSource = () => {
+        if (user.profilePicture) {
+            return { uri: user.profilePicture };
+        }
+        return { uri: 'https://randomuser.me/api/portraits/men/1.jpg' };
+    };
+
     return (
-        <View style={styles.chatHeader}>
-            <View style={styles.chatHeaderLeft}>
-                <TouchableOpacity onPress={() => navigation.goBack()}>
-                    <Icon name="arrow-left" size={24} color="black" />
-                </TouchableOpacity>
+        <View style={styles.container}>
+            <View style={styles.leftSection}>
                 <TouchableOpacity
-                    style={styles.chatUserInfo}
+                    onPress={() => navigation.goBack()}
+                    style={styles.backBtn}
+                >
+                    <Icon name="arrow-left" size={24} color="#000" />
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                    style={styles.userInfo}
                     onPress={() => navigation.navigate('Profile', { userId: user.id })}
                 >
-                    <Image
-                        source={
-                            user.profilePicture
-                                ? ImageService.getProfileImageSource(user.profilePicture)
-                                : { uri: 'https://randomuser.me/api/portraits/men/1.jpg' }
-                        }
-                        style={styles.chatUserAvatar}
-                    />
+                    <Image source={getAvatarSource()} style={styles.avatar} />
                     <View>
-                        <Text style={styles.chatUsername}>{user.username}</Text>
-                        <Text style={styles.chatUserStatus}>
+                        <Text style={styles.username}>{user.username}</Text>
+                        <Text style={styles.status}>
                             {isTyping ? 'Đang nhập...' : 'Hoạt động gần đây'}
                         </Text>
                     </View>
                 </TouchableOpacity>
             </View>
-            <View style={styles.chatHeaderRight}>
-                <TouchableOpacity style={styles.chatHeaderButton}>
-                    <Icon name="phone-outline" size={24} color="black" />
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.chatHeaderButton}>
-                    <Icon name="video-outline" size={24} color="black" />
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.chatHeaderButton}>
-                    <Icon name="information-outline" size={24} color="black" />
-                </TouchableOpacity>
+
+            <View style={styles.rightSection}>
+                {['phone-outline', 'video-outline', 'information-outline'].map((icon, index) => (
+                    <TouchableOpacity key={index} style={styles.actionBtn}>
+                        <Icon name={icon} size={24} color="#000" />
+                    </TouchableOpacity>
+                ))}
             </View>
         </View>
     );
 };
 
 const styles = StyleSheet.create({
-    chatHeader: {
+    container: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        paddingHorizontal: 15,
-        paddingVertical: 10,
-        borderBottomWidth: 0.5,
-        borderBottomColor: '#DEDEDE',
+        paddingHorizontal: 16,
+        paddingVertical: 12,
+        backgroundColor: '#FFF',
+        borderBottomWidth: 1,
+        borderBottomColor: '#E5E5E5',
+        elevation: 2,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.1,
+        shadowRadius: 2,
     },
-    chatHeaderLeft: {
+    leftSection: {
         flexDirection: 'row',
         alignItems: 'center',
+        flex: 1,
     },
-    chatUserInfo: {
+    backBtn: {
+        padding: 8,
+        marginRight: 8,
+    },
+    userInfo: {
         flexDirection: 'row',
         alignItems: 'center',
-        marginLeft: 12,
+        flex: 1,
     },
-    chatUserAvatar: {
-        width: 32,
-        height: 32,
-        borderRadius: 16,
-        marginRight: 10,
+    avatar: {
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        marginRight: 12,
     },
-    chatUsername: {
+    username: {
         fontSize: 16,
-        fontWeight: '500',
+        fontWeight: '600',
+        color: '#000',
     },
-    chatUserStatus: {
+    status: {
         fontSize: 12,
-        color: '#8E8E8E',
+        color: '#666',
+        marginTop: 2,
     },
-    chatHeaderRight: {
+    rightSection: {
         flexDirection: 'row',
         alignItems: 'center',
     },
-    chatHeaderButton: {
-        marginLeft: 15,
+    actionBtn: {
+        padding: 8,
+        marginLeft: 8,
     },
 });
 

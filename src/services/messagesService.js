@@ -276,67 +276,58 @@ class MessagesService {
 
     // Gửi tin nhắn mới
     async sendMessage(messageData) {
+        // Tạo ID duy nhất cho tin nhắn tạm thời
+        const tempMessageId = `temp-${Date.now()}`;
+
         try {
-            // Lấy thông tin user hiện tại
-            const userData = await AsyncStorage.getItem('userData');
-            const currentUser = userData ? JSON.parse(userData) : null;
-
-            // Tạo payload
-            const payload = {
-                content: messageData.content || '',
-                receiverId: messageData.receiverId,
-                attachmentUrl: messageData.attachmentUrl || null
-            };
-
-            // Tạo tin nhắn tạm thời
-            const tempMessage = {
-                id: `temp-${Date.now()}`,
-                content: payload.content,
-                senderId: currentUser?.id || messageData.senderId,
-                receiverId: payload.receiverId,
-                createdAt: new Date().toISOString(),
-                read: false,
-                delivered: false,
-                attachmentUrl: payload.attachmentUrl,
-                isSending: true
-            };
-
-            // Cache và thông báo tin nhắn tạm thời
-            this._cacheMessage(tempMessage);
-            this._notifyCallbacks('newMessage', tempMessage);
-
-            // Thử gửi qua WebSocket
-            if (webSocketService?.isConnected() && webSocketService.sendMessage(payload)) {
-                return tempMessage;
+            // Thêm một cơ chế theo dõi tin nhắn đang gửi
+            if (!this.pendingMessages) {
+                this.pendingMessages = new Map();
             }
 
-            // Fallback sang REST API
-            const response = await this.api.post('', payload);
+            // Kiểm tra xem tin nhắn với nội dung tương tự đã được gửi gần đây chưa
+            // (trong vòng 2 giây)
+            const now = Date.now();
+            let isDuplicate = false;
+
+            for (const [id, data] of this.pendingMessages.entries()) {
+                // Nếu có tin nhắn với nội dung giống hệt và gửi trong 2 giây gần đây
+                if (data.content === messageData.content &&
+                    data.receiverId === messageData.receiverId &&
+                    now - data.timestamp < 2000) {
+                    console.log('Phát hiện tin nhắn trùng lặp, bỏ qua');
+                    isDuplicate = true;
+                    return data.message; // Trả về tin nhắn đã gửi trước đó
+                }
+            }
+
+            // Nếu không phải tin nhắn trùng lặp, thêm vào danh sách đang xử lý
+            this.pendingMessages.set(tempMessageId, {
+                content: messageData.content,
+                receiverId: messageData.receiverId,
+                timestamp: now
+            });
+
+            // Gửi tin nhắn qua API
+            const response = await this.api.post('', messageData);
             const savedMessage = this.normalizeMessage(response);
 
-            // Cache tin nhắn đã lưu
-            this._cacheMessage(savedMessage);
-
-            // Thông báo cập nhật tin nhắn tạm thời
-            this._notifyCallbacks('messageStatus', {
-                messageId: tempMessage.id,
-                status: 'saved',
-                newMessageId: savedMessage.id,
-                newMessage: savedMessage
+            // Lưu tin nhắn đã gửi
+            this.pendingMessages.set(tempMessageId, {
+                ...this.pendingMessages.get(tempMessageId),
+                message: savedMessage
             });
+
+            // Xóa tin nhắn khỏi danh sách sau 5 giây để tránh tràn bộ nhớ
+            setTimeout(() => {
+                this.pendingMessages.delete(tempMessageId);
+            }, 5000);
 
             return savedMessage;
         } catch (error) {
-            console.error('Lỗi khi gửi tin nhắn:', error);
-
-            // Thông báo lỗi
-            this._notifyCallbacks('messageStatus', {
-                messageId: `temp-${Date.now()}`,
-                status: 'error',
-                error: error
-            });
-
-            throw this.normalizeError(error);
+            // Xóa khỏi danh sách nếu gặp lỗi
+            this.pendingMessages?.delete(tempMessageId);
+            throw error;
         }
     }
 

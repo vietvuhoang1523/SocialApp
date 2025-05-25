@@ -1,4 +1,3 @@
-// src/components/chat/MessageInput.js
 import React, { memo } from 'react';
 import {
     View,
@@ -17,47 +16,52 @@ const MessageInput = ({
                           attachment,
                           pickImage,
                           sendMessage,
-                          setAttachment
                       }) => {
-    return (
-        <View style={styles.inputContainer}>
-            <View style={styles.inputWrapper}>
-                <TouchableOpacity style={styles.cameraButton} onPress={pickImage}>
-                    <Icon name="camera-outline" size={24} color="#0095F6" />
+    const canSend = messageText.trim() || attachment;
+
+    const ActionButtons = () => (
+        <View style={styles.actions}>
+            {['microphone-outline', 'image-outline', 'sticker-emoji'].map((icon, index) => (
+                <TouchableOpacity
+                    key={index}
+                    style={styles.actionBtn}
+                    onPress={index === 1 ? pickImage : undefined}
+                >
+                    <Icon name={icon} size={22} color="#0084FF" />
                 </TouchableOpacity>
+            ))}
+        </View>
+    );
+
+    return (
+        <View style={styles.container}>
+            <View style={styles.inputWrapper}>
+                <TouchableOpacity onPress={pickImage} style={styles.cameraBtn}>
+                    <Icon name="camera-outline" size={22} color="#0084FF" />
+                </TouchableOpacity>
+
                 <TextInput
                     style={styles.textInput}
                     placeholder="Tin nhắn..."
                     value={messageText}
                     onChangeText={handleMessageTextChange}
                     multiline
+                    maxLength={500}
                     editable={!sending}
                 />
-                {messageText.trim() === '' && !attachment ? (
-                    <View style={styles.inputActions}>
-                        <TouchableOpacity style={styles.inputActionButton}>
-                            <Icon name="microphone-outline" size={24} color="#0095F6" />
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                            style={styles.inputActionButton}
-                            onPress={pickImage}
-                        >
-                            <Icon name="image-outline" size={24} color="#0095F6" />
-                        </TouchableOpacity>
-                        <TouchableOpacity style={styles.inputActionButton}>
-                            <Icon name="sticker-emoji" size={24} color="#0095F6" />
-                        </TouchableOpacity>
-                    </View>
+
+                {!canSend ? (
+                    <ActionButtons />
                 ) : (
                     <TouchableOpacity
-                        style={styles.sendButton}
+                        style={styles.sendBtn}
                         onPress={sendMessage}
                         disabled={sending}
                     >
                         {sending ? (
-                            <ActivityIndicator size="small" color="#0095F6" />
+                            <ActivityIndicator size="small" color="#FFF" />
                         ) : (
-                            <Text style={styles.sendButtonText}>Gửi</Text>
+                            <Icon name="send" size={20} color="#FFF" />
                         )}
                     </TouchableOpacity>
                 )}
@@ -67,47 +71,49 @@ const MessageInput = ({
 };
 
 const styles = StyleSheet.create({
-    inputContainer: {
-        paddingHorizontal: 10,
-        paddingVertical: 8,
-        borderTopWidth: 0.5,
-        borderTopColor: '#DEDEDE',
+    container: {
+        paddingHorizontal: 12,
+        paddingVertical: 10,
+        backgroundColor: '#FFF',
+        borderTopWidth: 1,
+        borderTopColor: '#E5E5E5',
     },
     inputWrapper: {
         flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: '#F2F2F2',
-        borderRadius: 22,
-        paddingHorizontal: 10,
-        paddingVertical: 6,
+        alignItems: 'flex-end',
+        backgroundColor: '#F5F5F5',
+        borderRadius: 24,
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+        minHeight: 48,
+    },
+    cameraBtn: {
+        padding: 4,
+        marginRight: 8,
     },
     textInput: {
         flex: 1,
-        maxHeight: 100,
         fontSize: 16,
-        marginHorizontal: 8,
+        maxHeight: 100,
+        paddingVertical: 8,
+        color: '#000',
     },
-    inputActions: {
+    actions: {
         flexDirection: 'row',
         alignItems: 'center',
     },
-    inputActionButton: {
+    actionBtn: {
+        padding: 4,
         marginLeft: 8,
     },
-    sendButton: {
-        marginLeft: 8,
-        paddingHorizontal: 10,
+    sendBtn: {
+        backgroundColor: '#0084FF',
+        borderRadius: 20,
+        width: 40,
+        height: 40,
         justifyContent: 'center',
         alignItems: 'center',
-        height: 32,
-    },
-    sendButtonText: {
-        color: '#0095F6',
-        fontWeight: 'bold',
-        fontSize: 14,
-    },
-    cameraButton: {
-        paddingHorizontal: 5,
+        marginLeft: 8,
     },
 });
 
