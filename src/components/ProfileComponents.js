@@ -107,28 +107,7 @@ const ProfileScreen = ({ navigation }) => {
     const handleEditProfile = useCallback(() => {
         navigation.navigate('EditProfile', { profile: userProfile });
     }, [navigation, userProfile]);
-    // Hiển thị menu tùy chọn
-    const showOptionsMenu = useCallback(() => {
-        Alert.alert(
-            'Tùy chọn',
-            'Chọn hành động',
-            [
-                {
-                    text: 'Chỉnh sửa hồ sơ',
-                    onPress: handleEditProfile
-                },
-                {
-                    text: 'Đăng xuất',
-                    onPress: handleLogout,
-                    style: 'destructive'
-                },
-                {
-                    text: 'Hủy',
-                    style: 'cancel'
-                }
-            ]
-        );
-    }, [handleEditProfile, handleLogout]);
+
 
     // Lấy tên đầy đủ của người dùng
     const getFullName = useMemo(() => {

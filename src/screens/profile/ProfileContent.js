@@ -12,6 +12,8 @@ import {
 import PostItem from '../../hook/PostItem';
 import { CreatePostButton, EmptyContent } from '../../components/UIComponents';
 import usePosts from '../../hook/usePosts';
+import { useProfileContext } from '../../components/ProfileContext';
+import authService from '../../services/AuthService';
 
 // Import các thành phần UI khác
 import ProfileInfo from './ProfileInfo';
@@ -30,6 +32,12 @@ const ProfileContent = ({
                             onFindFriends,
                             onViewAllFriends
                         }) => {
+    // State để lưu userId hiện tại
+    const [currentUserId, setCurrentUserId] = useState(null);
+
+    // Sử dụng ProfileContext để có data đồng bộ
+    const { refreshProfile } = useProfileContext();
+
     // Sử dụng custom hook để quản lý posts
     const {
         posts,
@@ -37,11 +45,29 @@ const ProfileContent = ({
         hasMore,
         handleLoadMore,
         handleRefresh,
-        handleImageError
+        handleImageError,
+        removePost,
+        updatePost
     } = usePosts();
 
     // Tham chiếu tới FlatList để kiểm soát scroll
     const flatListRef = useRef(null);
+
+    // Lấy userId hiện tại khi component mount
+    // useEffect(() => {
+    //     const getCurrentUser = async () => {
+    //         try {
+    //             const userData = await authService.getCurrentUser();
+    //             if (userData && userData.id) {
+    //                 setCurrentUserId(userData.id);
+    //             }
+    //         } catch (error) {
+    //             console.error('Lỗi khi lấy thông tin người dùng hiện tại:', error);
+    //         }
+    //     };
+    //
+    //     getCurrentUser();
+    // }, []);
 
     // Gọi API khi component mount hoặc activeTab thay đổi
     useEffect(() => {
@@ -53,6 +79,10 @@ const ProfileContent = ({
     // Xử lý khi người dùng refresh
     const handleUserRefresh = async () => {
         await handleRefresh();
+
+        // Refresh profile data từ context
+        await refreshProfile();
+
         // Gọi callback onRefresh từ props nếu có
         onRefresh && onRefresh();
     };
@@ -76,10 +106,24 @@ const ProfileContent = ({
         // Thêm logic chia sẻ tại đây
     };
 
+    // Xử lý xóa bài viết
+    const handleDeleteSuccess = (postId) => {
+        console.log('Đã xóa bài viết:', postId);
+        // Cập nhật danh sách bài viết sau khi xóa
+        removePost(postId);
+    };
+
+    // Xử lý sửa bài viết thành công
+    const handleEditSuccess = (postId) => {
+        console.log('Đã cập nhật bài viết:', postId);
+        // Refresh danh sách bài viết để lấy dữ liệu mới nhất
+        handleRefresh();
+    };
+
     // Render nút tạo bài viết
     const renderCreatePostButton = () => (
         <CreatePostButton
-            onPress={() => navigation && navigation.navigate('CreatePostScreen')}
+            onPress={() => navigation && navigation.navigate('CreatePost')}
         />
     );
 
@@ -90,6 +134,10 @@ const ProfileContent = ({
             onLikePress={handleLikePost}
             onCommentPress={handleCommentPost}
             onSharePress={handleSharePost}
+            navigation={navigation}
+            currentUserId={currentUserId}
+            onDeleteSuccess={handleDeleteSuccess}
+            onEditSuccess={handleEditSuccess}
         />
     );
 

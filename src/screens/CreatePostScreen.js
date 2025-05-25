@@ -9,7 +9,7 @@ import {
     Alert,
     ScrollView,
     ActivityIndicator,
-    Platform
+    Platformzz
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';

@@ -67,6 +67,18 @@ export const usePosts = () => {
             [postId]: true
         }));
     }, []);
+    // Thêm phương thức xóa và cập nhật bài viết
+    const removePost = useCallback((postId) => {
+        setPosts(prevPosts => prevPosts.filter(post => post.id !== postId));
+    }, []);
+
+    const updatePost = useCallback((postId, updatedPost) => {
+        setPosts(prevPosts =>
+            prevPosts.map(post =>
+                post.id === postId ? { ...post, ...updatedPost } : post
+            )
+        );
+    }, []);
 
     return {
         posts,
@@ -77,7 +89,9 @@ export const usePosts = () => {
         fetchPosts,
         handleLoadMore,
         handleRefresh,
-        handleImageError
+        handleImageError,
+        removePost,
+        updatePost
     };
 };
 

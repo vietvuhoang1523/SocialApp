@@ -12,33 +12,21 @@ import {
     Alert
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import PostItem from '../hook/PostItem'; // Import the PostItem component
 import CreatePostService from '../services/CreatePostService';
 import authService from '../services/AuthService';
 import Config from '../../src/services/config';
 
 const { width } = Dimensions.get('window');
 
-// Hàm tạo URL hình ảnh (di chuyển ra ngoài component để có thể tái sử dụng)
-// const createImageUrl = (path) => {
-//     if (!path) return null;
-//
-//     try {
-//         const cleanPath = path.replace(/^\//, '');
-//         const apiUrl = Config.extra.apiUrl;
-//         return `${apiUrl}/files/view?bucketName=thanh&path=${encodeURIComponent(cleanPath)}`;
-//     } catch (error) {
-//         console.error('Lỗi khi tạo URL hình ảnh:', error);
-//         return null;
-//     }
-// };
+// Keeping the legacy createImageUrl function for backward compatibility
 const createImageUrl = (path) => {
     if (!path) return null;
 
     try {
-        // Xử lý cả path avatar và post
         const cleanPath = path
-            .replace(/^thanh\//, '') // Xóa prefix thanh/ nếu có
-            .replace(/^\//, ''); // Xóa slash đầu tiên nếu có
+            .replace(/^thanh\//, '') // Remove prefix thanh/ if present
+            .replace(/^\//, ''); // Remove first slash if present
 
         const apiUrl = Config.extra.apiUrl;
         return `${apiUrl}/files/image?bucketName=thanh&path=${encodeURIComponent(cleanPath)}`;
@@ -47,7 +35,6 @@ const createImageUrl = (path) => {
         return null;
     }
 };
-
 
 const InstagramHomeScreen = ({ navigation }) => {
     const [stories, setStories] = useState([]);
@@ -136,6 +123,9 @@ const InstagramHomeScreen = ({ navigation }) => {
         }
     };
 
+    const handleCommentPress = (postId) => {
+        navigation.navigate('Comments', { postId });
+    };
 
     useEffect(() => {
         const loadInitialData = async () => {
@@ -153,75 +143,14 @@ const InstagramHomeScreen = ({ navigation }) => {
         return unsubscribe;
     }, [navigation, onRefresh]);
 
+    // Using PostItem component to render posts instead of the inline rendering
     const renderPost = ({ item }) => {
-        const imageUrl = item.fullImageUrl || (item.imageUrl ? createImageUrl(item.imageUrl) : null);
         return (
-            <View style={styles.postContainer}>
-                <View style={styles.postHeader}>
-                    <TouchableOpacity
-                        style={styles.postHeaderLeft}
-                        onPress={() => navigation.navigate('Profile', { userId: item.userRes?.id })}
-                    >
-                        <Image
-                            source={{
-                                uri: currentUser?.profilePictureUrl
-                                    ? createImageUrl(currentUser.profilePictureUrl)
-                                    : 'https://randomuser.me/api/portraits/men/1.jpg'
-                            }}
-                            style={styles.profileThumb}
-                        />
-                        <Text style={styles.postUsername}>{item.userRes?.fullName || item.userRes?.username || 'User'}</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity>
-                        <Icon name="dots-horizontal" size={24} color="black" />
-                    </TouchableOpacity>
-                </View>
-                {imageUrl && (
-                    <View style={styles.postImageContainer}>
-                        <Image
-                            source={{ uri: imageUrl }}
-                            style={styles.postImage}
-                            resizeMode="cover"
-                            onError={(e) => console.error('Lỗi tải hình ảnh:', e.nativeEvent.error)}
-                        />
-                    </View>
-                )}
-                <View style={styles.postActions}>
-                    <View style={styles.postActionsLeft}>
-                        <TouchableOpacity style={styles.actionIcon} onPress={() => handleLikePress(item.id)}>
-                            <Icon
-                                name={item.isLike ? "heart" : "heart-outline"}
-                                size={24}
-                                color={item.isLike ? "red" : "black"}
-                            />
-                        </TouchableOpacity>
-                        <TouchableOpacity style={styles.actionIcon} onPress={() => navigation.navigate('Comments', { postId: item.id })}>
-                            <Icon name="comment-outline" size={24} color="black" />
-                        </TouchableOpacity>
-                        <TouchableOpacity style={styles.actionIcon}>
-                            <Icon name="send" size={24} color="black" />
-                        </TouchableOpacity>
-                    </View>
-                    <TouchableOpacity>
-                        <Icon name="bookmark-outline" size={24} color="black" />
-                    </TouchableOpacity>
-                </View>
-                <View style={styles.postDetailsContainer}>
-                    <Text style={styles.postLikes}>{item.lengthLike || 0} likes</Text>
-                    <Text style={styles.postCaption}>
-                        <Text style={styles.postUsername}>{item.userRes?.fullName || item.userRes?.username || 'User'} </Text>
-                        {item.content}
-                    </Text>
-                    {item.lengthCmt > 0 && (
-                        <TouchableOpacity onPress={() => navigation.navigate('Comments', { postId: item.id })}>
-                            <Text style={styles.postComments}>
-                                View all {item.lengthCmt} comments
-                            </Text>
-                        </TouchableOpacity>
-                    )}
-                    <Text style={styles.postTime}>{formatTimeAgo(item.createdAt)}</Text>
-                </View>
-            </View>
+            <PostItem
+                item={item}
+                onLikePress={handleLikePress}
+                onCommentPress={handleCommentPress}
+            />
         );
     };
 
@@ -244,6 +173,19 @@ const InstagramHomeScreen = ({ navigation }) => {
             </View>
         );
     }
+
+    // Get avatar URL for the current user
+    const getAvatarUrl = () => {
+        if (currentUser?.profilePictureUrl) {
+            // Use the full image URL if available directly from the server
+            if (currentUser.profilePictureUrl.startsWith('http')) {
+                return currentUser.profilePictureUrl;
+            }
+            // Otherwise, construct the URL
+            return createImageUrl(currentUser.profilePictureUrl);
+        }
+        return 'https://randomuser.me/api/portraits/men/1.jpg';
+    };
 
     return (
         <View style={styles.container}>
@@ -292,7 +234,7 @@ const InstagramHomeScreen = ({ navigation }) => {
                 </TouchableOpacity>
                 <TouchableOpacity onPress={() => navigation.navigate('Profile', { userId: currentUser?.id })}>
                     <Image
-                        source={{ uri: currentUser?.profilePictureUrl || 'https://randomuser.me/api/portraits/men/1.jpg' }}
+                        source={{ uri: getAvatarUrl() }}
                         style={styles.profileThumb}
                     />
                 </TouchableOpacity>
@@ -364,69 +306,19 @@ const styles = StyleSheet.create({
         maxWidth: 70,
         textAlign: 'center',
     },
-    postContainer: {
-        marginBottom: 20,
-    },
-    postHeader: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        paddingHorizontal: 15,
-        paddingVertical: 10,
-    },
-    postHeaderLeft: {
-        flexDirection: 'row',
+    loadingMore: {
+        paddingVertical: 20,
         alignItems: 'center',
     },
-    postUserImage: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
-        marginRight: 10,
-    },
-    postUsername: {
-        fontWeight: 'bold',
-    },
-    postImageContainer: {
-        width: width,
-        height: width,
-        backgroundColor: '#f0f0f0',
-    },
-    postImage: {
-        width: '100%',
-        height: '100%',
-    },
-    postActions: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
+    emptyContainer: {
+        padding: 20,
         alignItems: 'center',
-        paddingHorizontal: 15,
-        paddingVertical: 10,
+        justifyContent: 'center',
     },
-    postActionsLeft: {
-        flexDirection: 'row',
-    },
-    actionIcon: {
-        marginRight: 15,
-    },
-    postDetailsContainer: {
-        paddingHorizontal: 15,
-        paddingBottom: 10,
-    },
-    postLikes: {
-        fontWeight: 'bold',
-        marginBottom: 5,
-    },
-    postCaption: {
-        marginBottom: 5,
-    },
-    postComments: {
-        color: 'gray',
-        marginBottom: 5,
-    },
-    postTime: {
-        color: 'gray',
-        fontSize: 12,
+    emptyText: {
+        textAlign: 'center',
+        color: '#8e8e8e',
+        fontSize: 16,
     },
     bottomNavigation: {
         flexDirection: 'row',
@@ -441,20 +333,6 @@ const styles = StyleSheet.create({
         width: 24,
         height: 24,
         borderRadius: 12,
-    },
-    loadingMore: {
-        paddingVertical: 20,
-        alignItems: 'center',
-    },
-    emptyContainer: {
-        padding: 20,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    emptyText: {
-        textAlign: 'center',
-        color: '#8e8e8e',
-        fontSize: 16,
     },
 });
 

@@ -1,7 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, ScrollView, Alert, StatusBar, SafeAreaView } from 'react-native';
 import AuthService from '../../services/AuthService';
 import UserProfileService from '../../services/UserProfileService';
+import { useProfileContext } from '../ProfileContext';
+import { useAutoSave } from '../../hook/useAutoSave';
 import { styles } from './styles';
 
 // Import các component con
@@ -18,58 +20,113 @@ import {
 } from './FormComponents';
 
 const EditProfileScreen = ({ navigation, route }) => {
-    const { profile } = route.params;
+    // Sử dụng ProfileContext
+    const { userProfile, updateProfile } = useProfileContext();
     const userProfileService = new UserProfileService();
 
-    // State cho trường form
-    const [firstname, setFirstname] = useState(profile?.firstname || '');
-    const [lastname, setLastname] = useState(profile?.lastname || '');
-    const [bio, setBio] = useState(profile?.bio || '');
-    const [phoneNumber, setPhoneNumber] = useState(profile?.phoneNumber || '');
-    const [address, setAddress] = useState(profile?.address || '');
-    const [gender, setGender] = useState(profile?.gender || false);
-    const [dateOfBirth, setDateOfBirth] = useState(
-        profile?.dateOfBirth ? new Date(profile.dateOfBirth) : new Date()
-    );
-    const [website, setWebsite] = useState(profile?.website || '');
-    const [occupation, setOccupation] = useState(profile?.occupation || '');
-    const [education, setEducation] = useState(profile?.education || '');
-    const [relationshipStatus, setRelationshipStatus] = useState(
-        profile?.relationshipStatus || ''
-    );
-    const [preferredLanguage, setPreferredLanguage] = useState(
-        profile?.preferredLanguage || ''
-    );
-    const [timezone, setTimezone] = useState(profile?.timezone || '');
-
-    // State cho ảnh đại diện
-    const [profilePicture, setProfilePicture] = useState(
-        profile?.profilePictureUrl || null
-    );
-    const [profilePictureFile, setProfilePictureFile] = useState(null);
-
-    // State cho ảnh nền
-    const [coverImage, setCoverImage] = useState(
-        profile?.coverImageUrl || null
-    );
-    const [coverImageFile, setCoverImageFile] = useState(null);
-
-    // State cho loading và date picker
-    const [isLoading, setIsLoading] = useState(false);
-    const [showDatePicker, setShowDatePicker] = useState(false);
-
-    // State cho modal chọn ảnh
-    const [imagePickerModalVisible, setImagePickerModalVisible] = useState(false);
-    const [imageType, setImageType] = useState(''); // 'avatar' hoặc 'cover'
-
-    // State cho date picker
-    const [tempDate, setTempDate] = useState({
-        day: dateOfBirth.getDate(),
-        month: dateOfBirth.getMonth() + 1,
-        year: dateOfBirth.getFullYear()
+    // State cho các trường form
+    const [formData, setFormData] = useState({
+        firstname: userProfile?.firstname || '',
+        lastname: userProfile?.lastname || '',
+        bio: userProfile?.bio || '',
+        phoneNumber: userProfile?.phoneNumber || '',
+        address: userProfile?.address || '',
+        gender: userProfile?.gender || false,
+        dateOfBirth: userProfile?.dateOfBirth ? new Date(userProfile.dateOfBirth) : new Date(),
+        website: userProfile?.website || '',
+        occupation: userProfile?.occupation || '',
+        education: userProfile?.education || '',
+        relationshipStatus: userProfile?.relationshipStatus || '',
+        preferredLanguage: userProfile?.preferredLanguage || '',
+        timezone: userProfile?.timezone || '',
     });
 
-    // Kiểm tra xác thực khi màn hình được tải
+    // State cho ảnh
+    const [profilePicture, setProfilePicture] = useState(userProfile?.profilePictureUrl || null);
+    const [profilePictureFile, setProfilePictureFile] = useState(null);
+    const [coverImage, setCoverImage] = useState(userProfile?.coverImageUrl || null);
+    const [coverImageFile, setCoverImageFile] = useState(null);
+
+    // State cho UI
+    const [isLoading, setIsLoading] = useState(false);
+    const [showDatePicker, setShowDatePicker] = useState(false);
+    const [imagePickerModalVisible, setImagePickerModalVisible] = useState(false);
+    const [imageType, setImageType] = useState('');
+    const [tempDate, setTempDate] = useState({
+        day: formData.dateOfBirth.getDate(),
+        month: formData.dateOfBirth.getMonth() + 1,
+        year: formData.dateOfBirth.getFullYear()
+    });
+
+    // Hàm cập nhật từng field lên server
+    const updateSingleField = useCallback(async (fieldName, value) => {
+        try {
+            // Kiểm tra nếu giá trị không thay đổi
+            if (userProfile && userProfile[fieldName] === value) {
+                return true;
+            }
+
+            const updateData = { [fieldName]: value };
+            await userProfileService.updateProfile(updateData);
+
+            // Cập nhật vào context
+            await updateProfile(updateData);
+
+            console.log(`✅ Auto-saved ${fieldName}:`, value);
+            return true;
+        } catch (error) {
+            console.error(`❌ Error auto-saving ${fieldName}:`, error);
+            return false;
+        }
+    }, [userProfile, userProfileService, updateProfile]);
+
+    // Sử dụng auto-save hook
+    const { debouncedUpdate, cleanup } = useAutoSave(updateSingleField, 1500);
+
+    // Cập nhật formData khi userProfile thay đổi
+    useEffect(() => {
+        if (userProfile) {
+            setFormData({
+                firstname: userProfile.firstname || '',
+                lastname: userProfile.lastname || '',
+                bio: userProfile.bio || '',
+                phoneNumber: userProfile.phoneNumber || '',
+                address: userProfile.address || '',
+                gender: userProfile.gender || false,
+                dateOfBirth: userProfile.dateOfBirth ? new Date(userProfile.dateOfBirth) : new Date(),
+                website: userProfile.website || '',
+                occupation: userProfile.occupation || '',
+                education: userProfile.education || '',
+                relationshipStatus: userProfile.relationshipStatus || '',
+                preferredLanguage: userProfile.preferredLanguage || '',
+                timezone: userProfile.timezone || '',
+            });
+            setProfilePicture(userProfile.profilePictureUrl || null);
+            setCoverImage(userProfile.coverImageUrl || null);
+        }
+    }, [userProfile]);
+
+    // Cleanup khi component unmount
+    useEffect(() => {
+        return () => {
+            cleanup();
+        };
+    }, [cleanup]);
+
+    // Hàm helper để cập nhật field
+    const updateField = useCallback((fieldName, value) => {
+        setFormData(prev => ({ ...prev, [fieldName]: value }));
+
+        // Auto-save cho text fields
+        if (typeof value === 'string') {
+            debouncedUpdate(fieldName, value);
+        } else {
+            // Immediate save cho boolean, date, etc.
+            updateSingleField(fieldName, value);
+        }
+    }, [debouncedUpdate, updateSingleField]);
+
+    // Kiểm tra xác thực
     useEffect(() => {
         const checkAuth = async () => {
             try {
@@ -97,13 +154,12 @@ const EditProfileScreen = ({ navigation, route }) => {
         checkAuth();
     }, [navigation]);
 
-    // Mở modal để chọn loại ảnh cần thay đổi
+    // Xử lý chọn ảnh
     const openImagePickerModal = (type) => {
         setImageType(type);
         setImagePickerModalVisible(true);
     };
 
-    // Xử lý chọn ảnh từ thư viện
     const handleChooseImage = (asset) => {
         if (imageType === 'avatar') {
             setProfilePicture(asset.uri);
@@ -115,9 +171,8 @@ const EditProfileScreen = ({ navigation, route }) => {
         setImagePickerModalVisible(false);
     };
 
-    // Xử lý xác nhận lựa chọn ngày
+    // Xử lý date picker
     const handleConfirmDate = () => {
-        // Kiểm tra ngày hợp lệ
         const daysInMonth = new Date(tempDate.year, tempDate.month, 0).getDate();
         let day = tempDate.day;
         if (day > daysInMonth) {
@@ -125,14 +180,16 @@ const EditProfileScreen = ({ navigation, route }) => {
         }
 
         const newDate = new Date(tempDate.year, tempDate.month - 1, day);
-        setDateOfBirth(newDate);
+        const dateString = newDate.toISOString().split('T')[0];
+
+        setFormData(prev => ({ ...prev, dateOfBirth: newDate }));
+        updateSingleField('dateOfBirth', dateString);
         setShowDatePicker(false);
     };
 
-    // Xử lý khi gửi form
+    // Xử lý submit (chủ yếu cho ảnh)
     const handleSubmit = async () => {
-        // Kiểm tra dữ liệu đầu vào
-        if (!firstname || !lastname) {
+        if (!formData.firstname || !formData.lastname) {
             Alert.alert('Lỗi', 'Vui lòng nhập đầy đủ tên');
             return;
         }
@@ -140,37 +197,24 @@ const EditProfileScreen = ({ navigation, route }) => {
         setIsLoading(true);
 
         try {
-            // Chuẩn bị dữ liệu hồ sơ
-            const profileData = {
-                firstname,
-                lastname,
-                bio,
-                phoneNumber,
-                address,
-                gender,
-                dateOfBirth: dateOfBirth.toISOString().split('T')[0], // Format as YYYY-MM-DD
-                website,
-                occupation,
-                education,
-                relationshipStatus,
-                preferredLanguage,
-                timezone,
-            };
+            // Upload ảnh nếu có thay đổi
+            const updateData = {};
 
-            // Cập nhật hồ sơ
-            await userProfileService.updateProfile(profileData);
-
-            // Tải lên ảnh đại diện nếu đã chọn
             if (profilePictureFile) {
                 await userProfileService.uploadProfilePicture(profilePictureFile);
+                updateData.profilePictureUrl = profilePicture;
             }
 
-            // Tải lên ảnh nền nếu đã chọn
             if (coverImageFile) {
                 await userProfileService.uploadCoverImage(coverImageFile);
+                updateData.coverImageUrl = coverImage;
             }
 
-            // Hiển thị thông báo thành công và quay lại
+            // Cập nhật URLs ảnh vào context nếu có
+            if (Object.keys(updateData).length > 0) {
+                await updateProfile(updateData);
+            }
+
             Alert.alert(
                 'Thành công',
                 'Hồ sơ của bạn đã được cập nhật',
@@ -181,25 +225,7 @@ const EditProfileScreen = ({ navigation, route }) => {
             );
         } catch (error) {
             console.error('Lỗi cập nhật hồ sơ:', error);
-
-            if (global.authExpired) {
-                Alert.alert(
-                    'Phiên đăng nhập hết hạn',
-                    'Vui lòng đăng nhập lại để tiếp tục',
-                    [
-                        {
-                            text: 'OK',
-                            onPress: () => navigation.reset({
-                                index: 0,
-                                routes: [{ name: 'Login' }],
-                            })
-                        }
-                    ]
-                );
-                global.authExpired = false;
-            } else {
-                Alert.alert('Lỗi', error.message || 'Không thể cập nhật hồ sơ');
-            }
+            Alert.alert('Lỗi', error.message || 'Không thể cập nhật hồ sơ');
         } finally {
             setIsLoading(false);
         }
@@ -209,7 +235,6 @@ const EditProfileScreen = ({ navigation, route }) => {
         <SafeAreaView style={styles.safeArea}>
             <StatusBar barStyle="light-content" backgroundColor="#1877F2" />
 
-            {/* Header */}
             <ProfileHeader
                 navigation={navigation}
                 isLoading={isLoading}
@@ -217,7 +242,6 @@ const EditProfileScreen = ({ navigation, route }) => {
             />
 
             <ScrollView style={styles.container}>
-                {/* Image Section (Cover and Profile) */}
                 <ImageSection
                     coverImage={coverImage}
                     profilePicture={profilePicture}
@@ -225,46 +249,44 @@ const EditProfileScreen = ({ navigation, route }) => {
                 />
 
                 <View style={styles.formContainer}>
-                    {/* Form Sections */}
                     <PersonalInfoSection
-                        firstname={firstname}
-                        setFirstname={setFirstname}
-                        lastname={lastname}
-                        setLastname={setLastname}
-                        bio={bio}
-                        setBio={setBio}
-                        gender={gender}
-                        setGender={setGender}
-                        dateOfBirth={dateOfBirth}
+                        firstname={formData.firstname}
+                        setFirstname={(value) => updateField('firstname', value)}
+                        lastname={formData.lastname}
+                        setLastname={(value) => updateField('lastname', value)}
+                        bio={formData.bio}
+                        setBio={(value) => updateField('bio', value)}
+                        gender={formData.gender}
+                        setGender={(value) => updateField('gender', value)}
+                        dateOfBirth={formData.dateOfBirth}
                         setShowDatePicker={setShowDatePicker}
                     />
 
                     <ContactInfoSection
-                        phoneNumber={phoneNumber}
-                        setPhoneNumber={setPhoneNumber}
-                        address={address}
-                        setAddress={setAddress}
-                        website={website}
-                        setWebsite={setWebsite}
+                        phoneNumber={formData.phoneNumber}
+                        setPhoneNumber={(value) => updateField('phoneNumber', value)}
+                        address={formData.address}
+                        setAddress={(value) => updateField('address', value)}
+                        website={formData.website}
+                        setWebsite={(value) => updateField('website', value)}
                     />
 
                     <WorkEducationSection
-                        occupation={occupation}
-                        setOccupation={setOccupation}
-                        education={education}
-                        setEducation={setEducation}
+                        occupation={formData.occupation}
+                        setOccupation={(value) => updateField('occupation', value)}
+                        education={formData.education}
+                        setEducation={(value) => updateField('education', value)}
                     />
 
                     <OtherInfoSection
-                        relationshipStatus={relationshipStatus}
-                        setRelationshipStatus={setRelationshipStatus}
-                        preferredLanguage={preferredLanguage}
-                        setPreferredLanguage={setPreferredLanguage}
-                        timezone={timezone}
-                        setTimezone={setTimezone}
+                        relationshipStatus={formData.relationshipStatus}
+                        setRelationshipStatus={(value) => updateField('relationshipStatus', value)}
+                        preferredLanguage={formData.preferredLanguage}
+                        setPreferredLanguage={(value) => updateField('preferredLanguage', value)}
+                        timezone={formData.timezone}
+                        setTimezone={(value) => updateField('timezone', value)}
                     />
 
-                    {/* Submit Button */}
                     <SubmitButton
                         onPress={handleSubmit}
                         isLoading={isLoading}
@@ -272,7 +294,6 @@ const EditProfileScreen = ({ navigation, route }) => {
                 </View>
             </ScrollView>
 
-            {/* Custom Date Picker Modal */}
             <CustomDatePicker
                 visible={showDatePicker}
                 tempDate={tempDate}
@@ -281,7 +302,6 @@ const EditProfileScreen = ({ navigation, route }) => {
                 onConfirm={handleConfirmDate}
             />
 
-            {/* Image Picker Modal */}
             <ImagePickerModal
                 visible={imagePickerModalVisible}
                 imageType={imageType}

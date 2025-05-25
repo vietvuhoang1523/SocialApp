@@ -28,6 +28,10 @@ import ChatScreen from "./src/screens/Messages/ChatScreen";
 // Import services
 import webSocketService from './src/services/WebSocketService';
 import AuthService from './src/services/AuthService';
+//
+import { ProfileProvider } from './src/components/ProfileContext';
+import CommentsScreen from "./src/screens/CommentsScreen";
+import EditPostScreen from "./src/screens/EditPostScreen";
 
 const Stack = createStackNavigator();
 
@@ -150,6 +154,16 @@ export default function App() {
             component={MessagesScreen}
             options={{ headerShown: false }}
         />
+          <Stack.Screen
+              name="Comments"
+              component={CommentsScreen}
+              options={{ headerShown: false }}
+          />
+          <Stack.Screen
+              name="EditPost"
+              component={EditPostScreen}
+              options={{ headerShown: false }}
+          />
         <Stack.Screen
             name="Chat"
             component={ChatScreen}
@@ -165,8 +179,10 @@ export default function App() {
   ), []);
 
   return (
-      <NavigationContainer>
-        {AppNavigator}
-      </NavigationContainer>
+      <ProfileProvider>
+          <NavigationContainer>
+              {AppNavigator}
+          </NavigationContainer>
+      </ProfileProvider>
   );
 }

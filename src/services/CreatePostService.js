@@ -1,6 +1,7 @@
 import axios from 'axios';
 import {BASE_URL, DEFAULT_HEADERS, FORM_DATA_HEADERS, ERROR_MESSAGES, DEFAULT_TIMEOUT} from './api';
 import authService from './AuthService';
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 class CreatePostService {
     constructor() {
@@ -200,6 +201,148 @@ class CreatePostService {
         } catch (error) {
             console.error('Lỗi khi lấy bài đăng của người dùng hiện tại:', error);
             this.handleError(error);
+        }
+    }
+
+    // Trong CreatePostService.js
+    // Sửa đổi hàm checkPostOwnership trong CreatePostService.js
+    async checkPostOwnership(postId) {
+        try {
+            console.log('🔍 Bắt đầu kiểm tra quyền sở hữu bài viết:', postId);
+
+            // Kiểm tra postId có hợp lệ không
+            if (!postId) {
+                console.log('❌ PostId không hợp lệ');
+                return false;
+            }
+
+            // Lấy token từ AsyncStorage
+            const token = await AsyncStorage.getItem('accessToken');
+            if (!token) {
+                console.log('❌ Không có token');
+                return false;
+            }
+
+            // Tạo các promise để thực hiện song song
+            const promises = [];
+
+            // Promise 1: Lấy thông tin bài viết
+            const getPostPromise = this.getPostById(postId)
+                .then(postData => {
+                    console.log('📄 Chi tiết bài viết:', JSON.stringify(postData, null, 2));
+                    return postData;
+                })
+                .catch(error => {
+                    console.error('❌ Lỗi khi lấy chi tiết bài viết:', error);
+                    throw new Error('Không thể lấy thông tin bài viết');
+                });
+
+            // Promise 2: Lấy thông tin user hiện tại
+            const getUserPromise = this.api.get('/v1/users/profile')
+                .then(response => {
+                    if (!response?.data) {
+                        throw new Error('Response không hợp lệ từ API profile');
+                    }
+                    console.log('👤 Thông tin người dùng hiện tại:', JSON.stringify(response.data, null, 2));
+                    return response.data;
+                })
+                .catch(error => {
+                    console.error('❌ Lỗi khi lấy thông tin người dùng:', error);
+                    if (error.response) {
+                        console.error('📊 Chi tiết lỗi từ server:', error.response.data);
+                        console.error('📈 Status code:', error.response.status);
+                    }
+                    throw new Error('Không thể lấy thông tin người dùng');
+                });
+
+            // Thực hiện cả hai promises song song với timeout
+            const timeoutPromise = new Promise((_, reject) =>
+                setTimeout(() => reject(new Error('API timeout after 8 seconds')), 8000)
+            );
+
+            const [postData, currentUser] = await Promise.race([
+                Promise.all([getPostPromise, getUserPromise]),
+                timeoutPromise
+            ]);
+
+            // Kiểm tra dữ liệu có hợp lệ không
+            if (!postData) {
+                console.log('❌ Không tìm thấy bài viết');
+                return false;
+            }
+
+            if (!currentUser) {
+                console.log('❌ Không tìm thấy thông tin người dùng');
+                return false;
+            }
+
+            // Lấy ID với nhiều fallback options
+            const currentUserId = currentUser?.id ||
+                currentUser?.userId ||
+                currentUser?.user_id;
+
+            const postOwnerId = postData?.userRes?.id ||
+                postData?.user?.id ||
+                postData?.userId ||
+                postData?.user_id ||
+                postData?.authorId;
+
+            console.log('🔄 So sánh ID:', {
+                currentUserId,
+                postOwnerId,
+                currentUserType: typeof currentUserId,
+                postOwnerType: typeof postOwnerId,
+                currentUserObject: currentUser,
+                postDataUserRes: postData?.userRes
+            });
+
+            // Kiểm tra cả hai ID đều tồn tại và hợp lệ
+            if (!currentUserId || !postOwnerId) {
+                console.log('❌ Một trong các ID không tồn tại');
+                console.log('📋 Debug info:', {
+                    hasCurrentUserId: !!currentUserId,
+                    hasPostOwnerId: !!postOwnerId,
+                    currentUserKeys: Object.keys(currentUser || {}),
+                    postDataKeys: Object.keys(postData || {})
+                });
+                return false;
+            }
+
+            // Chuyển đổi sang string và so sánh
+            const currentUserIdStr = String(currentUserId).trim();
+            const postOwnerIdStr = String(postOwnerId).trim();
+
+            const isOwner = currentUserIdStr === postOwnerIdStr;
+
+            console.log('✅ Kết quả kiểm tra quyền:', {
+                isOwner,
+                currentUserIdStr,
+                postOwnerIdStr,
+                exactMatch: currentUserIdStr === postOwnerIdStr
+            });
+
+            return isOwner;
+
+        } catch (error) {
+            console.error('💥 Lỗi tổng quát khi kiểm tra quyền sở hữu bài viết:', error);
+
+            // Log chi tiết các loại lỗi khác nhau
+            if (error.name === 'TypeError') {
+                console.error('🔧 TypeError - có thể do object undefined:', error.message);
+            } else if (error.code === 'NETWORK_ERROR') {
+                console.error('🌐 Network error:', error.message);
+            } else if (error.response) {
+                console.error('🔴 HTTP Error Response:', {
+                    status: error.response.status,
+                    statusText: error.response.statusText,
+                    data: error.response.data
+                });
+            } else if (error.request) {
+                console.error('📡 Request error - no response received:', error.request);
+            }
+
+            // Trả về false thay vì throw error để không crash app
+            return false;
         }
     }
 
