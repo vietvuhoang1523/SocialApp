@@ -13,7 +13,7 @@ import NotificationsScreen from "./src/screens/NotificationsScreen";
 import MainTabNavigator from "./src/components/MainTabNavigator";
 import RegisterScreen from "./src/screens/Login/RegisterScreen";
 import ForgotPasswordScreen from "./src/screens/Login/ForgotPasswordScreen";
-import EditProfileScreen from "./src/components/EditProfileScreen";
+import EditProfileScreen from "./src/components/UpdateProfile/EditProfileScreen";
 import FriendSearchScreen from "./src/screens/Friend/FriendSearchScreen";
 import EmailSearchHandler from "./src/components/EmailSearchHandler";
 import FriendRequestsScreen from "./src/screens/Friend/FriendRequestsScreen";

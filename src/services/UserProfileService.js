@@ -177,9 +177,10 @@ class UserProfileService {
         }
     }
 
-    // Lấy URL xem file (ảnh đại diện, ảnh bìa, v.v.)
+    // Lấy URL xem file (ảnh đại diện, ảnh bìa, v.v.) - ĐÃ SỬA
     getFileUrl(bucketName, path) {
-        return `${BASE_URL}/v1/users/view?bucketName=${encodeURIComponent(bucketName)}&path=${encodeURIComponent(path)}`;
+        // Thêm /v1/users vào đường dẫn
+        return `${BASE_URL}/api/files/image?bucketName=${encodeURIComponent(bucketName)}&path=${encodeURIComponent(path)}`;
     }
     // Phương thức tìm kiếm người dùng
     async searchUsers(query, page = 0, limit = 20) {

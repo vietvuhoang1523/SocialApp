@@ -15,8 +15,6 @@ export const useProfileContext = () => {
 // Provider component
 export const ProfileProvider = ({ children }) => {
     const [userProfile, setUserProfile] = useState(null);
-    const [followerCount, setFollowerCount] = useState(0);
-    const [followingCount, setFollowingCount] = useState(0);
     const [loading, setLoading] = useState(true);
 
     // Lấy thông tin profile từ AsyncStorage khi component được mount
@@ -32,7 +30,6 @@ export const ProfileProvider = ({ children }) => {
                     setUserProfile(parsedProfile);
                 }
 
-                // Có thể lấy thêm followerCount và followingCount từ storage hoặc API
 
 
             } catch (error) {
@@ -81,8 +78,6 @@ export const ProfileProvider = ({ children }) => {
     // Context value
     const value = {
         userProfile,
-        followerCount,
-        followingCount,
         loading,
         updateProfile
     };

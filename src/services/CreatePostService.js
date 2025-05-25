@@ -203,15 +203,84 @@ class CreatePostService {
         }
     }
 
-    // Lấy feed bài đăng
-    async getFeedPosts(page = 0, size = 10) {
+// Cập nhật phương thức getFeedPosts trong CreatePostService.js
+    async getFeedPosts(page = 0, size = 10, order = 'desc') {
         try {
+            console.log(`Đang gọi API lấy feed bài đăng: /posts/feed?page=${page}&size=${size}&order=${order}`);
+
             const response = await this.api.get(`/posts/feed`, {
-                params: { page, size }
+                params: { page, size, order }
             });
-            return response.data;
+
+            console.log('Response từ getFeedPosts:', response.data);
+
+            // Chuyển đổi dữ liệu bài đăng để xử lý URL hình ảnh
+            const content = this.processPostsImageUrls(response.data || []);
+
+            // Nếu response.data là mảng, tức là nó không phải là dữ liệu phân trang
+            if (Array.isArray(response.data)) {
+                return {
+                    content: content,
+                    totalElements: content.length,
+                    totalPages: 1,
+                    last: true,
+                    number: page,
+                    size: size
+                };
+            }
+
+            // Nếu response.data là đối tượng phân trang
+            return {
+                content: content,
+                totalElements: response.data.totalElements,
+                totalPages: response.data.totalPages,
+                last: response.data.last,
+                number: response.data.number,
+                size: response.data.size
+            };
         } catch (error) {
+            console.error('Lỗi khi lấy feed bài đăng:', error);
             this.handleError(error);
+        }
+    }
+
+// Thêm hàm mới để xử lý URL hình ảnh cho tất cả bài đăng
+    processPostsImageUrls(posts) {
+        // Kiểm tra nếu posts là đối tượng phân trang
+        if (posts && posts.content) {
+            posts = posts.content;
+        }
+
+        // Nếu posts không phải là mảng, trả về mảng rỗng
+        if (!Array.isArray(posts)) {
+            return [];
+        }
+
+        return posts.map(post => {
+            // Tạo URL hình ảnh đầy đủ nếu có imageUrl
+            if (post.imageUrl) {
+                post.fullImageUrl = this.createImageUrl(post.imageUrl);
+            }
+            return post;
+        });
+    }
+
+// Thêm hàm để tạo URL hình ảnh từ đường dẫn
+    createImageUrl(path) {
+        if (!path) return null;
+
+        try {
+            // Loại bỏ dấu / ở đầu nếu có
+            const cleanPath = path.replace(/^\//, '');
+
+            // Tạo URL hoàn chỉnh dựa trên cấu hình API
+            const baseUrl = this.api.defaults.baseURL || BASE_URL;
+            const fullUrl = `${baseUrl}/files/image?bucketName=thanh&path=${encodeURIComponent(cleanPath)}`;
+
+            return fullUrl;
+        } catch (error) {
+            console.error('Lỗi khi tạo URL hình ảnh:', error);
+            return null;
         }
     }
 

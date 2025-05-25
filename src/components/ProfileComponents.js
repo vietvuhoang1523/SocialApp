@@ -13,65 +13,47 @@ import {
     SafeAreaView,
 } from 'react-native';
 import { useIsFocused } from '@react-navigation/native';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 
-// Import services
 import UserProfileService from '../services/UserProfileService';
 import AuthService from '../services/AuthService';
-import FollowService from '../services/FollowService';
 
 // Import components
 import {
     LoadingComponent,
     ErrorComponent,
 } from '../components/ProfileComponents';
+import {useProfileContext} from "./ProfileContext";
 
 const { width } = Dimensions.get('window');
-const POSTS_PER_ROW = 3;
 
 // Hình ảnh mặc định cho avatar
 const DEFAULT_PROFILE_IMAGE = 'https://cdn.pixabay.com/photo/2015/10/05/22/37/blank-profile-picture-973460_1280.png';
 
 const ProfileScreen = ({ navigation }) => {
-    const [userProfile, setUserProfile] = useState(null);
-    const [loading, setLoading] = useState(true);
-    const [refreshing, setRefreshing] = useState(false);
     const [activeTab, setActiveTab] = useState('posts'); // Thay đổi từ 'grid' thành 'posts' cho Facebook style
-
+    const { userProfile, loading, updateProfile } = useProfileContext();
+    const [refreshing, setRefreshing] = useState(false);
     // State cho thông tin follow
-    const [followerCount, setFollowerCount] = useState(0);
-    const [followingCount, setFollowingCount] = useState(0);
     const [isOwnProfile, setIsOwnProfile] = useState(true);
 
     const userProfileService = useMemo(() => new UserProfileService(), []);
-    const followService = useMemo(() => new FollowService(), []);
     const isFocused = useIsFocused();
 
     // Tải thông tin người dùng
     const fetchUserProfile = useCallback(async () => {
         if (refreshing) return;
 
-        setLoading(true);
         try {
-            // Lấy thông tin profile của người dùng hiện tại
             const userData = await userProfileService.getCurrentUserProfile();
-            setUserProfile(userData);
-
-            // Lấy số lượng followers và following
-            const followers = await followService.getFollowerCount(userData.id);
-            const following = await followService.getFollowingCount(userData.id);
-
-            setFollowerCount(followers);
-            setFollowingCount(following);
+            // Cập nhật vào context thay vì state local
+            await updateProfile(userData);
             setIsOwnProfile(true);
         } catch (error) {
             console.error('Error fetching user profile:', error);
             Alert.alert('Lỗi', 'Không thể tải thông tin người dùng');
-        } finally {
-            setLoading(false);
         }
-    }, [refreshing, userProfileService, followService]);
+    }, [refreshing, userProfileService, updateProfile]);
 
     // Tải thông tin người dùng khi màn hình được mở
     useEffect(() => {
@@ -125,41 +107,6 @@ const ProfileScreen = ({ navigation }) => {
     const handleEditProfile = useCallback(() => {
         navigation.navigate('EditProfile', { profile: userProfile });
     }, [navigation, userProfile]);
-
-    // Xem danh sách followers
-    const handleViewFollowers = useCallback(async () => {
-        if (!userProfile?.id) return;
-
-        try {
-            const followers = await followService.getFollowers(userProfile.id);
-            navigation.navigate('FollowersList', {
-                userId: userProfile.id,
-                type: 'followers',
-                followers: followers
-            });
-        } catch (error) {
-            console.error('Error fetching followers:', error);
-            Alert.alert('Lỗi', 'Không thể tải danh sách người theo dõi');
-        }
-    }, [userProfile, followService, navigation]);
-
-    // Xem danh sách following
-    const handleViewFollowing = useCallback(async () => {
-        if (!userProfile?.id) return;
-
-        try {
-            const following = await followService.getFollowing(userProfile.id);
-            navigation.navigate('FollowersList', {
-                userId: userProfile.id,
-                type: 'following',
-                following: following
-            });
-        } catch (error) {
-            console.error('Error fetching following:', error);
-            Alert.alert('Lỗi', 'Không thể tải danh sách đang theo dõi');
-        }
-    }, [userProfile, followService, navigation]);
-
     // Hiển thị menu tùy chọn
     const showOptionsMenu = useCallback(() => {
         Alert.alert(
@@ -187,18 +134,10 @@ const ProfileScreen = ({ navigation }) => {
     const getFullName = useMemo(() => {
         if (!userProfile) return '';
 
-        const firstName = userProfile.firstname || '';
-        const lastName = userProfile.lastname || '';
 
         if (userProfile.fullName) {
             return userProfile.fullName;
-        } else if (firstName && lastName) {
-            return `${firstName} ${lastName}`;
-        } else if (firstName) {
-            return firstName;
-        } else if (lastName) {
-            return lastName;
-        } else {
+        }  else {
             return 'Người dùng';
         }
     }, [userProfile]);
@@ -225,15 +164,7 @@ const ProfileScreen = ({ navigation }) => {
         };
     }, [userProfile, userProfileService]);
 
-    // Data bạn bè mẫu (giống Facebook)
-    const friendsData = [
-        { id: '1', name: 'Đỗ Tiến Dũng', avatar: DEFAULT_PROFILE_IMAGE },
-        { id: '2', name: 'Duong Thanh Long', avatar: DEFAULT_PROFILE_IMAGE },
-        { id: '3', name: 'Thanh Niên Khu Bẩy', avatar: DEFAULT_PROFILE_IMAGE },
-        { id: '4', name: 'Bùi Thanh Phương', avatar: DEFAULT_PROFILE_IMAGE },
-        { id: '5', name: 'Trịnh Mạnh Hà', avatar: DEFAULT_PROFILE_IMAGE },
-        { id: '6', name: 'Phúc Bùi', avatar: DEFAULT_PROFILE_IMAGE },
-    ];
+
 
     // Nếu đang tải
     if (loading) {

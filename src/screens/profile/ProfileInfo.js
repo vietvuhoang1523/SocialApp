@@ -1,74 +1,139 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
     View,
     Text,
     Image,
     TouchableOpacity,
     StyleSheet,
+    Dimensions,
+    Alert
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useProfileContext } from '../../components/ProfileContext';
 import { useNavigation } from '@react-navigation/native';
-const DEFAULT_PROFILE_IMAGE = 'http://172.20.10.2:8082/api/files/image?bucketName=thanh&path=posts/e8bd2bdc-97a9-432b-adc1-f90ec0fc3207.jpeg';
+import { BASE_URL } from '../../services/api';
 
-const ProfileInfo = ({
-                         onEditProfile,
-                         onViewIntro
-                     }) => {
-    const {
-        userProfile,
-    } = useProfileContext();
+// Kích thước màn hình
+const { width } = Dimensions.get('window');
 
+// Ảnh mặc định
+const DEFAULT_PROFILE_IMAGE = require('../../assets/h1.png');
+const DEFAULT_COVER_IMAGE = require('../../assets/h1.png');
+
+const getImageUrl = (relativePath) => {
+    if (!relativePath) {
+        console.log('getImageUrl: relativePath is null or empty');
+        return null;
+    }
+
+    // Tạo URL đầy đủ cho hình ảnh và log để debug
+    const url = `${BASE_URL}/files/image?bucketName=thanh&path=${encodeURIComponent(relativePath)}`;
+    console.log('getImageUrl: Generated URL:', url);
+    return url;
+};
+
+const ProfileInfo = ({ onEditProfile, onViewIntro }) => {
+    const { userProfile } = useProfileContext();
     const navigation = useNavigation();
 
-    const profileImageUrl = useMemo(() => {
-        return userProfile?.profilePicture || DEFAULT_PROFILE_IMAGE;
+    const [profileImage, setProfileImage] = useState(DEFAULT_PROFILE_IMAGE);
+    const [coverImage, setCoverImage] = useState(DEFAULT_COVER_IMAGE);
+
+    // Log userProfile khi có thay đổi
+    useEffect(() => {
+        console.log('ProfileInfo: userProfile changed:', userProfile);
     }, [userProfile]);
 
-    const coverImageUrl = useMemo(() => {
-        return userProfile?.coverImage || require('../../assets/h1.png');
+    useEffect(() => {
+        // Reset về ảnh mặc định khi userProfile thay đổi hoặc không có
+        setProfileImage(DEFAULT_PROFILE_IMAGE);
+        setCoverImage(DEFAULT_COVER_IMAGE);
+
+        // Thoát sớm nếu không có userProfile
+        if (!userProfile) {
+            console.log('ProfileInfo: userProfile is null or undefined');
+            return;
+        }
+
+        try {
+            // Xử lý ảnh đại diện
+            if (userProfile.profilePictureUrl) {
+                const profileUrl = getImageUrl(userProfile.profilePictureUrl);
+                console.log('ProfileInfo: Setting profile image URL:', profileUrl);
+                if (profileUrl) {
+                    // Thêm tham số timestamp để tránh cache
+                    const uncachedUrl = `${profileUrl}&_t=${new Date().getTime()}`;
+                    setProfileImage({ uri: uncachedUrl });
+                }
+            } else {
+                console.log('ProfileInfo: No profilePictureUrl in userProfile');
+            }
+
+            // Xử lý ảnh bìa
+            if (userProfile.coverImageUrl) {
+                const coverUrl = getImageUrl(userProfile.coverImageUrl);
+                console.log('ProfileInfo: Setting cover image URL:', coverUrl);
+                if (coverUrl) {
+                    // Thêm tham số timestamp để tránh cache
+                    const uncachedUrl = `${coverUrl}&_t=${new Date().getTime()}`;
+                    setCoverImage({ uri: uncachedUrl });
+                }
+            } else {
+                console.log('ProfileInfo: No coverImageUrl in userProfile');
+            }
+        } catch (error) {
+            console.error('ProfileInfo: Error processing images:', error);
+            Alert.alert('Lỗi', 'Có lỗi xảy ra khi xử lý hình ảnh');
+        }
     }, [userProfile]);
+
 
     const getFullName = () => {
         if (!userProfile) return 'Người dùng';
-        // return userProfile.fullName ||
-        //     `${userProfile.firstname || ''} ${userProfile.lastname || ''}`.trim();
-        return userProfile.fullName .trim();
+
+        // Ưu tiên fullName nếu có
+        if (userProfile.fullName) return userProfile.fullName;
+
+        // Ghép firstname + lastname
+        return [userProfile.firstname, userProfile.lastname]
+            .filter(name => name && name.trim())
+            .join(' ')
+            .trim() || 'Người dùng';
     };
 
-    // Chuyển đến màn hình chỉnh sửa profile
     const handleEditProfile = () => {
         if (onEditProfile) {
             onEditProfile();
         } else {
-            navigation.navigate('EditProfile', { userProfile });
+            navigation.navigate('EditProfile', { profile: userProfile });
         }
     };
 
-    // Điều hướng đến màn hình đổi ảnh đại diện
     const handleEditProfileImage = () => {
         navigation.navigate('EditProfile', {
-            userProfile,
-            initialTab: 'avatar'  // Tùy chọn: nếu màn hình EditProfileScreen có tab
+            profile: userProfile,
+            initialTab: 'avatar'
         });
     };
 
-    // Điều hướng đến màn hình đổi ảnh bìa
     const handleEditCoverImage = () => {
         navigation.navigate('EditProfile', {
-            userProfile,
-            initialTab: 'cover'  // Tùy chọn: nếu màn hình EditProfileScreen có tab
+            profile: userProfile,
+            initialTab: 'cover'
         });
     };
 
     return (
         <View style={styles.container}>
-            {/* Cover Image */}
             <View style={styles.coverImageContainer}>
                 <Image
-                    source={typeof coverImageUrl === 'string' ? { uri: coverImageUrl } : coverImageUrl}
+                    source={coverImage}
                     style={styles.coverImage}
                     resizeMode="cover"
+                    onError={(e) => {
+                        console.log('Cover image load failed', e.nativeEvent.error);
+                        setCoverImage(DEFAULT_COVER_IMAGE);
+                    }}
                 />
                 <TouchableOpacity
                     style={styles.editCoverButton}
@@ -79,11 +144,15 @@ const ProfileInfo = ({
                 </TouchableOpacity>
             </View>
 
-            {/* Profile Image */}
             <View style={styles.profileImageContainer}>
                 <Image
-                    source={{ uri: profileImageUrl }}
+                    source={profileImage}
                     style={styles.profileImage}
+                    resizeMode="cover"
+                    onError={(e) => {
+                        console.log('Profile image load failed', e.nativeEvent.error);
+                        setProfileImage(DEFAULT_PROFILE_IMAGE);
+                    }}
                 />
                 <TouchableOpacity
                     style={styles.editProfileImageButton}
@@ -94,7 +163,6 @@ const ProfileInfo = ({
                 </TouchableOpacity>
             </View>
 
-            {/* Profile Details */}
             <View style={styles.profileDetailsContainer}>
                 <Text style={styles.nameText}>{getFullName()}</Text>
 
@@ -104,16 +172,12 @@ const ProfileInfo = ({
                         onPress={onViewIntro}
                         activeOpacity={0.7}
                     >
-                        <Text
-                            style={styles.bioText}
-                            numberOfLines={2}
-                        >
+                        <Text style={styles.bioText} numberOfLines={2}>
                             {userProfile.bio}
                         </Text>
                     </TouchableOpacity>
                 )}
 
-                {/* Action Buttons */}
                 <View style={styles.actionButtonsContainer}>
                     <TouchableOpacity
                         style={styles.primaryButton}
@@ -124,7 +188,6 @@ const ProfileInfo = ({
                             Chỉnh sửa trang cá nhân
                         </Text>
                     </TouchableOpacity>
-
                 </View>
             </View>
         </View>
@@ -139,10 +202,12 @@ const styles = StyleSheet.create({
     coverImageContainer: {
         height: 200,
         position: 'relative',
+        backgroundColor: '#f0f2f5', // Background mặc định nếu ảnh không tải được
     },
     coverImage: {
         width: '100%',
         height: '100%',
+        backgroundColor: '#f0f2f5',
     },
     editCoverButton: {
         position: 'absolute',
@@ -165,6 +230,8 @@ const styles = StyleSheet.create({
         top: 150,
         left: 15,
         zIndex: 10,
+        backgroundColor: '#f0f2f5', // Background mặc định nếu ảnh không tải được
+        borderRadius: 50,
     },
     profileImage: {
         width: 100,
@@ -172,6 +239,7 @@ const styles = StyleSheet.create({
         borderRadius: 50,
         borderWidth: 3,
         borderColor: 'white',
+        backgroundColor: '#f0f2f5',
     },
     editProfileImageButton: {
         position: 'absolute',
@@ -206,12 +274,6 @@ const styles = StyleSheet.create({
         color: '#65676B',
         lineHeight: 20,
     },
-    socialStatsContainer: {
-        marginTop: 10,
-    },
-    socialStatsText: {
-        color: '#65676B',
-    },
     actionButtonsContainer: {
         flexDirection: 'row',
         marginTop: 15,
@@ -233,24 +295,7 @@ const styles = StyleSheet.create({
         color: '#1877F2',
         fontWeight: 'bold',
         textAlign: 'center',
-    },
-    secondaryButton: {
-        backgroundColor: '#E4E6EB',
-        paddingVertical: 10,
-        paddingHorizontal: 15,
-        borderRadius: 6,
-        flex: 1,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.1,
-        shadowRadius: 1,
-        elevation: 1,
-    },
-    secondaryButtonText: {
-        color: '#050505',
-        fontWeight: 'bold',
-        textAlign: 'center',
-    },
+    }
 });
 
 export default ProfileInfo;

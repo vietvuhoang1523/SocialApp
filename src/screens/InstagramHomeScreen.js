@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
     View,
     Text,
@@ -6,210 +6,277 @@ import {
     StyleSheet,
     TouchableOpacity,
     FlatList,
-    Dimensions
+    Dimensions,
+    RefreshControl,
+    ActivityIndicator,
+    Alert
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-// Bạn không cần import này nếu đã dùng Tab Navigator
-// import ReelsScreen from "./ReelsScreen";
-
-// Mock Data
-const MOCK_CURRENT_USER = {
-    id: '1',
-    username: 'your_username',
-    profilePicture: 'https://randomuser.me/api/portraits/men/1.jpg'
-};
-
-const MOCK_STORIES = [
-    {
-        id: '2',
-        username: 'friend1',
-        profilePicture: 'https://randomuser.me/api/portraits/women/1.jpg'
-    },
-    {
-        id: '3',
-        username: 'friend2',
-        profilePicture: 'https://randomuser.me/api/portraits/women/2.jpg'
-    },
-    {
-        id: '4',
-        username: 'friend3',
-        profilePicture: 'https://randomuser.me/api/portraits/men/2.jpg'
-    },
-    {
-        id: '5',
-        username: 'friend4',
-        profilePicture: 'https://randomuser.me/api/portraits/men/3.jpg'
-    }
-];
-
-const MOCK_POSTS = [
-    {
-        id: '1',
-        user: {
-            username: 'friend1',
-            profilePicture: 'https://randomuser.me/api/portraits/women/1.jpg'
-        },
-        imageUrl: 'https://picsum.photos/seed/1/500/500',
-        likes: 234,
-        caption: 'Amazing day out! 🌞',
-        comments: 45,
-        timeAgo: '2 hours ago'
-    },
-    {
-        id: '2',
-        user: {
-            username: 'friend2',
-            profilePicture: 'https://randomuser.me/api/portraits/women/2.jpg'
-        },
-        imageUrl: 'https://picsum.photos/seed/2/500/500',
-        likes: 156,
-        caption: 'Loving the sunset views 🌅',
-        comments: 22,
-        timeAgo: '5 hours ago'
-    }
-];
+import CreatePostService from '../services/CreatePostService';
+import authService from '../services/AuthService';
+import Config from '../../src/services/config';
 
 const { width } = Dimensions.get('window');
+
+// Hàm tạo URL hình ảnh (di chuyển ra ngoài component để có thể tái sử dụng)
+// const createImageUrl = (path) => {
+//     if (!path) return null;
+//
+//     try {
+//         const cleanPath = path.replace(/^\//, '');
+//         const apiUrl = Config.extra.apiUrl;
+//         return `${apiUrl}/files/view?bucketName=thanh&path=${encodeURIComponent(cleanPath)}`;
+//     } catch (error) {
+//         console.error('Lỗi khi tạo URL hình ảnh:', error);
+//         return null;
+//     }
+// };
+const createImageUrl = (path) => {
+    if (!path) return null;
+
+    try {
+        // Xử lý cả path avatar và post
+        const cleanPath = path
+            .replace(/^thanh\//, '') // Xóa prefix thanh/ nếu có
+            .replace(/^\//, ''); // Xóa slash đầu tiên nếu có
+
+        const apiUrl = Config.extra.apiUrl;
+        return `${apiUrl}/files/image?bucketName=thanh&path=${encodeURIComponent(cleanPath)}`;
+    } catch (error) {
+        console.error('Lỗi khi tạo URL:', error);
+        return null;
+    }
+};
+
 
 const InstagramHomeScreen = ({ navigation }) => {
     const [stories, setStories] = useState([]);
     const [posts, setPosts] = useState([]);
     const [currentUser, setCurrentUser] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [refreshing, setRefreshing] = useState(false);
+    const [page, setPage] = useState(0);
+    const [isLastPage, setIsLastPage] = useState(false);
+    const [loadingMore, setLoadingMore] = useState(false);
 
-    useEffect(() => {
-        // Simulate data fetching
-        fetchData();
-    }, []);
-
-    const fetchData = () => {
-        // In a real app, this would be an async call to your services
-        setCurrentUser(MOCK_CURRENT_USER);
-        setStories(MOCK_STORIES);
-        setPosts(MOCK_POSTS);
+    const fetchCurrentUser = async () => {
+        try {
+            const userData = await authService.getUserData();
+            setCurrentUser(userData);
+            return userData;
+        } catch (error) {
+            console.error('Lỗi khi lấy thông tin người dùng:', error);
+            return null;
+        }
     };
 
-    const renderStory = ({ item, index }) => (
-        <TouchableOpacity
-            style={styles.storyContainer}
-            onPress={() => navigation.navigate('StoryView', { stories, initialIndex: index })}
-        >
-            <View style={styles.storyImageWrapper}>
-                <Image
-                    source={{ uri: item.profilePicture }}
-                    style={styles.storyImage}
-                />
-                {index === 0 && currentUser && (
-                    <View style={styles.addStoryIcon}>
-                        <Icon name="plus" size={16} color="white" />
-                    </View>
-                )}
-            </View>
-            <Text style={styles.storyUsername} numberOfLines={1}>
-                {index === 0 ? 'Your Story' : item.username}
-            </Text>
-        </TouchableOpacity>
-    );
+    const fetchPosts = async (pageNumber = 0, shouldRefresh = false) => {
+        try {
+            if (shouldRefresh) {
+                setRefreshing(true);
+                setPage(0);
+                pageNumber = 0;
+            } else if (pageNumber > 0) {
+                setLoadingMore(true);
+            } else {
+                setLoading(true);
+            }
 
-    const renderPost = ({ item }) => (
-        <View style={styles.postContainer}>
-            {/* Post Header */}
-            <View style={styles.postHeader}>
-                <TouchableOpacity
-                    style={styles.postHeaderLeft}
-                    onPress={() => navigation.navigate('Profile', { user: item.user })}
-                >
-                    <Image
-                        source={{ uri: item.user.profilePicture }}
-                        style={styles.postUserImage}
-                    />
-                    <Text style={styles.postUsername}>{item.user.username}</Text>
-                </TouchableOpacity>
-                <TouchableOpacity>
-                    <Icon name="dots-horizontal" size={24} color="black" />
-                </TouchableOpacity>
-            </View>
+            const response = await CreatePostService.getFeedPosts(pageNumber, 10);
+            const newPosts = response?.content || [];
 
-            {/* Post Image */}
-            <Image
-                source={{ uri: item.imageUrl }}
-                style={styles.postImage}
-                resizeMode="cover"
-            />
+            if (shouldRefresh || pageNumber === 0) {
+                setPosts(newPosts);
+            } else {
+                setPosts(prevPosts => [...prevPosts, ...newPosts]);
+            }
 
-            {/* Post Actions */}
-            <View style={styles.postActions}>
-                <View style={styles.postActionsLeft}>
-                    <TouchableOpacity style={styles.actionIcon}>
-                        <Icon name="heart-outline" size={24} color="black" />
+            setIsLastPage(response?.last || newPosts.length < 10);
+            setPage(pageNumber);
+        } catch (error) {
+            console.error('Lỗi khi tải bài đăng:', error);
+            Alert.alert('Lỗi', 'Không thể tải bài đăng. Vui lòng thử lại sau.');
+        } finally {
+            setLoading(false);
+            setRefreshing(false);
+            setLoadingMore(false);
+        }
+    };
+
+    const onRefresh = useCallback(() => {
+        fetchPosts(0, true);
+    }, []);
+
+    const onEndReached = () => {
+        if (!isLastPage && !loadingMore && !refreshing) {
+            fetchPosts(page + 1);
+        }
+    };
+
+    const handleLikePress = async (postId) => {
+        try {
+            await CreatePostService.toggleLike(postId);
+            setPosts(prevPosts =>
+                prevPosts.map(post => {
+                    if (post.id === postId) {
+                        const isCurrentlyLiked = post.isLike;
+                        const newLikeCount = isCurrentlyLiked ? post.lengthLike - 1 : post.lengthLike + 1;
+                        return {
+                            ...post,
+                            isLike: !isCurrentlyLiked,
+                            lengthLike: newLikeCount
+                        };
+                    }
+                    return post;
+                })
+            );
+        } catch (error) {
+            console.error('Lỗi khi thích/bỏ thích bài đăng:', error);
+            Alert.alert('Lỗi', 'Không thể thích/bỏ thích bài đăng. Vui lòng thử lại sau.');
+        }
+    };
+
+
+    useEffect(() => {
+        const loadInitialData = async () => {
+            await fetchCurrentUser();
+            fetchPosts();
+            setStories([]);
+        };
+        loadInitialData();
+    }, []);
+
+    useEffect(() => {
+        const unsubscribe = navigation.addListener('focus', () => {
+            onRefresh();
+        });
+        return unsubscribe;
+    }, [navigation, onRefresh]);
+
+    const renderPost = ({ item }) => {
+        const imageUrl = item.fullImageUrl || (item.imageUrl ? createImageUrl(item.imageUrl) : null);
+        return (
+            <View style={styles.postContainer}>
+                <View style={styles.postHeader}>
+                    <TouchableOpacity
+                        style={styles.postHeaderLeft}
+                        onPress={() => navigation.navigate('Profile', { userId: item.userRes?.id })}
+                    >
+                        <Image
+                            source={{
+                                uri: currentUser?.profilePictureUrl
+                                    ? createImageUrl(currentUser.profilePictureUrl)
+                                    : 'https://randomuser.me/api/portraits/men/1.jpg'
+                            }}
+                            style={styles.profileThumb}
+                        />
+                        <Text style={styles.postUsername}>{item.userRes?.fullName || item.userRes?.username || 'User'}</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity style={styles.actionIcon}>
-                        <Icon name="comment-outline" size={24} color="black" />
-                    </TouchableOpacity>
-                    <TouchableOpacity style={styles.actionIcon}>
-                        <Icon name="send" size={24} color="black" />
+                    <TouchableOpacity>
+                        <Icon name="dots-horizontal" size={24} color="black" />
                     </TouchableOpacity>
                 </View>
-                <TouchableOpacity>
-                    <Icon name="bookmark-outline" size={24} color="black" />
-                </TouchableOpacity>
-            </View>
-
-            {/* Post Likes and Caption */}
-            <View style={styles.postDetailsContainer}>
-                <Text style={styles.postLikes}>{item.likes} likes</Text>
-                <Text style={styles.postCaption}>
-                    <Text style={styles.postUsername}>{item.user.username} </Text>
-                    {item.caption}
-                </Text>
-                {item.comments > 0 && (
-                    <Text style={styles.postComments}>
-                        View all {item.comments} comments
-                    </Text>
+                {imageUrl && (
+                    <View style={styles.postImageContainer}>
+                        <Image
+                            source={{ uri: imageUrl }}
+                            style={styles.postImage}
+                            resizeMode="cover"
+                            onError={(e) => console.error('Lỗi tải hình ảnh:', e.nativeEvent.error)}
+                        />
+                    </View>
                 )}
-                <Text style={styles.postTime}>{item.timeAgo}</Text>
+                <View style={styles.postActions}>
+                    <View style={styles.postActionsLeft}>
+                        <TouchableOpacity style={styles.actionIcon} onPress={() => handleLikePress(item.id)}>
+                            <Icon
+                                name={item.isLike ? "heart" : "heart-outline"}
+                                size={24}
+                                color={item.isLike ? "red" : "black"}
+                            />
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.actionIcon} onPress={() => navigation.navigate('Comments', { postId: item.id })}>
+                            <Icon name="comment-outline" size={24} color="black" />
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.actionIcon}>
+                            <Icon name="send" size={24} color="black" />
+                        </TouchableOpacity>
+                    </View>
+                    <TouchableOpacity>
+                        <Icon name="bookmark-outline" size={24} color="black" />
+                    </TouchableOpacity>
+                </View>
+                <View style={styles.postDetailsContainer}>
+                    <Text style={styles.postLikes}>{item.lengthLike || 0} likes</Text>
+                    <Text style={styles.postCaption}>
+                        <Text style={styles.postUsername}>{item.userRes?.fullName || item.userRes?.username || 'User'} </Text>
+                        {item.content}
+                    </Text>
+                    {item.lengthCmt > 0 && (
+                        <TouchableOpacity onPress={() => navigation.navigate('Comments', { postId: item.id })}>
+                            <Text style={styles.postComments}>
+                                View all {item.lengthCmt} comments
+                            </Text>
+                        </TouchableOpacity>
+                    )}
+                    <Text style={styles.postTime}>{formatTimeAgo(item.createdAt)}</Text>
+                </View>
             </View>
-        </View>
-    );
+        );
+    };
+
+    const formatTimeAgo = (dateString) => {
+        if (!dateString) return '';
+        const now = new Date();
+        const date = new Date(dateString);
+        const diffInSeconds = Math.floor((now - date) / 1000);
+        if (diffInSeconds < 60) return 'vừa xong';
+        if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)} phút trước`;
+        if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)} giờ trước`;
+        if (diffInSeconds < 604800) return `${Math.floor(diffInSeconds / 86400)} ngày trước`;
+        return `${date.getDate()}/${date.getMonth() + 1}/${date.getFullYear()}`;
+    };
+
+    if (loading && !refreshing && posts.length === 0) {
+        return (
+            <View style={[styles.container, styles.centerContent]}>
+                <ActivityIndicator size="large" color="#0095F6" />
+            </View>
+        );
+    }
 
     return (
         <View style={styles.container}>
-            {/* Header */}
             <View style={styles.header}>
                 <TouchableOpacity>
                     <Icon name="camera" size={24} color="black" />
                 </TouchableOpacity>
-                <Image
-                    // source={require('../assets/instagram-logo.png')}
-                    style={styles.logoImage}
-                />
+                <Text style={styles.headerTitle}>Social Matching</Text>
                 <TouchableOpacity onPress={() => navigation.navigate('Messages')}>
                     <Icon name="message-outline" size={24} color="black" />
                 </TouchableOpacity>
             </View>
-
-            {/* Content */}
             <FlatList
-                ListHeaderComponent={
-                    <FlatList
-                        data={[
-                            { id: 'currentUser', profilePicture: currentUser?.profilePicture },
-                            ...stories
-                        ]}
-                        renderItem={renderStory}
-                        keyExtractor={(item) => item.id.toString()}
-                        horizontal
-                        showsHorizontalScrollIndicator={false}
-                        contentContainerStyle={styles.storiesContainer}
-                    />
-                }
                 data={posts}
                 renderItem={renderPost}
                 keyExtractor={(item) => item.id.toString()}
                 showsVerticalScrollIndicator={false}
+                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#0095F6']} />}
+                onEndReached={onEndReached}
+                onEndReachedThreshold={0.5}
+                ListFooterComponent={loadingMore ? (
+                    <View style={styles.loadingMore}>
+                        <ActivityIndicator size="small" color="#0095F6" />
+                    </View>
+                ) : null}
+                ListEmptyComponent={!loading && (
+                    <View style={styles.emptyContainer}>
+                        <Text style={styles.emptyText}>
+                            Chưa có bài viết nào. Hãy theo dõi bạn bè để xem bài viết của họ.
+                        </Text>
+                    </View>
+                )}
             />
-
-            {/* Bottom Navigation */}
-            {/*/!* Phần này nên được xóa vì đã có MainTabNavigator xử lý việc này *!/*/}
             <View style={styles.bottomNavigation}>
                 <TouchableOpacity onPress={() => navigation.navigate('Home')}>
                     <Icon name="home" size={24} color="black" />
@@ -223,9 +290,9 @@ const InstagramHomeScreen = ({ navigation }) => {
                 <TouchableOpacity onPress={() => navigation.navigate('FriendRequests')}>
                     <Icon name="heart-outline" size={24} color="black" />
                 </TouchableOpacity>
-                <TouchableOpacity onPress={() => navigation.navigate('Profile', { user: currentUser })}>
+                <TouchableOpacity onPress={() => navigation.navigate('Profile', { userId: currentUser?.id })}>
                     <Image
-                        source={{ uri: currentUser?.profilePicture }}
+                        source={{ uri: currentUser?.profilePictureUrl || 'https://randomuser.me/api/portraits/men/1.jpg' }}
                         style={styles.profileThumb}
                     />
                 </TouchableOpacity>
@@ -239,6 +306,10 @@ const styles = StyleSheet.create({
         flex: 1,
         backgroundColor: 'white',
     },
+    centerContent: {
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
     header: {
         flexDirection: 'row',
         justifyContent: 'space-between',
@@ -248,10 +319,9 @@ const styles = StyleSheet.create({
         borderBottomWidth: 0.5,
         borderBottomColor: '#DEDEDE',
     },
-    logoImage: {
-        width: 110,
-        height: 40,
-        resizeMode: 'contain',
+    headerTitle: {
+        fontSize: 20,
+        fontWeight: 'bold',
     },
     storiesContainer: {
         paddingHorizontal: 10,
@@ -317,9 +387,14 @@ const styles = StyleSheet.create({
     postUsername: {
         fontWeight: 'bold',
     },
-    postImage: {
+    postImageContainer: {
         width: width,
         height: width,
+        backgroundColor: '#f0f0f0',
+    },
+    postImage: {
+        width: '100%',
+        height: '100%',
     },
     postActions: {
         flexDirection: 'row',
@@ -336,6 +411,7 @@ const styles = StyleSheet.create({
     },
     postDetailsContainer: {
         paddingHorizontal: 15,
+        paddingBottom: 10,
     },
     postLikes: {
         fontWeight: 'bold',
@@ -365,6 +441,20 @@ const styles = StyleSheet.create({
         width: 24,
         height: 24,
         borderRadius: 12,
+    },
+    loadingMore: {
+        paddingVertical: 20,
+        alignItems: 'center',
+    },
+    emptyContainer: {
+        padding: 20,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    emptyText: {
+        textAlign: 'center',
+        color: '#8e8e8e',
+        fontSize: 16,
     },
 });
 

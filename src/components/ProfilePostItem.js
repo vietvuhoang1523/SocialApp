@@ -4,10 +4,8 @@ import {
     Text,
     Image,
     StyleSheet,
-    TouchableOpacity,
     Alert
 } from 'react-native';
-import Ionicons from 'react-native-vector-icons/Ionicons';
 
 // Hàm tạo URL ảnh
 const createImageUrl = (path) => {
@@ -26,7 +24,7 @@ const createImageUrl = (path) => {
 
         // Tạo URL hoàn chỉnh
         // LƯU Ý: Thay đổi IP nếu cần
-        const fullUrl = `http://192.168.1.73:8082/api/files/view?bucketName=thanh&path=${encodeURIComponent(cleanPath)}`;
+        const fullUrl = `http://192.168.1.73:8082/api/files/image?bucketName=thanh&path=${encodeURIComponent(cleanPath)}`;
 
         console.log('DEBUG - Full Image URL:', fullUrl);
         return fullUrl;

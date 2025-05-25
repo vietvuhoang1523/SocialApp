@@ -10,7 +10,7 @@ import {
 import Ionicons from 'react-native-vector-icons/Ionicons';
 
 // Định nghĩa base URL cho API images
-const API_BASE_URL = 'http://172.20.10.18:8082';
+const API_BASE_URL = 'http://192.168.100.193:8082';
 const IMAGE_API_PATH = '/api/files/image?bucketName=thanh&path=';
 
 // Hàm helper để tạo URL đầy đủ từ đường dẫn tương đối
@@ -27,8 +27,8 @@ const PostItem = ({ item, onLikePress, onCommentPress, onSharePress }) => {
     const fullName = item.userRes?.fullName || item.user?.name || 'Người dùng';
 
     // Xử lý avatar URL - sử dụng hàm getFullImageUrl để tạo URL đầy đủ
-    const avatarUrl = item.userRes?.avatarUrl || item.user?.avatarUrl
-        ? getFullImageUrl(item.userRes?.avatarUrl || item.user?.avatarUrl)
+    const avatarUrl = item.userRes?.profilePictureUrl || item.user?.profilePictureUrl
+        ? getFullImageUrl(item.userRes?.profilePictureUrl || item.user?.profilePictureUrl)
         : null;
 
     // Sử dụng default avatar nếu không có avatarUrl

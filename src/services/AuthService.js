@@ -362,6 +362,15 @@ class AuthService {
                             Authorization: `Bearer ${token}`
                         }
                     });
+                    // Xóa token
+                    await AsyncStorage.removeItem('accessToken');
+                    await AsyncStorage.removeItem('refreshToken');
+
+                    // Quan trọng: Xóa dữ liệu profile để tránh hiển thị dữ liệu của tài khoản cũ
+                    await AsyncStorage.removeItem('userProfile');
+
+                    // Các xử lý logout khác nếu có
+                    return true;
                 } catch (logoutError) {
                     console.warn('Logout API error:', logoutError);
                     // Tiếp tục xóa token dù có lỗi API
