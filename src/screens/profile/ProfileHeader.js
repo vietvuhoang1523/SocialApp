@@ -8,8 +8,8 @@ import {
     StatusBar,
     Animated,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import Ionicons from 'react-native-vector-icons/Ionicons';
-import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 import { useProfileContext } from '../../components/ProfileContext';
 
 const ProfileHeader = ({
@@ -42,9 +42,10 @@ const ProfileHeader = ({
     });
 
     const getFullName = () => {
-        if (!userProfile) return 'Người dùng';
+        if (!userProfile) return 'Trang cá nhân';
         return userProfile.fullName ||
-            `${userProfile.firstname || ''} ${userProfile.lastname || ''}`.trim();
+            `${userProfile.firstname || ''} ${userProfile.lastname || ''}`.trim() ||
+            'Trang cá nhân';
     };
 
     return (
@@ -54,145 +55,107 @@ const ProfileHeader = ({
                 {
                     opacity: headerOpacity,
                     shadowOpacity: headerShadowOpacity,
-                    paddingTop: Platform.OS === 'ios' ? StatusBar.currentHeight + 10 : 10
                 }
             ]}
         >
-            <TouchableOpacity
-                style={styles.backButton}
-                onPress={() => navigation.goBack()}
-                activeOpacity={0.7}
+            <LinearGradient
+                colors={['#E91E63', '#F06292']}
+                style={styles.gradient}
             >
-                <View style={styles.backButtonInner}>
-                    <Ionicons
-                        name="arrow-back"
-                        size={24}
-                        color="#1877F2"
-                    />
+                <View style={styles.headerContent}>
+                    <TouchableOpacity
+                        style={styles.backButton}
+                        onPress={() => navigation.goBack()}
+                        activeOpacity={0.7}
+                    >
+                        <Ionicons
+                            name="arrow-back"
+                            size={24}
+                            color="#fff"
+                        />
+                    </TouchableOpacity>
+
+                    <View style={styles.titleContainer}>
+                        <Animated.Text
+                            style={[
+                                styles.titleText,
+                                { transform: [{ scale: nameScale }] }
+                            ]}
+                            numberOfLines={1}
+                        >
+                            {getFullName()}
+                        </Animated.Text>
+                    </View>
+
+                    <View style={styles.rightActions}>
+                        <TouchableOpacity
+                            style={styles.actionButton}
+                            activeOpacity={0.7}
+                        >
+                            <Ionicons
+                                name="search"
+                                size={22}
+                                color="#fff"
+                            />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={styles.actionButton}
+                            onPress={onMoreOptionsPress}
+                            activeOpacity={0.7}
+                        >
+                            <Ionicons
+                                name="ellipsis-vertical"
+                                size={22}
+                                color="#fff"
+                            />
+                        </TouchableOpacity>
+                    </View>
                 </View>
-            </TouchableOpacity>
-
-            <View style={styles.titleContainer}>
-                <Animated.Text
-                    style={[
-                        styles.titleText,
-                        { transform: [{ scale: nameScale }] }
-                    ]}
-                    numberOfLines={1}
-                >
-                    {getFullName()}
-                </Animated.Text>
-                <TouchableOpacity
-                    style={styles.dropdownButton}
-                    activeOpacity={0.7}
-                >
-                    <View style={styles.dropdownButtonInner}>
-                        <Ionicons
-                            name="chevron-down"
-                            size={20}
-                            color="#1877F2"
-                        />
-                    </View>
-                </TouchableOpacity>
-            </View>
-
-            <View style={styles.rightActions}>
-                <TouchableOpacity
-                    style={styles.actionButton}
-                    activeOpacity={0.7}
-                >
-                    <View style={styles.actionButtonInner}>
-                        <Ionicons
-                            name="search"
-                            size={22}
-                            color="#1877F2"
-                        />
-                    </View>
-                </TouchableOpacity>
-                <TouchableOpacity
-                    style={styles.actionButton}
-                    onPress={onMoreOptionsPress}
-                    activeOpacity={0.7}
-                >
-                    <View style={styles.actionButtonInner}>
-                        <MaterialIcons
-                            name="more-vert"
-                            size={22}
-                            color="#1877F2"
-                        />
-                    </View>
-                </TouchableOpacity>
-            </View>
+            </LinearGradient>
         </Animated.View>
     );
 };
 
 const styles = StyleSheet.create({
     container: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        paddingHorizontal: 15,
-        paddingBottom: 10,
-        backgroundColor: 'white',
-        borderBottomWidth: 0.5,
-        borderBottomColor: '#E5E5E5',
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 2 },
         shadowRadius: 4,
         elevation: 4,
         zIndex: 1000,
     },
+    gradient: {
+        paddingTop: Platform.OS === 'ios' ? 10 : 10,
+        paddingBottom: 15,
+    },
+    headerContent: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: 20,
+    },
     backButton: {
         padding: 5,
     },
-    backButtonInner: {
-        width: 36,
-        height: 36,
-        borderRadius: 18,
-        justifyContent: 'center',
-        alignItems: 'center',
-        backgroundColor: '#F0F2F5',
-    },
     titleContainer: {
-        flexDirection: 'row',
-        alignItems: 'center',
         flex: 1,
+        alignItems: 'center',
         marginHorizontal: 10,
     },
     titleText: {
         fontSize: 20,
         fontWeight: 'bold',
-        marginRight: 5,
-        maxWidth: '80%',
-        color: '#1C1E21',
-    },
-    dropdownButton: {
-        padding: 2,
-    },
-    dropdownButtonInner: {
-        width: 28,
-        height: 28,
-        borderRadius: 14,
-        justifyContent: 'center',
-        alignItems: 'center',
-        backgroundColor: '#F0F2F5',
+        color: '#fff',
+        textAlign: 'center',
     },
     rightActions: {
         flexDirection: 'row',
+        alignItems: 'center',
     },
     actionButton: {
-        marginLeft: 10,
-        padding: 2,
+        marginLeft: 15,
+        padding: 5,
     },
-    actionButtonInner: {
-        width: 36,
-        height: 36,
-        borderRadius: 18,
-        justifyContent: 'center',
-        alignItems: 'center',
-        backgroundColor: '#F0F2F5',
-    }
 });
 
 export default ProfileHeader;

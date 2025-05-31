@@ -55,11 +55,71 @@ class CreatePostService {
         return isFormData ? FORM_DATA_HEADERS : DEFAULT_HEADERS;
     }
 
-    // Tạo bài đăng mới
+    // ✅ Tạo bài đăng mới với nhiều hình ảnh
+    async createPostWithMultipleImages(postData) {
+        try {
+            console.log('🖼️ Đang gửi request tạo bài đăng với nhiều hình ảnh:', postData);
+
+            // Validate số lượng hình ảnh
+            if (postData.imageFiles && postData.imageFiles.length > 10) {
+                throw new Error('Chỉ được upload tối đa 10 hình ảnh');
+            }
+
+            // Tạo FormData để upload nhiều ảnh và dữ liệu
+            const formData = new FormData();
+
+            // Thêm nội dung
+            if (postData.content) {
+                formData.append('content', postData.content);
+            }
+
+            // ✅ Thêm nhiều hình ảnh nếu có
+            if (postData.imageFiles && postData.imageFiles.length > 0) {
+                console.log(`📷 Thêm ${postData.imageFiles.length} hình ảnh`);
+                postData.imageFiles.forEach((imageFile, index) => {
+                    console.log(`📸 Thêm hình ảnh ${index + 1}:`, imageFile);
+                    formData.append('imageFiles', {
+                        uri: imageFile.uri,
+                        type: imageFile.type || 'image/jpeg',
+                        name: imageFile.name || `image_${index + 1}.jpg`
+                    });
+                });
+            }
+
+            // Thêm loại bài đăng
+            if (postData.type) {
+                formData.append('type', postData.type);
+            }
+
+            console.log('📤 FormData được tạo với nhiều hình ảnh');
+
+            // ✅ Gửi đến endpoint /multi-images
+            const response = await this.api.post('/posts/multi-images', formData, {
+                headers: {
+                    ...this.getHeaders(true),
+                    'Content-Type': 'multipart/form-data'
+                },
+                timeout: 120000 // Tăng timeout lên 2 phút cho multiple images
+            });
+
+            console.log('✅ Response từ createPostWithMultipleImages:', response.data);
+            return response.data;
+        } catch (error) {
+            console.error('❌ Lỗi khi tạo bài đăng với nhiều hình ảnh:', error);
+            this.handleError(error);
+        }
+    }
+
+    // Tạo bài đăng mới (single image - backward compatibility)
     async createPost(postData) {
         try {
+            // ✅ Nếu có nhiều hình ảnh, sử dụng endpoint mới
+            if (postData.imageFiles && postData.imageFiles.length > 0) {
+                return await this.createPostWithMultipleImages(postData);
+            }
+
             // Log request
-            console.log('Đang gửi request tạo bài đăng với dữ liệu:', postData);
+            console.log('📝 Đang gửi request tạo bài đăng với dữ liệu:', postData);
 
             // Tạo FormData để upload ảnh và dữ liệu
             const formData = new FormData();
@@ -69,10 +129,9 @@ class CreatePostService {
                 formData.append('content', postData.content);
             }
 
-            // Thêm ảnh nếu có
+            // Thêm ảnh nếu có (single image)
             if (postData.imageFile) {
-                console.log('Thêm file:', postData.imageFile);
-                // Đảm bảo đúng cấu trúc cho React Native FormData
+                console.log('📷 Thêm file:', postData.imageFile);
                 formData.append('imageFile', {
                     uri: postData.imageFile.uri,
                     type: postData.imageFile.type || 'image/jpeg',
@@ -85,24 +144,21 @@ class CreatePostService {
                 formData.append('type', postData.type);
             }
 
-            console.log('FormData được tạo:', JSON.stringify(formData));
+            console.log('📤 FormData được tạo (single image)');
 
-            // Log URL đầy đủ
-            console.log('URL request:', this.api.defaults.baseURL + '/posts');
-
-            // Mở rộng timeout cho upload
+            // Gửi đến endpoint gốc
             const response = await this.api.post('/posts', formData, {
                 headers: {
                     ...this.getHeaders(true),
                     'Content-Type': 'multipart/form-data'
                 },
-                timeout: 60000 // Tăng timeout lên 60 giây
+                timeout: 60000
             });
 
-            console.log('Response từ createPost:', response.data);
+            console.log('✅ Response từ createPost:', response.data);
             return response.data;
         } catch (error) {
-            console.error('Lỗi khi tạo bài đăng:', error);
+            console.error('❌ Lỗi khi tạo bài đăng:', error);
             this.handleError(error);
         }
     }
@@ -168,7 +224,18 @@ class CreatePostService {
             const response = await this.api.get(`/posts/user/${userId}`);
             return response.data;
         } catch (error) {
-            this.handleError(error);
+            const errorInfo = this.handleError(error);
+            // Trả về một đối tượng dữ liệu giả để tránh lỗi undefined
+            return {
+                error: true,
+                errorInfo,
+                post: {
+                    id: postId,
+                    title: '',
+                    content: '',
+                    images: [] // Mảng rỗng thay vì undefined
+                }
+            }
         }
     }
 
@@ -204,144 +271,92 @@ class CreatePostService {
         }
     }
 
-    // Trong CreatePostService.js
-    // Sửa đổi hàm checkPostOwnership trong CreatePostService.js
+    // Sửa đổi hàm checkPostOwnership trong CreatePostService.js - Phiên bản đơn giản
     async checkPostOwnership(postId) {
         try {
-            console.log('🔍 Bắt đầu kiểm tra quyền sở hữu bài viết:', postId);
+            console.log('🔍 Kiểm tra quyền sở hữu bài viết:', postId);
 
-            // Kiểm tra postId có hợp lệ không
+            // Kiểm tra cơ bản
             if (!postId) {
                 console.log('❌ PostId không hợp lệ');
                 return false;
             }
 
-            // Lấy token từ AsyncStorage
+            // Lấy token
             const token = await AsyncStorage.getItem('accessToken');
             if (!token) {
                 console.log('❌ Không có token');
                 return false;
             }
 
-            // Tạo các promise để thực hiện song song
-            const promises = [];
-
-            // Promise 1: Lấy thông tin bài viết
-            const getPostPromise = this.getPostById(postId)
-                .then(postData => {
-                    console.log('📄 Chi tiết bài viết:', JSON.stringify(postData, null, 2));
-                    return postData;
-                })
-                .catch(error => {
-                    console.error('❌ Lỗi khi lấy chi tiết bài viết:', error);
-                    throw new Error('Không thể lấy thông tin bài viết');
+            // Lấy thông tin bài viết
+            let postData;
+            try {
+                postData = await this.getPostById(postId);
+                console.log('📄 Thông tin bài viết:', {
+                    id: postData?.id,
+                    userRes: postData?.userRes,
+                    user: postData?.user
                 });
+            } catch (error) {
+                console.error('❌ Lỗi khi lấy bài viết:', error);
+                return false;
+            }
 
-            // Promise 2: Lấy thông tin user hiện tại
-            const getUserPromise = this.api.get('/v1/users/profile')
-                .then(response => {
-                    if (!response?.data) {
-                        throw new Error('Response không hợp lệ từ API profile');
-                    }
-                    console.log('👤 Thông tin người dùng hiện tại:', JSON.stringify(response.data, null, 2));
-                    return response.data;
-                })
-                .catch(error => {
-                    console.error('❌ Lỗi khi lấy thông tin người dùng:', error);
-                    if (error.response) {
-                        console.error('📊 Chi tiết lỗi từ server:', error.response.data);
-                        console.error('📈 Status code:', error.response.status);
-                    }
-                    throw new Error('Không thể lấy thông tin người dùng');
-                });
-
-            // Thực hiện cả hai promises song song với timeout
-            const timeoutPromise = new Promise((_, reject) =>
-                setTimeout(() => reject(new Error('API timeout after 8 seconds')), 8000)
-            );
-
-            const [postData, currentUser] = await Promise.race([
-                Promise.all([getPostPromise, getUserPromise]),
-                timeoutPromise
-            ]);
-
-            // Kiểm tra dữ liệu có hợp lệ không
             if (!postData) {
                 console.log('❌ Không tìm thấy bài viết');
                 return false;
             }
 
-            if (!currentUser) {
-                console.log('❌ Không tìm thấy thông tin người dùng');
+            // Lấy thông tin user hiện tại
+            let currentUser;
+            try {
+                const response = await this.api.get('/v1/users/profile');
+                currentUser = response?.data;
+                console.log('👤 Thông tin user hiện tại:', {
+                    id: currentUser?.id,
+                    userId: currentUser?.userId
+                });
+            } catch (error) {
+                console.error('❌ Lỗi khi lấy thông tin user:', error);
                 return false;
             }
 
-            // Lấy ID với nhiều fallback options
-            const currentUserId = currentUser?.id ||
-                currentUser?.userId ||
-                currentUser?.user_id;
+            if (!currentUser) {
+                console.log('❌ Không tìm thấy thông tin user');
+                return false;
+            }
 
-            const postOwnerId = postData?.userRes?.id ||
-                postData?.user?.id ||
-                postData?.userId ||
-                postData?.user_id ||
-                postData?.authorId;
+            // Lấy ID với fallback
+            const currentUserId = currentUser?.id || currentUser?.userId;
+            const postOwnerId = postData?.userRes?.id || postData?.user?.id;
 
             console.log('🔄 So sánh ID:', {
-                currentUserId,
-                postOwnerId,
-                currentUserType: typeof currentUserId,
-                postOwnerType: typeof postOwnerId,
-                currentUserObject: currentUser,
-                postDataUserRes: postData?.userRes
+                currentUserId: currentUserId,
+                postOwnerId: postOwnerId,
+                currentUserIdType: typeof currentUserId,
+                postOwnerIdType: typeof postOwnerId
             });
 
-            // Kiểm tra cả hai ID đều tồn tại và hợp lệ
+            // Kiểm tra ID có tồn tại không
             if (!currentUserId || !postOwnerId) {
-                console.log('❌ Một trong các ID không tồn tại');
-                console.log('📋 Debug info:', {
-                    hasCurrentUserId: !!currentUserId,
-                    hasPostOwnerId: !!postOwnerId,
-                    currentUserKeys: Object.keys(currentUser || {}),
-                    postDataKeys: Object.keys(postData || {})
-                });
+                console.log('❌ Thiếu ID để so sánh');
                 return false;
             }
 
-            // Chuyển đổi sang string và so sánh
-            const currentUserIdStr = String(currentUserId).trim();
-            const postOwnerIdStr = String(postOwnerId).trim();
+            // So sánh
+            const isOwner = String(currentUserId) === String(postOwnerId);
 
-            const isOwner = currentUserIdStr === postOwnerIdStr;
-
-            console.log('✅ Kết quả kiểm tra quyền:', {
-                isOwner,
-                currentUserIdStr,
-                postOwnerIdStr,
-                exactMatch: currentUserIdStr === postOwnerIdStr
+            console.log('✅ Kết quả:', {
+                isOwner: isOwner,
+                currentUserIdStr: String(currentUserId),
+                postOwnerIdStr: String(postOwnerId)
             });
 
             return isOwner;
 
         } catch (error) {
-            console.error('💥 Lỗi tổng quát khi kiểm tra quyền sở hữu bài viết:', error);
-
-            // Log chi tiết các loại lỗi khác nhau
-            if (error.name === 'TypeError') {
-                console.error('🔧 TypeError - có thể do object undefined:', error.message);
-            } else if (error.code === 'NETWORK_ERROR') {
-                console.error('🌐 Network error:', error.message);
-            } else if (error.response) {
-                console.error('🔴 HTTP Error Response:', {
-                    status: error.response.status,
-                    statusText: error.response.statusText,
-                    data: error.response.data
-                });
-            } else if (error.request) {
-                console.error('📡 Request error - no response received:', error.request);
-            }
-
-            // Trả về false thay vì throw error để không crash app
+            console.error('💥 Lỗi trong checkPostOwnership:', error.message);
             return false;
         }
     }
@@ -349,62 +364,159 @@ class CreatePostService {
 // Cập nhật phương thức getFeedPosts trong CreatePostService.js
     async getFeedPosts(page = 0, size = 10, order = 'desc') {
         try {
-            console.log(`Đang gọi API lấy feed bài đăng: /posts/feed?page=${page}&size=${size}&order=${order}`);
+            console.log(`🔄 Đang gọi API lấy feed bài đăng: /posts/feed?page=${page}&size=${size}&order=${order}`);
 
             const response = await this.api.get(`/posts/feed`, {
                 params: { page, size, order }
             });
 
-            console.log('Response từ getFeedPosts:', response.data);
+            console.log('📄 Raw Response từ getFeedPosts:', JSON.stringify(response.data, null, 2));
 
-            // Chuyển đổi dữ liệu bài đăng để xử lý URL hình ảnh
-            const content = this.processPostsImageUrls(response.data || []);
+            // Kiểm tra cấu trúc response
+            let posts = [];
+            let isLastPage = true;
+            let totalElements = 0;
+            let totalPages = 0;
+            let currentPage = page;
 
-            // Nếu response.data là mảng, tức là nó không phải là dữ liệu phân trang
-            if (Array.isArray(response.data)) {
-                return {
-                    content: content,
-                    totalElements: content.length,
-                    totalPages: 1,
-                    last: true,
-                    number: page,
-                    size: size
-                };
+            if (response.data) {
+                // Trường hợp 1: Response là đối tượng phân trang Spring Boot
+                if (response.data.content && Array.isArray(response.data.content)) {
+                    console.log('📋 Phát hiện cấu trúc phân trang Spring Boot');
+                    posts = response.data.content;
+                    isLastPage = response.data.last || false;
+                    totalElements = response.data.totalElements || 0;
+                    totalPages = response.data.totalPages || 0;
+                    currentPage = response.data.number || page;
+                }
+                // Trường hợp 2: Response là mảng trực tiếp
+                else if (Array.isArray(response.data)) {
+                    console.log('📋 Phát hiện mảng trực tiếp');
+                    posts = response.data;
+                    totalElements = posts.length;
+                    totalPages = posts.length > 0 ? 1 : 0;
+                    isLastPage = true;
+                }
+                // Trường hợp 3: Response có cấu trúc khác
+                else {
+                    console.log('📋 Cấu trúc response không nhận dạng được:', typeof response.data);
+                    posts = [];
+                }
             }
 
-            // Nếu response.data là đối tượng phân trang
+            console.log(`📊 Thống kê dữ liệu:`, {
+                totalPosts: posts.length,
+                isLastPage,
+                totalElements,
+                totalPages,
+                currentPage
+            });
+
+            // Xử lý URL hình ảnh cho các bài đăng
+            const processedPosts = this.processPostsImageUrls(posts);
+
+            console.log(`✅ Đã xử lý ${processedPosts.length} bài đăng`);
+
+            // Trả về dữ liệu theo định dạng chuẩn
             return {
-                content: content,
-                totalElements: response.data.totalElements,
-                totalPages: response.data.totalPages,
-                last: response.data.last,
-                number: response.data.number,
-                size: response.data.size
+                content: processedPosts,
+                totalElements: totalElements,
+                totalPages: totalPages,
+                last: isLastPage,
+                number: currentPage,
+                size: size
             };
+
         } catch (error) {
-            console.error('Lỗi khi lấy feed bài đăng:', error);
+            console.error('❌ Lỗi khi lấy feed bài đăng:', error);
+            
+            // Log chi tiết lỗi
+            if (error.response) {
+                console.error('📤 Response Status:', error.response.status);
+                console.error('📤 Response Data:', error.response.data);
+                console.error('📤 Response Headers:', error.response.headers);
+            } else if (error.request) {
+                console.error('📤 Request được gửi nhưng không có response:', error.request);
+            } else {
+                console.error('📤 Lỗi khi setup request:', error.message);
+            }
+
             this.handleError(error);
+            
+            // Trả về object rỗng để tránh crash
+            return {
+                content: [],
+                totalElements: 0,
+                totalPages: 0,
+                last: true,
+                number: page,
+                size: size
+            };
         }
     }
 
 // Thêm hàm mới để xử lý URL hình ảnh cho tất cả bài đăng
     processPostsImageUrls(posts) {
+        console.log('🖼️ Bắt đầu xử lý URL hình ảnh cho posts:', posts?.length || 0);
+
+        // Kiểm tra đầu vào
+        if (!posts) {
+            console.log('❌ Posts is null/undefined');
+            return [];
+        }
+
         // Kiểm tra nếu posts là đối tượng phân trang
-        if (posts && posts.content) {
+        if (posts && posts.content && Array.isArray(posts.content)) {
+            console.log('📋 Phát hiện cấu trúc phân trang trong processPostsImageUrls');
             posts = posts.content;
         }
 
         // Nếu posts không phải là mảng, trả về mảng rỗng
         if (!Array.isArray(posts)) {
+            console.log(`❌ Posts không phải là mảng, type: ${typeof posts}`);
             return [];
         }
 
-        return posts.map(post => {
-            // Tạo URL hình ảnh đầy đủ nếu có imageUrl
-            if (post.imageUrl) {
-                post.fullImageUrl = this.createImageUrl(post.imageUrl);
+        console.log(`🔄 Đang xử lý ${posts.length} bài đăng`);
+
+        return posts.map((post, index) => {
+            try {
+                // Log thông tin mỗi post để debug
+                console.log(`📝 Post ${index + 1}:`, {
+                    id: post.id,
+                    hasContent: !!post.content,
+                    hasImageUrl: !!post.imageUrl,
+                    hasImageUrls: !!post.imageUrls,
+                    hasImages: !!post.images,
+                    userRes: post.userRes?.fullName || 'No user info'
+                });
+
+                // Tạo URL hình ảnh đầy đủ cho single image
+                if (post.imageUrl) {
+                    post.fullImageUrl = this.createImageUrl(post.imageUrl);
+                    console.log(`🖼️ Tạo fullImageUrl cho post ${post.id}: ${post.fullImageUrl}`);
+                }
+
+                // Xử lý multiple images nếu có
+                if (post.imageUrls && Array.isArray(post.imageUrls)) {
+                    post.processedImageUrls = post.imageUrls.map(imgUrl => this.createImageUrl(imgUrl));
+                    console.log(`🖼️ Tạo ${post.processedImageUrls.length} processedImageUrls cho post ${post.id}`);
+                }
+
+                // Xử lý PostImage entities nếu có
+                if (post.images && Array.isArray(post.images)) {
+                    post.processedImages = post.images.map(img => ({
+                        ...img,
+                        fullUrl: this.createImageUrl(img.imageUrl || img.url)
+                    }));
+                    console.log(`🖼️ Tạo ${post.processedImages.length} processedImages cho post ${post.id}`);
+                }
+
+                return post;
+            } catch (error) {
+                console.error(`❌ Lỗi xử lý post ${index + 1}:`, error);
+                return post; // Trả về post gốc nếu có lỗi
             }
-            return post;
         });
     }
 

@@ -29,9 +29,9 @@ const FriendDetailModal = ({ friend, visible, onClose, currentUserId }) => {
                 email: friendData.email
             };
 
-            // Close modal and navigate to ChatScreen
+            // Close modal and navigate to NewChatScreen
             onClose();
-            navigation.navigate('Chat', {
+            navigation.navigate('NewChatScreen', {
                 user: friendForChat,
                 currentUser: currentUser
             });

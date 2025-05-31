@@ -1,221 +1,265 @@
-// src/hooks/useMessageManagement.js
-import { useState, useCallback, useRef } from 'react';
-import { Alert } from 'react-native';
+// useMessageManagement.js - Hook quản lý tin nhắn
+import { useState, useCallback, useEffect, useRef } from 'react';
 import messagesService from '../services/messagesService';
 
 const useMessageManagement = (currentUser, user) => {
+    // 📱 State management
     const [messages, setMessages] = useState([]);
-    const [loading, setLoading] = useState(true);
+    const [loading, setLoading] = useState(false);
     const [refreshing, setRefreshing] = useState(false);
-    const [page, setPage] = useState(0);
     const [hasMore, setHasMore] = useState(true);
-    const lastMessageTimeRef = useRef(null);
+    const [error, setError] = useState(null);
 
-    // Tải tin nhắn ban đầu
-    const fetchMessages = useCallback(async () => {
+    // 🔧 References
+    const currentPageRef = useRef(0);
+    const isLoadingRef = useRef(false);
+    const processedMessageIds = useRef(new Set());
+    const paginationInfoRef = useRef(null);
+
+    // 📊 Stats for debugging
+    useEffect(() => {
+        console.log(`📊 Messages state updated: ${messages.length} total messages`);
+        if (messages.length > 0) {
+            const latest = messages[0];
+            console.log(`📊 Latest message: ${latest?.content?.substring(0, 30)}... from ${latest?.senderId} at ${latest?.createdAt}`);
+        }
+    }, [messages.length]);
+
+    // 📥 Fetch messages with pagination using correct API
+    const fetchMessages = useCallback(async (page = 0, isRefresh = false) => {
+        if (isLoadingRef.current && !isRefresh) {
+            console.log('⚠️ Already loading messages, skipping...');
+            return;
+        }
+
         if (!currentUser?.id || !user?.id) {
-            console.log('Không thể tải tin nhắn: thiếu thông tin người dùng');
+            console.log('⚠️ Missing user IDs for fetchMessages');
             return;
         }
 
         try {
-            setLoading(true);
-            console.log(`Đang tải tin nhắn giữa ${currentUser.id} và ${user.id}...`);
-
-            const messageData = await messagesService.getMessagesBetweenUsersPaginated(
-                currentUser.id,
-                user.id,
-                { page: 0, size: 20 }
-            );
-
-            if (messageData?.content) {
-                setMessages(messageData.content);
-                // Lưu thời gian tin nhắn mới nhất để phát hiện tin nhắn mới
-                if (messageData.content.length > 0) {
-                    lastMessageTimeRef.current = messageData.content[0]?.createdAt;
-                }
-            }
-        } catch (error) {
-            console.error('Lỗi khi tải tin nhắn:', error);
-            Alert.alert('Lỗi', 'Không thể tải tin nhắn. Thử lại sau?', [
-                {text: 'Hủy', style: 'cancel'},
-                {text: 'Thử lại', onPress: () => fetchMessages()}
-            ]);
-        } finally {
-            setLoading(false);
-        }
-    }, [currentUser?.id, user?.id]);
-
-    // Tải tin nhắn với phân trang
-    const loadMessages = useCallback(async (refresh = false) => {
-        if (!currentUser?.id || !user?.id) return;
-
-        try {
-            const currentPage = refresh ? 0 : page;
-
-            if (!refresh) {
-                setLoading(true);
-            }
-
-            console.log(`Đang tải tin nhắn trang ${currentPage}...`);
-
-            // Sử dụng service để lấy tin nhắn
-            const response = await messagesService.getMessagesBetweenUsersPaginated(
-                currentUser.id,
-                user.id,
-                {
-                    page: currentPage,
-                    size: 20
-                }
-            );
-
-            // Xử lý phân trang
-            const newMessages = response.content || [];
-
-            if (refresh) {
-                setMessages(newMessages);
-                setPage(1);
-
-                // Cập nhật thời gian tin nhắn mới nhất
-                if (newMessages.length > 0) {
-                    lastMessageTimeRef.current = newMessages[0]?.createdAt;
-                }
+            isLoadingRef.current = true;
+            
+            if (isRefresh) {
+                setRefreshing(true);
+                console.log('🔄 Refreshing messages...');
             } else {
-                setMessages(prevMessages => [...prevMessages, ...newMessages]);
-                setPage(currentPage + 1);
+                setLoading(true);
+                console.log(`📥 Fetching messages page ${page}...`);
             }
 
-            // Kiểm tra xem còn tin nhắn để tải không
-            setHasMore(!response.last);
+            // Use paginated API with correct method name
+            const response = await messagesService.getMessagesBetweenUsersPaginated(
+                currentUser.id, 
+                user.id, 
+                {
+                    page,
+                    size: 20,
+                    sortBy: 'timestamp',
+                    order: 'desc'
+                }
+            );
+            
+            if (response && response.messages) {
+                const newMessages = response.messages;
+                console.log(`✅ Fetched ${newMessages.length} messages from API`);
+
+                if (isRefresh || page === 0) {
+                    // Reset for refresh or first load
+                    setMessages(newMessages);
+                    currentPageRef.current = 0;
+                    processedMessageIds.current.clear();
+                    newMessages.forEach(msg => processedMessageIds.current.add(msg.id));
+                } else {
+                    // Append for pagination
+                    setMessages(prev => {
+                        const filteredNew = newMessages.filter(msg => !processedMessageIds.current.has(msg.id));
+                        filteredNew.forEach(msg => processedMessageIds.current.add(msg.id));
+                        return [...prev, ...filteredNew];
+                    });
+                }
+                
+                currentPageRef.current = page;
+                paginationInfoRef.current = response.pagination;
+                
+                // Update hasMore based on pagination info
+                if (response.pagination) {
+                    setHasMore(response.pagination.hasNext);
+                } else {
+                    setHasMore(newMessages.length >= 20);
+                }
+                
+                setError(null);
+            } else {
+                console.log('⚠️ No messages data received');
+                if (isRefresh || page === 0) {
+                    setMessages([]);
+                }
+                setHasMore(false);
+            }
+
         } catch (error) {
-            console.error('Lỗi khi tải tin nhắn:', error);
-            Alert.alert('Lỗi', 'Không thể tải tin nhắn. Vui lòng thử lại sau.');
+            console.error('❌ Error fetching messages:', error);
+            setError(error.message || 'Failed to load messages');
+            
+            if (isRefresh || page === 0) {
+                setMessages([]);
+            }
         } finally {
             setLoading(false);
             setRefreshing(false);
-        }
-    }, [currentUser?.id, user?.id, page]);
-
-    // Lấy tin nhắn mới (kiểm tra theo thời gian)
-    const fetchNewMessages = useCallback(async () => {
-        if (!currentUser?.id || !user?.id || !lastMessageTimeRef.current) return;
-
-        try {
-            // Lấy tất cả tin nhắn sau thời điểm tin nhắn mới nhất đã biết
-            const allMessages = await messagesService.getMessagesBetweenUsers(
-                currentUser.id,
-                user.id
-            );
-
-            const newMessages = allMessages.filter(msg =>
-                new Date(msg.createdAt) > new Date(lastMessageTimeRef.current)
-            );
-
-            if (newMessages.length > 0) {
-                console.log(`Đã tìm thấy ${newMessages.length} tin nhắn mới`);
-
-                // Cập nhật thời gian tin nhắn mới nhất
-                if (newMessages.length > 0) {
-                    lastMessageTimeRef.current = newMessages[0]?.createdAt;
-                }
-
-                setMessages(prevMessages => [...newMessages, ...prevMessages]);
-            }
-        } catch (error) {
-            console.error('Lỗi khi kiểm tra tin nhắn mới:', error);
+            isLoadingRef.current = false;
         }
     }, [currentUser?.id, user?.id]);
 
-    // Xử lý khi làm mới danh sách tin nhắn (pull-to-refresh)
-    const onRefresh = useCallback(() => {
-        setRefreshing(true);
-        loadMessages(true);
-    }, [loadMessages]);
+    // 📥 Load initial messages
+    const loadMessages = useCallback(async () => {
+        console.log('🚀 Loading initial messages...');
+        await fetchMessages(0, false);
+    }, [currentUser?.id, user?.id]);
 
-    // Xử lý khi tải thêm tin nhắn cũ (phân trang)
-    const loadMoreMessages = useCallback(() => {
-        if (!loading && hasMore) {
-            loadMessages();
-        }
-    }, [loading, hasMore, loadMessages]);
-
-    // Xử lý tin nhắn mới từ WebSocket
-    const handleNewWebSocketMessage = useCallback((newMessage) => {
-        console.log('Nhận tin nhắn mới qua WebSocket:', newMessage);
-
-        // Kiểm tra xem tin nhắn có thuộc cuộc trò chuyện hiện tại không
-        const isMessageForCurrentChat =
-            (newMessage.senderId === user?.id && newMessage.receiverId === currentUser?.id) ||
-            (newMessage.senderId === currentUser?.id && newMessage.receiverId === user?.id);
-
-        if (!isMessageForCurrentChat) {
-            console.log('Tin nhắn không thuộc cuộc trò chuyện hiện tại');
+    // 🔄 Fetch new messages (for real-time updates)
+    const fetchNewMessages = useCallback(async () => {
+        if (!currentUser?.id || !user?.id) {
+            console.log('⚠️ Missing user IDs for fetchNewMessages');
             return;
         }
 
-        setMessages(prevMessages => {
-            // Kiểm tra xem tin nhắn đã tồn tại chưa
-            const messageExists = prevMessages.some(msg => {
-                // Kiểm tra theo ID
-                if (msg.id && newMessage.id && msg.id === newMessage.id) {
-                    return true;
+        try {
+            console.log('🆕 Fetching new messages...');
+            
+            // Get first page to check for new messages
+            const response = await messagesService.getMessagesBetweenUsersPaginated(
+                currentUser.id, 
+                user.id, 
+                {
+                    page: 0,
+                    size: 20,
+                    sortBy: 'timestamp',
+                    order: 'desc'
                 }
+            );
+            
+            if (response && response.messages) {
+                const latestMessages = response.messages;
+                console.log(`✅ Fetched ${latestMessages.length} latest messages`);
 
-                // Kiểm tra theo nội dung và thời gian
-                if (msg.content === newMessage.content &&
-                    msg.senderId === newMessage.senderId) {
-
-                    // Nếu thời gian tạo được cung cấp, so sánh thời gian
-                    if (msg.createdAt && newMessage.createdAt) {
-                        const msgTime = new Date(msg.createdAt).getTime();
-                        const newMsgTime = new Date(newMessage.createdAt).getTime();
-                        // Nếu thời gian gần nhau (trong vòng 3 giây)
-                        return Math.abs(msgTime - newMsgTime) < 3000;
+                setMessages(prev => {
+                    // Only add truly new messages
+                    const newMessages = latestMessages.filter(msg => !processedMessageIds.current.has(msg.id));
+                    newMessages.forEach(msg => processedMessageIds.current.add(msg.id));
+                    
+                    if (newMessages.length > 0) {
+                        console.log(`📨 Adding ${newMessages.length} new messages`);
+                        return [...newMessages, ...prev];
                     }
-
-                    return true;
-                }
-
-                return false;
-            });
-
-            // Nếu tin nhắn chưa tồn tại, thêm vào
-            if (!messageExists) {
-                console.log('Thêm tin nhắn mới vào danh sách:', newMessage);
-
-                // Cập nhật thời gian tin nhắn mới nhất
-                if (lastMessageTimeRef.current) {
-                    const newMessageTime = new Date(newMessage.createdAt);
-                    const lastMessageTime = new Date(lastMessageTimeRef.current);
-
-                    if (newMessageTime > lastMessageTime) {
-                        lastMessageTimeRef.current = newMessage.createdAt;
-                    }
-                }
-
-                // Thêm tin nhắn mới vào đầu danh sách
-                return [newMessage, ...prevMessages];
+                    return prev;
+                });
             }
-
-            console.log('Phát hiện tin nhắn trùng lặp, không thêm vào danh sách');
-            return prevMessages;
-        });
+        } catch (error) {
+            console.error('❌ Error fetching new messages:', error);
+        }
     }, [currentUser?.id, user?.id]);
 
+    // 🔄 Refresh handler
+    const onRefresh = useCallback(async () => {
+        console.log('🔄 Refreshing messages...');
+        await fetchMessages(0, true);
+    }, [currentUser?.id, user?.id]);
+
+    // 📄 Load more messages (pagination)
+    const loadMoreMessages = useCallback(async () => {
+        if (!hasMore || isLoadingRef.current) {
+            console.log('⚠️ Cannot load more: hasMore =', hasMore, ', isLoading =', isLoadingRef.current);
+            return;
+        }
+
+        const nextPage = currentPageRef.current + 1;
+        console.log(`📄 Loading more messages, page ${nextPage}...`);
+        await fetchMessages(nextPage, false);
+    }, [hasMore, currentUser?.id, user?.id]);
+
+    // 📨 Handle new WebSocket message
+    const handleNewWebSocketMessage = useCallback((newMessage) => {
+        if (!newMessage || !newMessage.id) {
+            console.log('⚠️ Invalid WebSocket message received');
+            return;
+        }
+
+        // Check if message already exists
+        if (processedMessageIds.current.has(newMessage.id)) {
+            console.log(`🔄 Message ${newMessage.id} already exists, skipping`);
+            return;
+        }
+
+        console.log(`📨 New WebSocket message: ${newMessage.id} from ${newMessage.senderId}`);
+        
+        // Add to processed set
+        processedMessageIds.current.add(newMessage.id);
+        
+        // ⚡ FIX: Better handling of temporary vs real messages
+        setMessages(prev => {
+            // Remove any temporary/sending messages from the same sender with similar content
+            const withoutTempMessages = prev.filter(msg => {
+                // Keep message if it's not temporary/sending/sent
+                if (!msg.isSending && !msg.isSent && !msg.id?.startsWith('temp_')) {
+                    return true;
+                }
+                
+                // Remove temporary/sent message if it's from same sender and has similar content
+                const isSameSender = msg.senderId === newMessage.senderId;
+                const hasSimilarContent = msg.content?.trim() === newMessage.content?.trim();
+                const isRecent = Math.abs(new Date(newMessage.timestamp) - new Date(msg.timestamp)) < 30000; // Within 30 seconds
+                
+                if (isSameSender && hasSimilarContent && isRecent) {
+                    console.log(`🗑️ Replacing temporary/sent message ${msg.id} with real message ${newMessage.id}`);
+                    return false;
+                }
+                
+                return true;
+            });
+            
+            // ⚡ FIX: Check if this message might be replacing a temporary message
+            const existingTempMessage = prev.find(msg => 
+                msg.senderId === newMessage.senderId &&
+                msg.content?.trim() === newMessage.content?.trim() &&
+                (msg.isSending || msg.isSent || msg.id?.startsWith('temp_')) &&
+                Math.abs(new Date(newMessage.timestamp) - new Date(msg.timestamp)) < 30000
+            );
+            
+            if (existingTempMessage) {
+                console.log(`🔄 Real message ${newMessage.id} arrived, replacing temporary message ${existingTempMessage.id}`);
+            }
+            
+            return [newMessage, ...withoutTempMessages];
+        });
+    }, []);
+
+    // 🧹 Cleanup on unmount
+    useEffect(() => {
+        return () => {
+            processedMessageIds.current.clear();
+            isLoadingRef.current = false;
+        };
+    }, []);
+
     return {
+        // State
         messages,
         setMessages,
         loading,
         refreshing,
         hasMore,
+        error,
+        
+        // Functions
         fetchMessages,
         loadMessages,
         fetchNewMessages,
         onRefresh,
         loadMoreMessages,
-        handleNewWebSocketMessage,
-        lastMessageTimeRef
+        handleNewWebSocketMessage
     };
 };
 
-export default useMessageManagement;
+export default useMessageManagement; 

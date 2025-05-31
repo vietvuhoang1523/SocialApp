@@ -8,19 +8,25 @@ import {
     StyleSheet,
     Alert,
     ActivityIndicator,
-    RefreshControl
+    RefreshControl,
+    SafeAreaView,
+    StatusBar,
+    Dimensions
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 import FriendService from '../../services/FriendService';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 
-const FriendRequestsScreen = () => {
+const { width } = Dimensions.get('window');
+
+const friendService = FriendService;
+
+const FriendRequestsScreen = ({ navigation }) => {
     const [receivedRequests, setReceivedRequests] = useState([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [activeTab, setActiveTab] = useState('received'); // 'received' hoặc 'sent'
     const [sentRequests, setSentRequests] = useState([]);
-
-    const friendService = new FriendService();
 
     // Tải danh sách yêu cầu kết bạn
     const fetchRequests = async () => {
@@ -56,7 +62,6 @@ const FriendRequestsScreen = () => {
     // Chấp nhận yêu cầu kết bạn
     const acceptRequest = async (friendshipId) => {
         try {
-            setLoading(true);
             await friendService.acceptFriendRequest(friendshipId);
 
             // Cập nhật danh sách
@@ -68,15 +73,12 @@ const FriendRequestsScreen = () => {
         } catch (error) {
             console.error('Lỗi chấp nhận:', error);
             Alert.alert('Lỗi', 'Không thể chấp nhận lời mời kết bạn');
-        } finally {
-            setLoading(false);
         }
     };
 
     // Từ chối yêu cầu kết bạn
     const rejectRequest = async (friendshipId) => {
         try {
-            setLoading(true);
             await friendService.rejectFriendRequest(friendshipId);
 
             // Cập nhật danh sách
@@ -88,15 +90,12 @@ const FriendRequestsScreen = () => {
         } catch (error) {
             console.error('Lỗi từ chối:', error);
             Alert.alert('Lỗi', 'Không thể từ chối lời mời kết bạn');
-        } finally {
-            setLoading(false);
         }
     };
 
     // Hủy yêu cầu kết bạn đã gửi
     const cancelRequest = async (friendshipId) => {
         try {
-            setLoading(true);
             await friendService.cancelFriendRequest(friendshipId);
 
             // Cập nhật danh sách
@@ -108,69 +107,100 @@ const FriendRequestsScreen = () => {
         } catch (error) {
             console.error('Lỗi hủy:', error);
             Alert.alert('Lỗi', 'Không thể hủy lời mời kết bạn');
-        } finally {
-            setLoading(false);
         }
     };
 
     // Render yêu cầu nhận được
     const renderReceivedRequest = ({ item }) => (
-        <View style={styles.requestItem}>
-            <Image
-                source={{ uri: item.sender?.profilePictureUrl || 'https://via.placeholder.com/50' }}
-                style={styles.avatar}
-            />
-            <View style={styles.requestInfo}>
-                <View style={styles.userDetails}>
+        <View style={styles.requestCard}>
+            <View style={styles.cardHeader}>
+                <View style={styles.avatarContainer}>
+                    <Image
+                        source={{ uri: item.sender?.profilePictureUrl || 'https://via.placeholder.com/60' }}
+                        style={styles.avatar}
+                    />
+                    <View style={styles.onlineIndicator} />
+                </View>
+                <View style={styles.userInfo}>
                     <Text style={styles.userName}>{item.sender?.fullName || 'Người dùng'}</Text>
                     <Text style={styles.userEmail}>{item.sender?.email || ''}</Text>
+                    <Text style={styles.requestTime}>Vừa gửi lời mời</Text>
                 </View>
+            </View>
 
-                <View style={styles.actionButtons}>
-                    <TouchableOpacity
-                        style={styles.acceptButton}
-                        onPress={() => acceptRequest(item.id)}
-                        disabled={loading}
+            <View style={styles.actionButtons}>
+                <TouchableOpacity
+                    style={styles.acceptButton}
+                    onPress={() => acceptRequest(item.id)}
+                    activeOpacity={0.8}
+                >
+                    <LinearGradient
+                        colors={['#E91E63', '#F06292']}
+                        style={styles.buttonGradient}
                     >
-                        <Icon name="check" size={18} color="white" />
+                        <Ionicons name="checkmark" size={18} color="white" />
                         <Text style={styles.buttonText}>Chấp nhận</Text>
-                    </TouchableOpacity>
+                    </LinearGradient>
+                </TouchableOpacity>
 
-                    <TouchableOpacity
-                        style={styles.rejectButton}
-                        onPress={() => rejectRequest(item.id)}
-                        disabled={loading}
-                    >
-                        <Icon name="close" size={18} color="white" />
-                        <Text style={styles.buttonText}>Từ chối</Text>
-                    </TouchableOpacity>
-                </View>
+                <TouchableOpacity
+                    style={styles.rejectButton}
+                    onPress={() => rejectRequest(item.id)}
+                    activeOpacity={0.8}
+                >
+                    <Text style={styles.rejectText}>Từ chối</Text>
+                </TouchableOpacity>
             </View>
         </View>
     );
 
     // Render yêu cầu đã gửi
     const renderSentRequest = ({ item }) => (
-        <View style={styles.requestItem}>
-            <Image
-                source={{ uri: item.receiver?.profilePictureUrl || 'https://via.placeholder.com/50' }}
-                style={styles.avatar}
-            />
-            <View style={styles.requestInfo}>
-                <View style={styles.userDetails}>
+        <View style={styles.requestCard}>
+            <View style={styles.cardHeader}>
+                <View style={styles.avatarContainer}>
+                    <Image
+                        source={{ uri: item.receiver?.profilePictureUrl || 'https://via.placeholder.com/60' }}
+                        style={styles.avatar}
+                    />
+                </View>
+                <View style={styles.userInfo}>
                     <Text style={styles.userName}>{item.receiver?.fullName || 'Người dùng'}</Text>
                     <Text style={styles.userEmail}>{item.receiver?.email || ''}</Text>
+                    <Text style={styles.requestTime}>Đang chờ phản hồi</Text>
                 </View>
-
-                <TouchableOpacity
-                    style={styles.cancelButton}
-                    onPress={() => cancelRequest(item.id)}
-                    disabled={loading}
-                >
-                    <Icon name="close-circle-outline" size={18} color="white" />
-                    <Text style={styles.buttonText}>Hủy</Text>
-                </TouchableOpacity>
             </View>
+
+            <TouchableOpacity
+                style={styles.cancelButton}
+                onPress={() => cancelRequest(item.id)}
+                activeOpacity={0.8}
+            >
+                <Ionicons name="close-circle-outline" size={20} color="#666" />
+                <Text style={styles.cancelText}>Hủy</Text>
+            </TouchableOpacity>
+        </View>
+    );
+
+    // Tab selector component
+    const TabSelector = () => (
+        <View style={styles.tabContainer}>
+            <TouchableOpacity
+                style={[styles.tab, activeTab === 'received' && styles.activeTab]}
+                onPress={() => setActiveTab('received')}
+            >
+                <Text style={[styles.tabText, activeTab === 'received' && styles.activeTabText]}>
+                    Nhận được ({receivedRequests.length})
+                </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+                style={[styles.tab, activeTab === 'sent' && styles.activeTab]}
+                onPress={() => setActiveTab('sent')}
+            >
+                <Text style={[styles.tabText, activeTab === 'sent' && styles.activeTabText]}>
+                    Đã gửi ({sentRequests.length})
+                </Text>
+            </TouchableOpacity>
         </View>
     );
 
@@ -179,49 +209,55 @@ const FriendRequestsScreen = () => {
         if (loading && !refreshing) {
             return (
                 <View style={styles.loadingContainer}>
-                    <ActivityIndicator size="large" color="#4CAF50" />
+                    <ActivityIndicator size="large" color="#E91E63" />
                     <Text style={styles.loadingText}>Đang tải yêu cầu kết bạn...</Text>
                 </View>
             );
         }
 
-        // Hiển thị tab đã nhận
-        if (activeTab === 'received') {
-            return (
-                <FlatList
-                    data={receivedRequests}
-                    renderItem={renderReceivedRequest}
-                    keyExtractor={(item) => item.id?.toString() || Math.random().toString()}
-                    refreshControl={
-                        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-                    }
-                    ListEmptyComponent={
-                        <View style={styles.emptyContainer}>
-                            <Icon name="account-multiple-remove" size={50} color="#ccc" />
-                            <Text style={styles.emptyText}>
-                                Không có yêu cầu kết bạn mới
-                            </Text>
-                        </View>
-                    }
-                />
-            );
-        }
+        const currentData = activeTab === 'received' ? receivedRequests : sentRequests;
+        const renderItem = activeTab === 'received' ? renderReceivedRequest : renderSentRequest;
 
-        // Hiển thị tab đã gửi
         return (
             <FlatList
-                data={sentRequests}
-                renderItem={renderSentRequest}
+                data={currentData}
+                renderItem={renderItem}
                 keyExtractor={(item) => item.id?.toString() || Math.random().toString()}
                 refreshControl={
-                    <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+                    <RefreshControl 
+                        refreshing={refreshing} 
+                        onRefresh={onRefresh}
+                        colors={['#E91E63']}
+                        tintColor="#E91E63"
+                    />
                 }
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={styles.listContent}
                 ListEmptyComponent={
                     <View style={styles.emptyContainer}>
-                        <Icon name="send-check-outline" size={50} color="#ccc" />
-                        <Text style={styles.emptyText}>
-                            Không có yêu cầu kết bạn đang chờ
+                        <Ionicons 
+                            name={activeTab === 'received' ? 'people-outline' : 'person-add-outline'} 
+                            size={80} 
+                            color="#E0E0E0" 
+                        />
+                        <Text style={styles.emptyTitle}>
+                            {activeTab === 'received' 
+                                ? 'Chưa có yêu cầu kết bạn nào' 
+                                : 'Chưa gửi yêu cầu kết bạn nào'}
                         </Text>
+                        <Text style={styles.emptySubtitle}>
+                            {activeTab === 'received' 
+                                ? 'Các yêu cầu kết bạn sẽ hiển thị ở đây' 
+                                : 'Hãy tìm kiếm và gửi lời mời kết bạn'}
+                        </Text>
+                        {activeTab === 'sent' && (
+                            <TouchableOpacity
+                                style={styles.searchButton}
+                                onPress={() => navigation.navigate('FriendSearch')}
+                            >
+                                <Text style={styles.searchButtonText}>Tìm bạn bè</Text>
+                            </TouchableOpacity>
+                        )}
                     </View>
                 }
             />
@@ -229,155 +265,244 @@ const FriendRequestsScreen = () => {
     };
 
     return (
-        <View style={styles.container}>
-            <Text style={styles.sectionTitle}>Yêu cầu kết bạn</Text>
+        <SafeAreaView style={styles.container}>
+            <StatusBar barStyle="light-content" backgroundColor="#E91E63" />
+            
+            {/* Header */}
+            <LinearGradient
+                colors={['#E91E63', '#F06292']}
+                style={styles.header}
+            >
+                <View style={styles.headerContent}>
+                    <TouchableOpacity 
+                        style={styles.backButton}
+                        onPress={() => navigation.goBack()}
+                    >
+                        <Ionicons name="arrow-back" size={24} color="#fff" />
+                    </TouchableOpacity>
+                    <Text style={styles.headerTitle}>Lời mời kết bạn</Text>
+                    <TouchableOpacity 
+                        style={styles.searchButton}
+                        onPress={() => navigation.navigate('FriendSearch')}
+                    >
+                        <Ionicons name="person-add" size={24} color="#fff" />
+                    </TouchableOpacity>
+                </View>
+            </LinearGradient>
 
-            {/* Tab chuyển đổi */}
-            <View style={styles.tabContainer}>
-                <TouchableOpacity
-                    style={[styles.tab, activeTab === 'received' && styles.activeTab]}
-                    onPress={() => setActiveTab('received')}
-                >
-                    <Text style={[styles.tabText, activeTab === 'received' && styles.activeTabText]}>
-                        Đã nhận ({receivedRequests.length})
-                    </Text>
-                </TouchableOpacity>
+            {/* Tab Selector */}
+            <TabSelector />
 
-                <TouchableOpacity
-                    style={[styles.tab, activeTab === 'sent' && styles.activeTab]}
-                    onPress={() => setActiveTab('sent')}
-                >
-                    <Text style={[styles.tabText, activeTab === 'sent' && styles.activeTabText]}>
-                        Đã gửi ({sentRequests.length})
-                    </Text>
-                </TouchableOpacity>
-            </View>
-
-            {/* Nội dung chính */}
+            {/* Content */}
             {renderContent()}
-        </View>
+        </SafeAreaView>
     );
 };
 
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: 'white'
+        backgroundColor: '#f8f9fa',
     },
-    sectionTitle: {
+    header: {
+        paddingTop: 10,
+        paddingBottom: 15,
+    },
+    headerContent: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: 20,
+    },
+    backButton: {
+        padding: 5,
+    },
+    headerTitle: {
         fontSize: 20,
         fontWeight: 'bold',
-        padding: 15,
+        color: '#fff',
+        flex: 1,
         textAlign: 'center',
-        borderBottomWidth: 1,
-        borderBottomColor: '#f0f0f0'
+    },
+    searchButton: {
+        padding: 5,
     },
     tabContainer: {
         flexDirection: 'row',
+        backgroundColor: '#fff',
         borderBottomWidth: 1,
-        borderBottomColor: '#f0f0f0'
+        borderBottomColor: '#e0e0e0',
     },
     tab: {
         flex: 1,
-        paddingVertical: 12,
-        alignItems: 'center'
+        paddingVertical: 15,
+        alignItems: 'center',
+        borderBottomWidth: 2,
+        borderBottomColor: 'transparent',
     },
     activeTab: {
-        borderBottomWidth: 2,
-        borderBottomColor: '#4CAF50'
+        borderBottomColor: '#E91E63',
     },
     tabText: {
-        fontWeight: 'bold',
-        color: 'gray'
+        fontSize: 16,
+        fontWeight: '500',
+        color: '#666',
     },
     activeTabText: {
-        color: '#4CAF50'
+        color: '#E91E63',
+        fontWeight: 'bold',
     },
-    requestItem: {
+    listContent: {
+        padding: 15,
+    },
+    requestCard: {
+        backgroundColor: '#fff',
+        borderRadius: 15,
+        padding: 20,
+        marginBottom: 15,
+        shadowColor: '#000',
+        shadowOffset: {
+            width: 0,
+            height: 2,
+        },
+        shadowOpacity: 0.1,
+        shadowRadius: 8,
+        elevation: 4,
+    },
+    cardHeader: {
         flexDirection: 'row',
         alignItems: 'center',
-        padding: 15,
-        borderBottomWidth: 1,
-        borderBottomColor: '#f0f0f0'
+        marginBottom: 15,
+    },
+    avatarContainer: {
+        position: 'relative',
+        marginRight: 15,
     },
     avatar: {
-        width: 50,
-        height: 50,
-        borderRadius: 25,
-        marginRight: 15
+        width: 60,
+        height: 60,
+        borderRadius: 30,
+        backgroundColor: '#f0f0f0',
     },
-    requestInfo: {
-        flex: 1,
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center'
+    onlineIndicator: {
+        position: 'absolute',
+        bottom: 2,
+        right: 2,
+        width: 16,
+        height: 16,
+        borderRadius: 8,
+        backgroundColor: '#4CAF50',
+        borderWidth: 2,
+        borderColor: '#fff',
     },
-    userDetails: {
+    userInfo: {
         flex: 1,
     },
     userName: {
+        fontSize: 18,
         fontWeight: 'bold',
-        fontSize: 16,
-        marginBottom: 2
+        color: '#333',
+        marginBottom: 4,
     },
     userEmail: {
-        color: 'gray',
-        fontSize: 13
+        fontSize: 14,
+        color: '#666',
+        marginBottom: 4,
+    },
+    requestTime: {
+        fontSize: 12,
+        color: '#999',
     },
     actionButtons: {
-        flexDirection: 'row'
+        flexDirection: 'row',
+        gap: 10,
     },
     acceptButton: {
-        backgroundColor: '#4CAF50',
-        padding: 8,
-        borderRadius: 5,
-        marginRight: 10,
-        flexDirection: 'row',
-        alignItems: 'center'
+        flex: 1,
+        borderRadius: 25,
+        overflow: 'hidden',
     },
-    rejectButton: {
-        backgroundColor: '#f44336',
-        padding: 8,
-        borderRadius: 5,
+    buttonGradient: {
         flexDirection: 'row',
-        alignItems: 'center'
-    },
-    cancelButton: {
-        backgroundColor: '#FF9800',
-        padding: 8,
-        borderRadius: 5,
-        flexDirection: 'row',
-        alignItems: 'center'
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 12,
+        paddingHorizontal: 20,
     },
     buttonText: {
-        color: 'white',
+        color: '#fff',
+        fontSize: 16,
         fontWeight: 'bold',
-        marginLeft: 5
+        marginLeft: 5,
     },
-    pendingText: {
-        color: 'gray'
+    rejectButton: {
+        flex: 1,
+        borderWidth: 1,
+        borderColor: '#E0E0E0',
+        borderRadius: 25,
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 12,
+    },
+    rejectText: {
+        color: '#666',
+        fontSize: 16,
+        fontWeight: '600',
+    },
+    cancelButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#f5f5f5',
+        borderRadius: 20,
+        paddingVertical: 8,
+        paddingHorizontal: 15,
+    },
+    cancelText: {
+        color: '#666',
+        fontSize: 14,
+        fontWeight: '600',
+        marginLeft: 5,
     },
     loadingContainer: {
         flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
-        padding: 20
+        paddingVertical: 50,
     },
     loadingText: {
-        marginTop: 10,
-        color: 'gray'
+        marginTop: 15,
+        fontSize: 16,
+        color: '#666',
+        fontWeight: '500',
     },
     emptyContainer: {
-        alignItems: 'center',
+        flex: 1,
         justifyContent: 'center',
-        padding: 30
+        alignItems: 'center',
+        paddingVertical: 80,
+        paddingHorizontal: 40,
     },
-    emptyText: {
+    emptyTitle: {
+        fontSize: 20,
+        fontWeight: 'bold',
+        color: '#333',
+        marginTop: 20,
+        marginBottom: 10,
         textAlign: 'center',
-        marginTop: 10,
-        color: 'gray',
-        fontSize: 16
-    }
+    },
+    emptySubtitle: {
+        fontSize: 16,
+        color: '#666',
+        textAlign: 'center',
+        lineHeight: 24,
+        marginBottom: 30,
+    },
+    searchButtonText: {
+        color: '#fff',
+        fontSize: 16,
+        fontWeight: '600',
+    },
 });
 
 export default FriendRequestsScreen;

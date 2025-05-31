@@ -37,7 +37,7 @@ const ProfileScreen = ({ navigation }) => {
     // State cho thông tin follow
     const [isOwnProfile, setIsOwnProfile] = useState(true);
 
-    const userProfileService = useMemo(() => new UserProfileService(), []);
+    const userProfileService = UserProfileService;
     const isFocused = useIsFocused();
 
     // Tải thông tin người dùng

@@ -9,15 +9,22 @@ import {
     Dimensions,
     RefreshControl,
     ActivityIndicator,
-    Alert
+    Alert,
+    StatusBar,
+    SafeAreaView,
+    TextInput,
+    ScrollView
 } from 'react-native';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import PostItem from '../hook/PostItem'; // Import the PostItem component
+import Ionicons from 'react-native-vector-icons/Ionicons';
+import { LinearGradient } from 'expo-linear-gradient';
+import PostItem from '../hook/PostItem';
 import CreatePostService from '../services/CreatePostService';
 import authService from '../services/AuthService';
 import Config from '../../src/services/config';
+import StoryItem from '../components/StoryItem';
+import LoadingSpinner from '../components/LoadingSpinner';
 
-const { width } = Dimensions.get('window');
+const { width, height } = Dimensions.get('window');
 
 // Keeping the legacy createImageUrl function for backward compatibility
 const createImageUrl = (path) => {
@@ -45,6 +52,8 @@ const InstagramHomeScreen = ({ navigation }) => {
     const [page, setPage] = useState(0);
     const [isLastPage, setIsLastPage] = useState(false);
     const [loadingMore, setLoadingMore] = useState(false);
+    const [searchText, setSearchText] = useState('');
+    const [showSearch, setShowSearch] = useState(false);
 
     const fetchCurrentUser = async () => {
         try {
@@ -55,6 +64,25 @@ const InstagramHomeScreen = ({ navigation }) => {
             console.error('Lỗi khi lấy thông tin người dùng:', error);
             return null;
         }
+    };
+
+    // Mock stories data - you can replace with real API call
+    const generateMockStories = () => {
+        const mockStories = [
+            {
+                id: 'add_story',
+                username: 'Tạo story',
+                imageUrl: currentUser?.profilePictureUrl || 'https://randomuser.me/api/portraits/men/1.jpg',
+                isAddStory: true
+            },
+            ...Array.from({ length: 8 }, (_, i) => ({
+                id: `story_${i}`,
+                username: `User ${i + 1}`,
+                imageUrl: `https://randomuser.me/api/portraits/${i % 2 === 0 ? 'men' : 'women'}/${i + 2}.jpg`,
+                hasNewStory: Math.random() > 0.5
+            }))
+        ];
+        setStories(mockStories);
     };
 
     const fetchPosts = async (pageNumber = 0, shouldRefresh = false) => {
@@ -92,6 +120,7 @@ const InstagramHomeScreen = ({ navigation }) => {
 
     const onRefresh = useCallback(() => {
         fetchPosts(0, true);
+        generateMockStories();
     }, []);
 
     const onEndReached = () => {
@@ -127,11 +156,15 @@ const InstagramHomeScreen = ({ navigation }) => {
         navigation.navigate('Comments', { postId });
     };
 
+    const handleFabPress = () => {
+        navigation.navigate('CreatePost');
+    };
+
     useEffect(() => {
         const loadInitialData = async () => {
             await fetchCurrentUser();
             fetchPosts();
-            setStories([]);
+            generateMockStories();
         };
         loadInitialData();
     }, []);
@@ -143,196 +176,403 @@ const InstagramHomeScreen = ({ navigation }) => {
         return unsubscribe;
     }, [navigation, onRefresh]);
 
-    // Using PostItem component to render posts instead of the inline rendering
-    const renderPost = ({ item }) => {
+    const renderPost = ({ item, index }) => {
         return (
+            <View style={styles.postWrapper}>
             <PostItem
                 item={item}
                 onLikePress={handleLikePress}
                 onCommentPress={handleCommentPress}
-            />
+                    navigation={navigation}
+                    currentUserId={currentUser?.id}
+                />
+            </View>
         );
     };
 
-    const formatTimeAgo = (dateString) => {
-        if (!dateString) return '';
-        const now = new Date();
-        const date = new Date(dateString);
-        const diffInSeconds = Math.floor((now - date) / 1000);
-        if (diffInSeconds < 60) return 'vừa xong';
-        if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)} phút trước`;
-        if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)} giờ trước`;
-        if (diffInSeconds < 604800) return `${Math.floor(diffInSeconds / 86400)} ngày trước`;
-        return `${date.getDate()}/${date.getMonth() + 1}/${date.getFullYear()}`;
-    };
+    const renderStoryItem = ({ item }) => (
+        <StoryItem
+            story={item}
+            onPress={(story) => {
+                console.log('Story pressed:', story);
+                // Handle story press - navigate to story viewer
+            }}
+            createImageUrl={createImageUrl}
+            currentUser={currentUser}
+        />
+    );
 
     if (loading && !refreshing && posts.length === 0) {
         return (
-            <View style={[styles.container, styles.centerContent]}>
-                <ActivityIndicator size="large" color="#0095F6" />
+            <SafeAreaView style={[styles.container, styles.centerContent]}>
+                <StatusBar barStyle="dark-content" backgroundColor="#fff" />
+                <View style={styles.loadingContainer}>
+                    <LoadingSpinner size={50} />
+                    <Text style={styles.loadingText}>Đang tải...</Text>
             </View>
+            </SafeAreaView>
         );
     }
 
-    // Get avatar URL for the current user
     const getAvatarUrl = () => {
         if (currentUser?.profilePictureUrl) {
-            // Use the full image URL if available directly from the server
             if (currentUser.profilePictureUrl.startsWith('http')) {
                 return currentUser.profilePictureUrl;
             }
-            // Otherwise, construct the URL
             return createImageUrl(currentUser.profilePictureUrl);
         }
         return 'https://randomuser.me/api/portraits/men/1.jpg';
     };
 
     return (
-        <View style={styles.container}>
+        <SafeAreaView style={styles.container}>
+            <StatusBar barStyle="dark-content" backgroundColor="#fff" />
+            
+            {/* Simple Header */}
             <View style={styles.header}>
-                <TouchableOpacity>
-                    <Icon name="camera" size={24} color="black" />
-                </TouchableOpacity>
+                <View style={styles.headerContent}>
+                    <TouchableOpacity onPress={() => setShowSearch(!showSearch)}>
+                        <Ionicons name="search" size={26} color="#333" />
+                    </TouchableOpacity>
+                    
                 <Text style={styles.headerTitle}>Social Matching</Text>
-                <TouchableOpacity onPress={() => navigation.navigate('Messages')}>
-                    <Icon name="message-outline" size={24} color="black" />
-                </TouchableOpacity>
+                    
+                    <View style={styles.headerActions}>
+                        <TouchableOpacity 
+                            style={styles.headerButton}
+                            onPress={() => navigation.navigate('Messages')}
+                        >
+                            <Ionicons name="chatbubble-outline" size={26} color="#333" />
+                        </TouchableOpacity>
+                    </View>
+                </View>
             </View>
+
+            {showSearch && (
+                <View style={styles.searchContainer}>
+                    <Ionicons name="search" size={20} color="#666" style={styles.searchIcon} />
+                    <TextInput
+                        style={styles.searchInput}
+                        placeholder="Tìm kiếm bài viết, bạn bè..."
+                        value={searchText}
+                        onChangeText={setSearchText}
+                        placeholderTextColor="#999"
+                    />
+                    {searchText.length > 0 && (
+                        <TouchableOpacity onPress={() => setSearchText('')}>
+                            <Ionicons name="close-circle" size={20} color="#999" />
+                        </TouchableOpacity>
+                    )}
+                </View>
+            )}
+
             <FlatList
                 data={posts}
                 renderItem={renderPost}
                 keyExtractor={(item) => item.id.toString()}
                 showsVerticalScrollIndicator={false}
-                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#0095F6']} />}
+                refreshControl={
+                    <RefreshControl 
+                        refreshing={refreshing} 
+                        onRefresh={onRefresh} 
+                        colors={['#E91E63']}
+                        tintColor="#E91E63"
+                        title="Đang tải..."
+                        titleColor="#E91E63"
+                    />
+                }
                 onEndReached={onEndReached}
                 onEndReachedThreshold={0.5}
+                ListHeaderComponent={
+                    <View>
+                        <View style={styles.storiesSection}>
+                            <Text style={styles.storiesTitle}>Stories</Text>
+                            <FlatList
+                                data={stories}
+                                renderItem={renderStoryItem}
+                                keyExtractor={(item) => item.id}
+                                horizontal
+                                showsHorizontalScrollIndicator={false}
+                                contentContainerStyle={styles.storiesContainer}
+                            />
+                        </View>
+                    </View>
+                }
                 ListFooterComponent={loadingMore ? (
                     <View style={styles.loadingMore}>
-                        <ActivityIndicator size="small" color="#0095F6" />
+                        <ActivityIndicator size="small" color="#E91E63" />
+                        <Text style={styles.loadingMoreText}>Đang tải thêm...</Text>
                     </View>
                 ) : null}
                 ListEmptyComponent={!loading && (
                     <View style={styles.emptyContainer}>
+                        <Ionicons name="newspaper-outline" size={60} color="#ddd" />
+                        <Text style={styles.emptyTitle}>Chưa có bài viết nào</Text>
                         <Text style={styles.emptyText}>
-                            Chưa có bài viết nào. Hãy theo dõi bạn bè để xem bài viết của họ.
+                            Hãy theo dõi bạn bè để xem bài viết của họ
                         </Text>
+                        <TouchableOpacity 
+                            style={styles.exploreButton}
+                            onPress={() => navigation.navigate('FriendSearch')}
+                        >
+                            <Text style={styles.exploreButtonText}>Khám phá bạn bè</Text>
+                        </TouchableOpacity>
                     </View>
                 )}
+                contentContainerStyle={posts.length === 0 ? styles.emptyFlatList : null}
             />
+
+            {/* Floating Action Button */}
+            <TouchableOpacity style={styles.fab} onPress={handleFabPress}>
+                <LinearGradient
+                    colors={['#E91E63', '#F06292']}
+                    style={styles.fabGradient}
+                >
+                    <Ionicons name="add" size={28} color="white" />
+                </LinearGradient>
+            </TouchableOpacity>
+
+            {/* Bottom Navigation */}
             <View style={styles.bottomNavigation}>
-                <TouchableOpacity onPress={() => navigation.navigate('Home')}>
-                    <Icon name="home" size={24} color="black" />
+                <TouchableOpacity 
+                    style={styles.navItem}
+                    onPress={() => navigation.navigate('Home')}
+                >
+                    <Ionicons name="home" size={26} color="#E91E63" />
+                    <View style={styles.activeIndicator} />
                 </TouchableOpacity>
-                <TouchableOpacity onPress={() => navigation.navigate('FriendSearch')}>
-                    <Icon name="magnify" size={24} color="black" />
+                
+                <TouchableOpacity 
+                    style={styles.navItem}
+                    onPress={() => navigation.navigate('FriendSearch')}
+                >
+                    <Ionicons name="search" size={26} color="#666" />
                 </TouchableOpacity>
-                <TouchableOpacity onPress={() => navigation.navigate('CreatePost')}>
-                    <Icon name="plus-box-outline" size={24} color="black" />
+                
+                <View style={styles.navItem}>
+                    <View style={styles.navPlaceholder} />
+                </View>
+                
+                <TouchableOpacity 
+                    style={styles.navItem}
+                    onPress={() => navigation.navigate('FriendRequests')}
+                >
+                    <Ionicons name="heart-outline" size={26} color="#666" />
                 </TouchableOpacity>
-                <TouchableOpacity onPress={() => navigation.navigate('FriendRequests')}>
-                    <Icon name="heart-outline" size={24} color="black" />
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => navigation.navigate('Profile', { userId: currentUser?.id })}>
+                
+                <TouchableOpacity 
+                    style={styles.navItem}
+                    onPress={() => navigation.navigate('Profile', { userId: currentUser?.id })}
+                >
+                    <View style={styles.profileContainer}>
                     <Image
                         source={{ uri: getAvatarUrl() }}
                         style={styles.profileThumb}
                     />
+                    </View>
                 </TouchableOpacity>
             </View>
-        </View>
+        </SafeAreaView>
     );
 };
 
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: 'white',
+        backgroundColor: '#fff',
     },
     centerContent: {
         justifyContent: 'center',
         alignItems: 'center',
     },
-    header: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        paddingHorizontal: 15,
-        paddingVertical: 10,
-        borderBottomWidth: 0.5,
-        borderBottomColor: '#DEDEDE',
-    },
-    headerTitle: {
-        fontSize: 20,
-        fontWeight: 'bold',
-    },
-    storiesContainer: {
-        paddingHorizontal: 10,
-        paddingVertical: 10,
-        borderBottomWidth: 0.5,
-        borderBottomColor: '#DEDEDE',
-    },
-    storyContainer: {
-        alignItems: 'center',
-        marginRight: 15,
-    },
-    storyImageWrapper: {
-        width: 70,
-        height: 70,
-        borderRadius: 35,
-        borderWidth: 2,
-        borderColor: '#FF4500',
-        justifyContent: 'center',
-        alignItems: 'center',
-        marginBottom: 5,
-    },
-    storyImage: {
-        width: 64,
-        height: 64,
-        borderRadius: 32,
-    },
-    addStoryIcon: {
-        position: 'absolute',
-        bottom: -3,
-        right: -3,
-        backgroundColor: '#0095F6',
-        borderRadius: 10,
-        width: 20,
-        height: 20,
-        justifyContent: 'center',
+    loadingContainer: {
         alignItems: 'center',
     },
-    storyUsername: {
-        fontSize: 12,
-        maxWidth: 70,
-        textAlign: 'center',
-    },
-    loadingMore: {
-        paddingVertical: 20,
-        alignItems: 'center',
-    },
-    emptyContainer: {
-        padding: 20,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    emptyText: {
-        textAlign: 'center',
-        color: '#8e8e8e',
+    loadingText: {
+        marginTop: 10,
         fontSize: 16,
+        color: '#666',
+        fontWeight: '500',
     },
-    bottomNavigation: {
+    header: {
+        backgroundColor: '#fff',
+        borderBottomWidth: 1,
+        borderBottomColor: '#f0f0f0',
+        elevation: 2,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.1,
+        shadowRadius: 2,
+        paddingTop: 10,
+    },
+    headerContent: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
         paddingHorizontal: 20,
+        paddingVertical: 12,
+    },
+    headerTitle: {
+        fontSize: 24,
+        fontWeight: 'bold',
+        color: '#333',
+        letterSpacing: 0.5,
+    },
+    headerButton: {
+        padding: 4,
+    },
+    headerActions: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    searchContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#f5f5f5',
+        borderRadius: 25,
+        marginHorizontal: 20,
+        marginBottom: 12,
+        paddingHorizontal: 15,
         paddingVertical: 10,
-        borderTopWidth: 0.5,
-        borderTopColor: '#DEDEDE',
+    },
+    searchIcon: {
+        marginRight: 10,
+    },
+    searchInput: {
+        flex: 1,
+        fontSize: 16,
+        color: '#333',
+    },
+    storiesSection: {
+        backgroundColor: '#fff',
+        paddingVertical: 15,
+        borderBottomWidth: 1,
+        borderBottomColor: '#f0f0f0',
+    },
+    storiesTitle: {
+        fontSize: 18,
+        fontWeight: 'bold',
+        color: '#333',
+        marginLeft: 20,
+        marginBottom: 12,
+    },
+    storiesContainer: {
+        paddingHorizontal: 15,
+        paddingVertical: 5,
+    },
+    postWrapper: {
+        marginBottom: 1,
+        backgroundColor: '#fff',
+    },
+    loadingMore: {
+        paddingVertical: 20,
+        alignItems: 'center',
+        flexDirection: 'row',
+        justifyContent: 'center',
+    },
+    loadingMoreText: {
+        marginLeft: 10,
+        color: '#666',
+        fontSize: 14,
+    },
+    emptyContainer: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        paddingHorizontal: 40,
+        paddingVertical: 60,
+    },
+    emptyFlatList: {
+        flexGrow: 1,
+    },
+    emptyTitle: {
+        fontSize: 22,
+        fontWeight: 'bold',
+        color: '#333',
+        marginTop: 20,
+        marginBottom: 10,
+    },
+    emptyText: {
+        textAlign: 'center',
+        color: '#666',
+        fontSize: 16,
+        lineHeight: 24,
+        marginBottom: 30,
+    },
+    exploreButton: {
+        backgroundColor: '#E91E63',
+        paddingHorizontal: 24,
+        paddingVertical: 12,
+        borderRadius: 25,
+    },
+    exploreButtonText: {
+        color: 'white',
+        fontSize: 16,
+        fontWeight: '600',
+    },
+    fab: {
+        position: 'absolute',
+        bottom: 90,
+        right: 20,
+        width: 56,
+        height: 56,
+        borderRadius: 28,
+        elevation: 8,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 8,
+    },
+    fabGradient: {
+        width: 56,
+        height: 56,
+        borderRadius: 28,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    bottomNavigation: {
+        flexDirection: 'row',
+        justifyContent: 'space-around',
+        alignItems: 'center',
+        paddingVertical: 12,
+        paddingHorizontal: 10,
+        borderTopWidth: 1,
+        borderTopColor: '#f0f0f0',
+        backgroundColor: '#fff',
+        elevation: 8,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: -2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 8,
+    },
+    navItem: {
+        alignItems: 'center',
+        justifyContent: 'center',
+        position: 'relative',
+        padding: 8,
+    },
+    navPlaceholder: {
+        width: 26,
+        height: 26,
+    },
+    activeIndicator: {
+        position: 'absolute',
+        bottom: -8,
+        width: 6,
+        height: 6,
+        borderRadius: 3,
+        backgroundColor: '#E91E63',
+    },
+    profileContainer: {
+        borderRadius: 15,
+        borderWidth: 2,
+        borderColor: '#E91E63',
+        padding: 2,
     },
     profileThumb: {
-        width: 24,
-        height: 24,
-        borderRadius: 12,
+        width: 26,
+        height: 26,
+        borderRadius: 13,
     },
 });
 

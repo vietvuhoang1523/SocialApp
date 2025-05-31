@@ -19,8 +19,8 @@ export const ProfileProvider = ({ children }) => {
     const [userProfile, setUserProfile] = useState(null);
     const [loading, setLoading] = useState(true);
 
-    // Khởi tạo service
-    const userProfileService = new UserProfileService();
+    // Directly use the exported instance
+    const userProfileService = UserProfileService;
 
     // Hàm fetch data từ API
     const fetchUserProfile = async () => {

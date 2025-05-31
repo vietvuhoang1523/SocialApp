@@ -3,6 +3,8 @@ import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { BASE_URL, DEFAULT_TIMEOUT, DEFAULT_HEADERS, FORM_DATA_HEADERS } from './api';
 import webSocketService from './WebSocketService';
+import messagesService from './messagesService';
+import webSocketHelper from './WebSocketHelper';
 
 class ChatService {
     constructor() {
@@ -90,8 +92,8 @@ class ChatService {
      * @private
      */
     _registerWebSocketCallbacks() {
-        // Đăng ký callback cho nhận danh sách cuộc trò chuyện qua WebSocket
-        webSocketService.onConversations('chatService', this._handleConversations.bind(this));
+        // Đăng ký callback cho nhận danh sách cuộc trò chuyện qua WebSocket - sử dụng API mới
+        webSocketService.on('conversations', this._handleConversations.bind(this));
 
         // Tạo Map để lưu trữ callbacks từ các thành phần client
         this.conversationsCallbacks = new Map();
@@ -165,66 +167,48 @@ class ChatService {
      */
     async getConversations() {
         try {
-            // Lấy thông tin người dùng hiện tại
-            const currentUser = await this.getCurrentUser();
+            console.log('📋 Lấy danh sách cuộc trò chuyện...');
 
-            if (!currentUser || !currentUser.id) {
-                throw new Error('Không có thông tin người dùng hiện tại');
+            // Đảm bảo WebSocket kết nối trước
+            if (!webSocketHelper.isConnected()) {
+                console.log('🔌 WebSocket chưa kết nối, đang kết nối...');
+                await webSocketHelper.ensureConnection();
             }
 
-            // Tạo promise để đợi kết quả từ WebSocket
-            const getConversationsPromise = new Promise((resolve, reject) => {
-                // Timeout sau 5 giây
-                const timeoutId = setTimeout(() => {
-                    // Hủy đăng ký callback tạm thời
-                    this.offConversations('temp_conversations');
-                    reject(new Error('Timed out waiting for WebSocket response'));
-                }, 5000);
-
-                // Đăng ký callback tạm thời để nhận kết quả
-                this.onConversations('temp_conversations', (conversations) => {
-                    clearTimeout(timeoutId);
-                    this.offConversations('temp_conversations');
-                    resolve(conversations);
-                });
-            });
-
-            // Ưu tiên sử dụng WebSocket
-            if (webSocketService.isConnected()) {
-                const success = webSocketService.getConversations();
-                if (success) {
-                    try {
-                        // Đợi kết quả từ WebSocket
-                        return await getConversationsPromise;
-                    } catch (timeoutError) {
-                        console.log('WebSocket timeout, sử dụng phương pháp thay thế', timeoutError);
-                        // Tiếp tục với phương pháp thay thế nếu WebSocket timeout
+            if (webSocketHelper.isConnected()) {
+                try {
+                    console.log('🔗 Sử dụng WebSocket để lấy cuộc trò chuyện');
+                    const conversations = await webSocketHelper.getConversations();
+                    console.log('✅ Nhận cuộc trò chuyện qua WebSocket:', conversations);
+                    return conversations;
+                } catch (wsError) {
+                    console.log('⚠️ WebSocket timeout hoặc lỗi:', wsError.message);
+                    
+                    // Thử lại một lần nữa với timeout ngắn hơn
+                    if (wsError.message.includes('timeout')) {
+                        console.log('🔄 Thử lại với timeout ngắn hơn...');
+                        try {
+                            const conversationsRetry = await webSocketHelper.getConversations();
+                            console.log('✅ Nhận cuộc trò chuyện qua WebSocket (retry):', conversationsRetry);
+                            return conversationsRetry;
+                        } catch (retryError) {
+                            console.log('❌ Retry cũng thất bại:', retryError.message);
+                        }
                     }
                 }
             }
 
-            // Thử gọi API chuyên biệt cho cuộc trò chuyện trước
-            try {
-                const conversations = await this.api.get('/messages/conversations');
-                return this.normalizeConversations(conversations);
-            } catch (apiError) {
-                console.log('API chuyên biệt không có hoặc gặp lỗi, sử dụng phương pháp thay thế');
+            // Nếu WebSocket không hoạt động, tạo conversations từ messages cache hoặc return empty
+            console.log('🔄 WebSocket không khả dụng, sử dụng phương án dự phòng');
+            
+            // Phương án dự phòng: Trả về mảng rỗng thay vì call REST API không tồn tại
+            console.log('📝 Trả về danh sách trống - backend chỉ hỗ trợ WebSocket');
+            return [];
 
-                // Phương pháp thay thế: Tạo cuộc trò chuyện từ tin nhắn
-                // Lấy tin nhắn chưa đọc và tất cả cuộc trò chuyện gần đây
-                const [unreadMessages, recentMessages] = await Promise.all([
-                    messagesService.getUnreadMessages(currentUser.id),
-                    this.getRecentMessages(currentUser.id)
-                ]);
-
-                // Kết hợp và lọc dữ liệu để tạo danh sách cuộc trò chuyện
-                const allMessages = [...unreadMessages, ...recentMessages];
-                const userProfiles = await this.getUserProfiles(allMessages);
-                return this.buildConversationsFromMessages(allMessages, userProfiles, currentUser.id);
-            }
         } catch (error) {
-            console.error('Lỗi khi lấy danh sách cuộc trò chuyện:', error);
-            return []; // Trả về mảng rỗng nếu có lỗi
+            console.error('❌ Lỗi khi lấy danh sách cuộc trò chuyện:', error);
+            // Trả về mảng rỗng thay vì throw error
+            return [];
         }
     }
 
@@ -725,6 +709,266 @@ class ChatService {
 
         // Lỗi khác
         return error;
+    }
+
+    // === ENHANCED CHAT METHODS WITH WEBSOCKET INTEGRATION ===
+
+    /**
+     * Lấy tin nhắn giữa hai người dùng với tích hợp WebSocket
+     */
+    async getMessagesBetweenUsers(currentUserId, partnerId, options = {}) {
+        try {
+            console.log('💬 Lấy tin nhắn giữa users:', currentUserId, 'và', partnerId);
+
+            // Thử sử dụng WebSocket trước
+            if (webSocketHelper.isConnected()) {
+                try {
+                    console.log('🔗 Sử dụng WebSocket để lấy tin nhắn');
+                    const result = await webSocketHelper.getMessagesBetweenUsers(
+                        currentUserId,
+                        partnerId,
+                        {
+                            enablePagination: options.enablePagination || true,
+                            page: options.page || 0,
+                            size: options.size || 50,
+                            sortBy: options.sortBy || 'timestamp',
+                            order: options.order || 'desc'
+                        }
+                    );
+
+                    if (result && result.messages) {
+                        console.log('✅ Nhận tin nhắn qua WebSocket:', result.messages.length, 'tin nhắn');
+                        return {
+                            content: result.messages,
+                            pagination: result.pagination
+                        };
+                    } else if (Array.isArray(result)) {
+                        console.log('✅ Nhận tin nhắn qua WebSocket (format cũ):', result.length, 'tin nhắn');
+                        return {
+                            content: result,
+                            pagination: null
+                        };
+                    }
+                } catch (wsError) {
+                    console.log('⚠️ WebSocket failed, falling back to REST API:', wsError);
+                }
+            }
+
+            // Fallback sang messagesService (REST API)
+            console.log('🔗 Sử dụng messagesService để lấy tin nhắn');
+            const messages = await messagesService.getMessagesBetweenUsersPaginated(
+                currentUserId,
+                partnerId,
+                options
+            );
+            console.log('✅ Nhận tin nhắn qua API:', messages);
+            return messages;
+        } catch (error) {
+            console.error('❌ Lỗi khi lấy tin nhắn:', error);
+            throw this.normalizeError(error);
+        }
+    }
+
+    /**
+     * Gửi tin nhắn với tích hợp WebSocket
+     */
+    async sendMessage(messageData) {
+        try {
+            console.log('📤 Gửi tin nhắn:', messageData);
+
+            // Validate dữ liệu
+            if (!messageData.content || !messageData.receiverId) {
+                throw new Error('Thiếu nội dung tin nhắn hoặc người nhận');
+            }
+
+            // Thử sử dụng WebSocket trước
+            if (webSocketHelper.isConnected()) {
+                try {
+                    console.log('🔗 Gửi tin nhắn qua WebSocket');
+                    const result = await webSocketHelper.sendMessage(messageData);
+                    console.log('✅ Tin nhắn đã gửi qua WebSocket:', result);
+                    return result;
+                } catch (wsError) {
+                    console.log('⚠️ WebSocket failed, falling back to REST API:', wsError);
+                }
+            }
+
+            // Fallback sang messagesService
+            console.log('🔗 Gửi tin nhắn qua messagesService');
+            const result = await messagesService.sendMessage(messageData);
+            console.log('✅ Tin nhắn đã gửi qua API:', result);
+            return result;
+        } catch (error) {
+            console.error('❌ Lỗi khi gửi tin nhắn:', error);
+            throw this.normalizeError(error);
+        }
+    }
+
+    /**
+     * Đánh dấu tin nhắn đã đọc với tích hợp WebSocket
+     */
+    async markMessageAsRead(messageId, senderId) {
+        try {
+            console.log('👁️ Đánh dấu tin nhắn đã đọc:', messageId);
+
+            // Thử sử dụng WebSocket trước
+            if (webSocketHelper.isConnected()) {
+                try {
+                    console.log('🔗 Đánh dấu đã đọc qua WebSocket');
+                    const result = await webSocketHelper.markMessageAsRead(messageId, senderId);
+                    console.log('✅ Đã đánh dấu đọc qua WebSocket:', result);
+                    return result;
+                } catch (wsError) {
+                    console.log('⚠️ WebSocket failed, falling back to REST API:', wsError);
+                }
+            }
+
+            // Fallback sang messagesService
+            console.log('🔗 Đánh dấu đã đọc qua messagesService');
+            const result = await messagesService.markMessageAsRead(messageId);
+            console.log('✅ Đã đánh dấu đọc qua API:', result);
+            return result;
+        } catch (error) {
+            console.error('❌ Lỗi khi đánh dấu đã đọc:', error);
+            throw this.normalizeError(error);
+        }
+    }
+
+    /**
+     * Lấy tin nhắn chưa đọc với tích hợp WebSocket
+     */
+    async getUnreadMessages() {
+        try {
+            console.log('📬 Lấy tin nhắn chưa đọc...');
+
+            // Thử sử dụng WebSocket trước
+            if (webSocketHelper.isConnected()) {
+                try {
+                    console.log('🔗 Lấy tin nhắn chưa đọc qua WebSocket');
+                    const result = await webSocketHelper.getUnreadMessages();
+                    console.log('✅ Nhận tin nhắn chưa đọc qua WebSocket:', result);
+                    return result;
+                } catch (wsError) {
+                    console.log('⚠️ WebSocket failed, falling back to REST API:', wsError);
+                }
+            }
+
+            // Fallback sang messagesService
+            console.log('🔗 Lấy tin nhắn chưa đọc qua messagesService');
+            const currentUser = await this.getCurrentUser();
+            if (!currentUser?.id) {
+                throw new Error('Không tìm thấy thông tin người dùng');
+            }
+            
+            const result = await messagesService.getUnreadMessages(currentUser.id);
+            console.log('✅ Nhận tin nhắn chưa đọc qua API:', result);
+            return result;
+        } catch (error) {
+            console.error('❌ Lỗi khi lấy tin nhắn chưa đọc:', error);
+            throw this.normalizeError(error);
+        }
+    }
+
+    /**
+     * Lấy số lượng tin nhắn chưa đọc với tích hợp WebSocket
+     */
+    async getUnreadMessagesCount() {
+        try {
+            console.log('🔢 Lấy số tin nhắn chưa đọc...');
+
+            // Thử sử dụng WebSocket trước
+            if (webSocketHelper.isConnected()) {
+                try {
+                    console.log('🔗 Lấy số tin nhắn chưa đọc qua WebSocket');
+                    const count = await webSocketHelper.getUnreadMessagesCount();
+                    console.log('✅ Nhận số tin nhắn chưa đọc qua WebSocket:', count);
+                    return count;
+                } catch (wsError) {
+                    console.log('⚠️ WebSocket failed, falling back to REST API:', wsError);
+                }
+            }
+
+            // Fallback sang API truyền thống
+            console.log('🔗 Lấy số tin nhắn chưa đọc qua API');
+            const unreadMessages = await this.getUnreadMessages();
+            const count = Array.isArray(unreadMessages) ? unreadMessages.length : 0;
+            console.log('✅ Số tin nhắn chưa đọc:', count);
+            return count;
+        } catch (error) {
+            console.error('❌ Lỗi khi lấy số tin nhắn chưa đọc:', error);
+            return 0; // Return 0 thay vì throw error để không ảnh hưởng UI
+        }
+    }
+
+    /**
+     * Thiết lập listeners cho chat realtime
+     */
+    setupChatListeners(partnerId, callbacks = {}) {
+        try {
+            console.log('🎧 Thiết lập chat listeners cho partner:', partnerId);
+            
+            // Đăng ký callback cho tin nhắn mới
+            if (callbacks.onNewMessage) {
+                webSocketHelper.onNewMessage((message) => {
+                    // Lọc tin nhắn thuộc cuộc trò chuyện hiện tại
+                    if (message.senderId === partnerId || 
+                        (message.receiverId === partnerId && message.senderId !== partnerId)) {
+                        callbacks.onNewMessage(message);
+                    }
+                });
+            }
+
+            // Đăng ký callback cho typing notifications
+            if (callbacks.onTyping) {
+                webSocketHelper.onTyping((notification) => {
+                    if (notification.senderId === partnerId) {
+                        callbacks.onTyping(notification);
+                    }
+                });
+            }
+
+            // Đăng ký callback cho read receipts
+            if (callbacks.onReadReceipt) {
+                webSocketHelper.onReadReceipt((receipt) => {
+                    if (receipt.senderId === partnerId || receipt.readerId === partnerId) {
+                        callbacks.onReadReceipt(receipt);
+                    }
+                });
+            }
+
+            // Đăng ký callback cho message deleted
+            if (callbacks.onMessageDeleted) {
+                webSocketHelper.onMessageDeleted(callbacks.onMessageDeleted);
+            }
+
+            console.log('✅ Chat listeners đã được thiết lập');
+            return true;
+        } catch (error) {
+            console.error('❌ Lỗi khi thiết lập chat listeners:', error);
+            return false;
+        }
+    }
+
+    /**
+     * Dọn dẹp chat listeners
+     */
+    cleanupChatListeners() {
+        try {
+            webSocketHelper.cleanup();
+            console.log('🧹 Chat listeners đã được dọn dẹp');
+        } catch (error) {
+            console.error('❌ Lỗi khi dọn dẹp chat listeners:', error);
+        }
+    }
+
+    /**
+     * Kiểm tra trạng thái WebSocket
+     */
+    getWebSocketStatus() {
+        return {
+            connected: webSocketHelper.isConnected(),
+            details: webSocketHelper.getConnectionStatus()
+        };
     }
 }
 

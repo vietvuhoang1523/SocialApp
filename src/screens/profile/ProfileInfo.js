@@ -8,6 +8,7 @@ import {
     Dimensions,
     Alert
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useProfileContext } from '../../components/ProfileContext';
 import { useNavigation } from '@react-navigation/native';
@@ -135,31 +136,43 @@ const ProfileInfo = ({ onEditProfile, onViewIntro }) => {
                         setCoverImage(DEFAULT_COVER_IMAGE);
                     }}
                 />
+                {/* Pink gradient overlay */}
+                <LinearGradient
+                    colors={['rgba(233, 30, 99, 0.1)', 'rgba(240, 98, 146, 0.1)']}
+                    style={styles.coverOverlay}
+                />
                 <TouchableOpacity
                     style={styles.editCoverButton}
                     onPress={handleEditCoverImage}
                     activeOpacity={0.7}
                 >
-                    <Ionicons name="camera" size={18} color="#000" />
+                    <Ionicons name="camera" size={18} color="#E91E63" />
                 </TouchableOpacity>
             </View>
 
             <View style={styles.profileImageContainer}>
-                <Image
-                    source={profileImage}
-                    style={styles.profileImage}
-                    resizeMode="cover"
-                    onError={(e) => {
-                        console.log('Profile image load failed', e.nativeEvent.error);
-                        setProfileImage(DEFAULT_PROFILE_IMAGE);
-                    }}
-                />
+                <View style={styles.profileImageBorder}>
+                    <Image
+                        source={profileImage}
+                        style={styles.profileImage}
+                        resizeMode="cover"
+                        onError={(e) => {
+                            console.log('Profile image load failed', e.nativeEvent.error);
+                            setProfileImage(DEFAULT_PROFILE_IMAGE);
+                        }}
+                    />
+                </View>
                 <TouchableOpacity
                     style={styles.editProfileImageButton}
                     onPress={handleEditProfileImage}
                     activeOpacity={0.7}
                 >
-                    <Ionicons name="camera" size={18} color="#000" />
+                    <LinearGradient
+                        colors={['#E91E63', '#F06292']}
+                        style={styles.editIconGradient}
+                    >
+                        <Ionicons name="camera" size={16} color="#fff" />
+                    </LinearGradient>
                 </TouchableOpacity>
             </View>
 
@@ -184,9 +197,15 @@ const ProfileInfo = ({ onEditProfile, onViewIntro }) => {
                         onPress={handleEditProfile}
                         activeOpacity={0.7}
                     >
-                        <Text style={styles.primaryButtonText}>
-                            Chỉnh sửa trang cá nhân
-                        </Text>
+                        <LinearGradient
+                            colors={['#E91E63', '#F06292']}
+                            style={styles.primaryButtonGradient}
+                        >
+                            <Ionicons name="create-outline" size={18} color="#fff" />
+                            <Text style={styles.primaryButtonText}>
+                                Chỉnh sửa trang cá nhân
+                            </Text>
+                        </LinearGradient>
                     </TouchableOpacity>
                 </View>
             </View>
@@ -198,104 +217,138 @@ const styles = StyleSheet.create({
     container: {
         backgroundColor: 'white',
         marginBottom: 10,
+        borderRadius: 15,
+        overflow: 'hidden',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 8,
+        elevation: 4,
+        marginHorizontal: 15,
+        marginTop: 15,
     },
     coverImageContainer: {
-        height: 200,
+        height: 180,
         position: 'relative',
-        backgroundColor: '#f0f2f5', // Background mặc định nếu ảnh không tải được
+        backgroundColor: '#f0f2f5',
     },
     coverImage: {
         width: '100%',
         height: '100%',
         backgroundColor: '#f0f2f5',
     },
+    coverOverlay: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+    },
     editCoverButton: {
         position: 'absolute',
-        bottom: 10,
-        right: 10,
-        backgroundColor: 'rgba(255,255,255,0.8)',
-        borderRadius: 20,
-        width: 36,
-        height: 36,
+        bottom: 15,
+        right: 15,
+        backgroundColor: 'rgba(255,255,255,0.95)',
+        borderRadius: 25,
+        width: 40,
+        height: 40,
         justifyContent: 'center',
         alignItems: 'center',
         shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
+        shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.2,
-        shadowRadius: 1.5,
-        elevation: 2,
+        shadowRadius: 4,
+        elevation: 4,
     },
     profileImageContainer: {
         position: 'absolute',
-        top: 150,
-        left: 15,
+        top: 130,
+        left: 20,
         zIndex: 10,
-        backgroundColor: '#f0f2f5', // Background mặc định nếu ảnh không tải được
-        borderRadius: 50,
+    },
+    profileImageBorder: {
+        width: 110,
+        height: 110,
+        borderRadius: 55,
+        padding: 5,
+        backgroundColor: '#fff',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.2,
+        shadowRadius: 8,
+        elevation: 8,
     },
     profileImage: {
         width: 100,
         height: 100,
         borderRadius: 50,
-        borderWidth: 3,
-        borderColor: 'white',
         backgroundColor: '#f0f2f5',
     },
     editProfileImageButton: {
         position: 'absolute',
-        bottom: 0,
-        right: 0,
-        backgroundColor: '#E4E6EB',
+        bottom: 5,
+        right: 5,
         borderRadius: 20,
-        width: 30,
-        height: 30,
+        overflow: 'hidden',
+    },
+    editIconGradient: {
+        width: 32,
+        height: 32,
+        borderRadius: 16,
         justifyContent: 'center',
         alignItems: 'center',
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.2,
-        shadowRadius: 1.5,
-        elevation: 2,
     },
     profileDetailsContainer: {
-        paddingTop: 60,
-        paddingHorizontal: 15,
-        paddingBottom: 15,
+        paddingTop: 70,
+        paddingHorizontal: 20,
+        paddingBottom: 20,
     },
     nameText: {
-        fontSize: 24,
+        fontSize: 28,
         fontWeight: 'bold',
+        color: '#333',
         textAlign: 'left',
+        marginBottom: 8,
     },
     bioContainer: {
-        marginTop: 10,
+        marginVertical: 10,
+        padding: 12,
+        backgroundColor: '#f8f9fa',
+        borderRadius: 10,
+        borderLeftWidth: 3,
+        borderLeftColor: '#E91E63',
     },
     bioText: {
-        color: '#65676B',
-        lineHeight: 20,
+        fontSize: 16,
+        color: '#666',
+        lineHeight: 22,
+        fontStyle: 'italic',
     },
     actionButtonsContainer: {
-        flexDirection: 'row',
-        marginTop: 15,
+        marginTop: 20,
     },
     primaryButton: {
-        backgroundColor: '#E7F3FF',
-        paddingVertical: 10,
-        paddingHorizontal: 15,
-        borderRadius: 6,
-        marginRight: 10,
-        flex: 1,
-        shadowColor: '#1877F2',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.1,
-        shadowRadius: 1,
-        elevation: 1,
+        borderRadius: 25,
+        overflow: 'hidden',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.2,
+        shadowRadius: 4,
+        elevation: 4,
+    },
+    primaryButtonGradient: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 15,
+        paddingHorizontal: 20,
     },
     primaryButtonText: {
-        color: '#1877F2',
+        color: '#fff',
+        fontSize: 16,
         fontWeight: 'bold',
-        textAlign: 'center',
-    }
+        marginLeft: 8,
+    },
 });
 
 export default ProfileInfo;

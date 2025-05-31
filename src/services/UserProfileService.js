@@ -223,4 +223,6 @@ class UserProfileService {
 
 }
 
-export default UserProfileService;
+// Export instance thay vì class để có thể gọi method trực tiếp
+const userProfileService = new UserProfileService();
+export default userProfileService;

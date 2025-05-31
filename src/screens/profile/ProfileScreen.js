@@ -80,12 +80,12 @@ const ProfileScreen = ({ navigation }) => {
 
     // Navigate đến màn hình tìm bạn bè
     const handleFindFriends = useCallback(() => {
-        navigation.navigate('FindFriendsScreen');
+        navigation.navigate('FriendSearch');
     }, [navigation]);
 
     // Navigate đến màn hình danh sách bạn bè
     const handleViewAllFriends = useCallback(() => {
-        navigation.navigate('FriendsListScreen');
+        navigation.navigate('Messages');
     }, [navigation]);
 
     // View profile intro/bio đầy đủ
@@ -103,9 +103,9 @@ const ProfileScreen = ({ navigation }) => {
         <ProfileProvider>
             <SafeAreaView style={styles.container}>
                 <StatusBar
-                    backgroundColor="transparent"
-                    barStyle="dark-content"
-                    translucent
+                    backgroundColor="#E91E63"
+                    barStyle="light-content"
+                    translucent={false}
                 />
 
                 <ProfileHeader
@@ -135,7 +135,7 @@ const ProfileScreen = ({ navigation }) => {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#F0F2F5',
+        backgroundColor: '#f8f9fa',
     }
 });
 

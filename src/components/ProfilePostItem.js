@@ -3,33 +3,33 @@ import {
     View,
     Text,
     Image,
-    StyleSheet,
-    Alert
+    StyleSheet
 } from 'react-native';
+import Config from '../services/config';
+import MultipleImagesViewer from './MultipleImagesViewer';
 
 // Hàm tạo URL ảnh
 const createImageUrl = (path) => {
-    if (!path) {
-        console.warn('DEBUG: Không có path');
-        return null;
+    if (!path) return null;
+
+    // Nếu đường dẫn đã là URL đầy đủ, trả về ngay
+    if (path.startsWith('http')) {
+        return path;
     }
 
     try {
-        // Loại bỏ dấu / ở đầu nếu có
-        const cleanPath = path.replace(/^\//, '');
-
-        // Log các bước xử lý
-        console.log('DEBUG - Original Path:', path);
-        console.log('DEBUG - Cleaned Path:', cleanPath);
+        // Xử lý path
+        const cleanPath = path
+            .replace(/^thanh\//, '') // Xóa prefix thanh/ nếu có
+            .replace(/^\//, ''); // Xóa slash đầu tiên nếu có
 
         // Tạo URL hoàn chỉnh
-        // LƯU Ý: Thay đổi IP nếu cần
-        const fullUrl = `http://192.168.1.73:8082/api/files/image?bucketName=thanh&path=${encodeURIComponent(cleanPath)}`;
+        const apiUrl = Config.extra.apiUrl;
+        const fullUrl = `${apiUrl}/files/image?bucketName=thanh&path=${encodeURIComponent(cleanPath)}`;
 
-        console.log('DEBUG - Full Image URL:', fullUrl);
         return fullUrl;
     } catch (error) {
-        console.error('DEBUG - Lỗi khi tạo URL:', error);
+        console.error('Lỗi khi tạo URL ảnh:', error);
         return null;
     }
 };
@@ -37,18 +37,49 @@ const createImageUrl = (path) => {
 const ProfilePostItem = ({ item }) => {
     // Debug toàn bộ item
     useEffect(() => {
-        console.log('DEBUG - Toàn bộ Post Item:', JSON.stringify(item, null, 2));
+        console.log('DEBUG - Profile Post Item:', JSON.stringify(item, null, 2));
     }, [item]);
 
-    // Xử lý URL ảnh
-    const imageUrl = item.imageUrl
-        ? createImageUrl(item.imageUrl)
-        : null;
+    // ✨ Xử lý multiple images từ backend
+    const processImages = () => {
+        // Kiểm tra nếu có multiple images từ backend (imageUrls array)
+        if (item?.imageUrls && Array.isArray(item.imageUrls) && item.imageUrls.length > 0) {
+            console.log('🖼️ DEBUG - Multiple imageUrls found:', item.imageUrls);
+            return item.imageUrls.map((imgUrl, index) => ({
+                url: createImageUrl(imgUrl),
+                id: `multi_${index}`
+            }));
+        }
+        
+        // Kiểm tra nếu có PostImage entities (từ API response mới)
+        if (item?.images && Array.isArray(item.images) && item.images.length > 0) {
+            console.log('🖼️ DEBUG - PostImage entities found:', item.images);
+            return item.images
+                .sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0)) // Sort by displayOrder
+                .map(img => ({
+                    url: createImageUrl(img.imageUrl || img.url),
+                    id: img.id || `entity_${img.displayOrder || 0}`
+                }));
+        }
+        
+        // Kiểm tra single image (backward compatibility)
+        if (item?.imageUrl) {
+            console.log('🖼️ DEBUG - Single imageUrl found:', item.imageUrl);
+            return [{
+                url: createImageUrl(item.imageUrl),
+                id: 'single'
+            }];
+        }
+        
+        console.log('🖼️ DEBUG - No images found in item:', {
+            hasImageUrls: !!item?.imageUrls,
+            hasImages: !!item?.images, 
+            hasImageUrl: !!item?.imageUrl
+        });
+        return [];
+    };
 
-    // Log URL ảnh
-    useEffect(() => {
-        console.log('DEBUG - Processed Image URL:', imageUrl);
-    }, [imageUrl]);
+    const images = processImages();
 
     return (
         <View style={styles.postItem}>
@@ -77,53 +108,82 @@ const ProfilePostItem = ({ item }) => {
                 {item.content || 'Không có nội dung'}
             </Text>
 
-            {/* Hiển thị hình ảnh */}
-            {imageUrl && (
-                <View>
-                    {/* Hiển thị đường dẫn ảnh để kiểm tra */}
-                    <Text style={styles.imagePathText}>
-                        Original Path: {item.imageUrl}
+            {/* ✨ Hiển thị nhiều ảnh sử dụng MultipleImagesViewer */}
+            <MultipleImagesViewer 
+                images={images}
+                imageHeight={250}
+                enableFullScreen={true}
+                enableCounter={true}
+                enableDots={true}
+            />
+
+            {/* ✨ Debug info (có thể tắt sau) */}
+            <View style={styles.debugInfo}>
+                <Text style={styles.debugText}>
+                    Images found: {images.length}
+                </Text>
+                {images.length > 0 && (
+                    <Text style={styles.debugText}>
+                        Image sources: {images.map(img => img.id).join(', ')}
                     </Text>
-
-                    {/* Hiển thị hình ảnh từ URL */}
-                    <Image
-                        source={{ uri: imageUrl }}
-                        style={styles.postImage}
-                        resizeMode="cover"
-                        onError={(e) => {
-                            console.error('DEBUG - Lỗi tải hình ảnh:', {
-                                error: e.nativeEvent.error,
-                                imageUrl: imageUrl
-                            });
-                            Alert.alert(
-                                'Lỗi tải ảnh',
-                                `Không thể tải ảnh từ URL: ${imageUrl}`
-                            );
-                        }}
-                        onLoadStart={() => console.log('DEBUG - Bắt đầu tải ảnh')}
-                        onLoad={() => console.log('DEBUG - Tải ảnh thành công')}
-                    />
-
-                    {/* Thêm hình ảnh mẫu để kiểm tra */}
-                    <Text style={styles.imagePathText}>Ảnh mẫu:</Text>
-                    <Image
-                        source={{ uri: 'https://picsum.photos/500/300' }}
-                        style={[styles.postImage, { height: 100 }]}
-                        resizeMode="cover"
-                    />
+                )}
                 </View>
-            )}
         </View>
     );
 };
 
 const styles = StyleSheet.create({
-    // ... các styles khác giữ nguyên như trước
-    imagePathText: {
+    postItem: {
+        backgroundColor: 'white',
+        borderRadius: 10,
+        marginBottom: 10,
+        padding: 12,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.2,
+        shadowRadius: 1,
+        elevation: 2,
+    },
+    postHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 10,
+    },
+    avatar: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        marginRight: 10,
+    },
+    postHeaderInfo: {
+        flex: 1,
+    },
+    username: {
+        fontWeight: 'bold',
+        fontSize: 14,
+    },
+    timestamp: {
         fontSize: 12,
-        color: 'red', // Đổi màu để dễ nhận biết
-        marginBottom: 5,
-        textAlign: 'center'
+        color: '#65676B',
+    },
+    postContent: {
+        fontSize: 14,
+        marginBottom: 10,
+        lineHeight: 20,
+    },
+    // Debug styles
+    debugInfo: {
+        backgroundColor: '#f0f0f0',
+        padding: 8,
+        marginTop: 8,
+        borderRadius: 4,
+        borderWidth: 1,
+        borderColor: '#ddd',
+    },
+    debugText: {
+        fontSize: 10,
+        color: '#666',
+        fontFamily: 'monospace',
     },
 });
 

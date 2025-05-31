@@ -19,6 +19,11 @@ const ProfileTabs = ({ activeTab, onTabChange }) => {
             key: 'photos',
             label: 'Ảnh',
             icon: 'image-outline'
+        },
+        {
+            key: 'videos',
+            label: 'Video',
+            icon: 'videocam-outline'
         }
     ];
 
@@ -32,11 +37,12 @@ const ProfileTabs = ({ activeTab, onTabChange }) => {
                         activeTab === tab.key && styles.activeTabButton
                     ]}
                     onPress={() => onTabChange(tab.key)}
+                    activeOpacity={0.7}
                 >
                     <Ionicons
                         name={tab.icon}
                         size={22}
-                        color={activeTab === tab.key ? '#1877F2' : '#65676B'}
+                        color={activeTab === tab.key ? '#E91E63' : '#666'}
                     />
                     <Text
                         style={[
@@ -55,32 +61,41 @@ const ProfileTabs = ({ activeTab, onTabChange }) => {
 const styles = StyleSheet.create({
     tabContainer: {
         flexDirection: 'row',
-        backgroundColor: 'white',
-        borderTopWidth: 0.5,
-        borderTopColor: '#E5E5E5',
-        borderBottomWidth: 0.5,
-        borderBottomColor: '#E5E5E5',
+        backgroundColor: '#fff',
+        marginHorizontal: 15,
+        marginVertical: 10,
+        borderRadius: 15,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 8,
+        elevation: 4,
+        overflow: 'hidden',
     },
     tabButton: {
         flex: 1,
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        paddingVertical: 12,
-        gap: 5,
+        paddingVertical: 15,
+        paddingHorizontal: 12,
+        borderBottomWidth: 3,
+        borderBottomColor: 'transparent',
     },
     activeTabButton: {
-        borderBottomWidth: 2,
-        borderBottomColor: '#1877F2',
+        borderBottomColor: '#E91E63',
+        backgroundColor: 'rgba(233, 30, 99, 0.05)',
     },
     tabText: {
-        color: '#65676B',
-        fontWeight: '500',
+        fontSize: 14,
+        fontWeight: '600',
+        color: '#666',
+        marginLeft: 6,
     },
     activeTabText: {
-        color: '#1877F2',
+        color: '#E91E63',
         fontWeight: 'bold',
-    }
+    },
 });
 
 export default ProfileTabs;

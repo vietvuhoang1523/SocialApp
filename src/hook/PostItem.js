@@ -10,8 +10,10 @@ import {
     Alert
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
-import Config from '../../src/services/config';
-import createPostService from '../../src/services/CreatePostService';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import Config from '../services/config';
+import createPostService from '../services/CreatePostService';
+import MultipleImagesViewer from '../components/MultipleImagesViewer';
 
 // Hàm helper để tạo URL đầy đủ từ đường dẫn tương đối
 const getFullImageUrl = (relativePath) => {
@@ -37,72 +39,88 @@ const PostItem = ({
                       onCommentPress,
                       onSharePress,
                       navigation,
-                      currentUserId,
+                      currentUserId, // Prop từ parent
                       onDeleteSuccess,
                       onEditSuccess
                   }) => {
-    const [imageLoading, setImageLoading] = useState(true);
-    const [imageError, setImageError] = useState(false);
     const [optionsVisible, setOptionsVisible] = useState(false);
     const [isOwner, setIsOwner] = useState(false);
     const [checkingOwnership, setCheckingOwnership] = useState(false);
+    const [localCurrentUserId, setLocalCurrentUserId] = useState(currentUserId);
 
-    // Kiểm tra quyền sở hữu khi component mount
+    // ✨ Xử lý multiple images từ backend
+    const processImages = () => {
+        // Kiểm tra nếu có multiple images từ backend (imageUrls array)
+        if (item?.imageUrls && Array.isArray(item.imageUrls) && item.imageUrls.length > 0) {
+            console.log('🖼️ DEBUG - Multiple imageUrls found:', item.imageUrls);
+            return item.imageUrls.map((imgUrl, index) => ({
+                url: getFullImageUrl(imgUrl),
+                id: `multi_${index}`
+            }));
+        }
+        
+        // Kiểm tra nếu có PostImage entities (từ API response mới)
+        if (item?.images && Array.isArray(item.images) && item.images.length > 0) {
+            console.log('🖼️ DEBUG - PostImage entities found:', item.images);
+            return item.images
+                .sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0)) // Sort by displayOrder
+                .map(img => ({
+                    url: getFullImageUrl(img.imageUrl || img.url),
+                    id: img.id || `entity_${img.displayOrder || 0}`
+                }));
+        }
+        
+        // Kiểm tra single image (backward compatibility)
+        if (item?.imageUrl) {
+            console.log('🖼️ DEBUG - Single imageUrl found:', item.imageUrl);
+            return [{
+                url: getFullImageUrl(item.imageUrl),
+                id: 'single'
+            }];
+        }
+        
+        console.log('🖼️ DEBUG - No images found in item:', {
+            hasImageUrls: !!item?.imageUrls,
+            hasImages: !!item?.images, 
+            hasImageUrl: !!item?.imageUrl
+        });
+        return [];
+    };
+
+    const images = processImages();
+
+    // Kiểm tra quyền sở hữu khi có đủ thông tin
     useEffect(() => {
-        const checkOwnership = async () => {
-            // Kiểm tra cơ bản trước
-            if (!item?.id) {
-                console.log('Item hoặc item.id không hợp lệ');
+        const checkOwnership = () => {
+            // Kiểm tra cơ bản
+            if (!item?.id || !localCurrentUserId) {
                 setIsOwner(false);
                 return;
             }
 
-            // Fallback check đầu tiên - nhanh và không cần API
-            if (currentUserId && item?.userRes?.id) {
-                const quickCheck = String(currentUserId) === String(item.userRes.id);
-                setIsOwner(quickCheck);
+            // Lấy ID của chủ bài viết
+            const postOwnerId = item?.userRes?.id || item?.user?.id;
 
-                // Nếu đã là owner theo quick check, không cần gọi API
-                if (quickCheck) {
-                    console.log('Quick ownership check: true');
-                    return;
-                }
+            if (!postOwnerId) {
+                setIsOwner(false);
+                return;
             }
 
-            // Chỉ gọi API nếu cần thiết
-            try {
-                setCheckingOwnership(true);
-                console.log('Bắt đầu kiểm tra quyền API cho bài viết:', item.id);
+            // So sánh đơn giản
+            const isUserOwner = String(localCurrentUserId) === String(postOwnerId);
 
-                // Timeout ngắn hơn để tránh lag UI
-                const timeoutPromise = new Promise((_, reject) =>
-                    setTimeout(() => reject(new Error('Timeout')), 5000)
-                );
+            console.log('🔍 Kiểm tra quyền sở hữu:', {
+                postId: item.id,
+                currentUserId: localCurrentUserId,
+                postOwnerId: postOwnerId,
+                isOwner: isUserOwner
+            });
 
-                const checkPromise = createPostService.checkPostOwnership(item.id);
-                const hasOwnership = await Promise.race([checkPromise, timeoutPromise]);
-
-                console.log('Kết quả kiểm tra quyền API:', hasOwnership);
-                setIsOwner(Boolean(hasOwnership));
-
-            } catch (error) {
-                console.error('Lỗi kiểm tra quyền:', error);
-
-                // Giữ nguyên fallback check nếu API thất bại
-                if (currentUserId && item?.userRes?.id) {
-                    const fallbackOwnership = String(currentUserId) === String(item.userRes.id);
-                    console.log('Sử dụng fallback ownership check:', fallbackOwnership);
-                    setIsOwner(fallbackOwnership);
-                } else {
-                    setIsOwner(false);
-                }
-            } finally {
-                setCheckingOwnership(false);
-            }
+            setIsOwner(isUserOwner);
         };
 
         checkOwnership();
-    }, [item?.id, currentUserId]);
+    }, [item?.id, localCurrentUserId]);
 
     // Lấy thông tin người dùng với fallback
     const fullName = item?.userRes?.fullName || item?.user?.name || 'Người dùng';
@@ -115,9 +133,6 @@ const PostItem = ({
     const avatarSource = processedAvatarUrl
         ? { uri: processedAvatarUrl }
         : require('../assets/default-avatar.png');
-
-    // Xử lý post image URL với fallback
-    const postImageUrl = item?.imageUrl ? getFullImageUrl(item.imageUrl) : null;
 
     // Format time ago với fallback
     const formatTimeAgo = (dateString) => {
@@ -210,6 +225,7 @@ const PostItem = ({
 
     return (
         <View style={styles.postItem}>
+            {/* Header với loading indicator */}
             <View style={styles.postHeader}>
                 <TouchableOpacity onPress={handleProfilePress}>
                     <Image
@@ -237,7 +253,7 @@ const PostItem = ({
                 </View>
             </View>
 
-            {/* Menu tùy chọn */}
+            {/* Menu tùy chọn với nút xóa/sửa */}
             <Modal
                 visible={optionsVisible}
                 transparent={true}
@@ -250,6 +266,7 @@ const PostItem = ({
                     onPress={() => setOptionsVisible(false)}
                 >
                     <View style={styles.optionsMenu}>
+                        {/* Hiển thị nút xóa/sửa nếu là chủ bài viết */}
                         {isOwner && (
                             <>
                                 <TouchableOpacity style={styles.optionItem} onPress={handleEditPost}>
@@ -261,6 +278,9 @@ const PostItem = ({
                                     <Ionicons name="trash-outline" size={20} color="#E53935" />
                                     <Text style={[styles.optionText, { color: '#E53935' }]}>Xóa bài viết</Text>
                                 </TouchableOpacity>
+
+                                {/* Thêm đường phân cách */}
+                                <View style={styles.divider} />
                             </>
                         )}
 
@@ -277,45 +297,19 @@ const PostItem = ({
                 </TouchableOpacity>
             </Modal>
 
+            {/* Phần còn lại của JSX giữ nguyên */}
             <Text style={styles.postContent}>{item?.content || 'Không có nội dung'}</Text>
 
-            {/* Hiển thị hình ảnh bài đăng */}
-            {postImageUrl && !imageError && (
-                <View style={styles.imageContainer}>
-                    {imageLoading && (
-                        <ActivityIndicator
-                            size="large"
-                            color="#1877F2"
-                            style={styles.imageLoader}
-                        />
-                    )}
-                    <Image
-                        source={{ uri: postImageUrl }}
-                        style={styles.postImage}
-                        resizeMode="cover"
-                        onLoadStart={() => setImageLoading(true)}
-                        onLoad={() => {
-                            console.log("Post image loaded successfully");
-                            setImageLoading(false);
-                        }}
-                        onError={() => {
-                            console.log("Post image failed to load:", postImageUrl);
-                            setImageLoading(false);
-                            setImageError(true);
-                        }}
-                    />
-                </View>
-            )}
+            {/* ✨ Hiển thị nhiều ảnh sử dụng MultipleImagesViewer */}
+            <MultipleImagesViewer 
+                images={images}
+                imageHeight={300}
+                enableFullScreen={true}
+                enableCounter={true}
+                enableDots={true}
+            />
 
-            {/* Hiển thị thông báo khi hình ảnh lỗi */}
-            {postImageUrl && imageError && (
-                <View style={styles.imageErrorContainer}>
-                    <Ionicons name="image-outline" size={30} color="#999" />
-                    <Text style={styles.imageErrorText}>Không thể tải hình ảnh</Text>
-                </View>
-            )}
-
-            {/* Footer */}
+            {/* Footer actions */}
             <View style={styles.postFooter}>
                 <TouchableOpacity
                     style={styles.footerItem}
@@ -352,14 +346,6 @@ const PostItem = ({
                 )}
             </View>
 
-            {/* Debug info - chỉ hiển thị khi development */}
-            {__DEV__ && (
-                <View style={styles.debugInfo}>
-                    <Text style={styles.debugText}>
-                        isOwner: {String(isOwner)} | PostId: {item?.id} | CurrentUser: {currentUserId} | PostOwner: {item?.userRes?.id}
-                    </Text>
-                </View>
-            )}
         </View>
     );
 };
@@ -375,6 +361,12 @@ const styles = StyleSheet.create({
         shadowOpacity: 0.2,
         shadowRadius: 1,
         elevation: 2,
+    },
+    divider: {
+        height: 1,
+        backgroundColor: '#E5E5E5',
+        marginVertical: 5,
+        marginHorizontal: -10, // Để đường kẻ chạy full width của menu
     },
     postHeader: {
         flexDirection: 'row',
@@ -444,44 +436,6 @@ const styles = StyleSheet.create({
         marginBottom: 10,
         lineHeight: 20,
     },
-    imageContainer: {
-        width: '100%',
-        height: 200,
-        borderRadius: 8,
-        marginBottom: 10,
-        backgroundColor: '#f0f0f0',
-        overflow: 'hidden',
-        position: 'relative',
-    },
-    imageLoader: {
-        position: 'absolute',
-        top: '50%',
-        left: '50%',
-        marginLeft: -15,
-        marginTop: -15,
-        zIndex: 10,
-    },
-    postImage: {
-        width: '100%',
-        height: '100%',
-    },
-    imageErrorContainer: {
-        width: '100%',
-        height: 150,
-        borderRadius: 8,
-        marginBottom: 10,
-        backgroundColor: '#f9f9f9',
-        justifyContent: 'center',
-        alignItems: 'center',
-        borderWidth: 1,
-        borderColor: '#e0e0e0',
-        borderStyle: 'dashed',
-    },
-    imageErrorText: {
-        color: '#999',
-        marginTop: 8,
-        fontSize: 14,
-    },
     postFooter: {
         flexDirection: 'row',
         borderTopWidth: 1,
@@ -498,19 +452,6 @@ const styles = StyleSheet.create({
     footerText: {
         marginLeft: 5,
         color: '#65676B',
-    },
-    debugInfo: {
-        backgroundColor: '#f0f0f0',
-        padding: 8,
-        marginTop: 8,
-        borderRadius: 4,
-        borderWidth: 1,
-        borderColor: '#ddd',
-    },
-    debugText: {
-        fontSize: 10,
-        color: '#666',
-        fontFamily: 'monospace',
     },
 });
 

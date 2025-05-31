@@ -17,8 +17,8 @@ import FriendDetailModal from './FriendDetailModal';
 import AllFriendsModal from './AllFriendsModal';
 import FriendMessagingModal from './FriendMessagingModal';
 
-// Initialize service
-const friendService = new FriendService();
+// Directly use the exported instance
+const friendService = FriendService;
 
 const FriendsSection = ({
                             onFindFriends,
@@ -156,8 +156,8 @@ const FriendsSection = ({
 
     // Handle chat with friend
     const handleStartChat = (friendUser, currentUserData) => {
-        // Navigate to ChatScreen with selected friend
-        navigation.navigate('Chat', {
+        // Navigate to NewChatScreen with selected friend
+        navigation.navigate('NewChatScreen', {
             user: friendUser,
             currentUser: currentUserData || currentUser
         });

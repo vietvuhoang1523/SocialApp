@@ -1,12 +1,17 @@
+// EMERGENCY OVERRIDE - Phải import đầu tiên
+import './EMERGENCY_OVERRIDE';
+
 import React, { useEffect, useState, useMemo } from 'react';
 import { NavigationContainer } from "@react-navigation/native";
 import { createStackNavigator } from "@react-navigation/stack";
 import { View, ActivityIndicator } from "react-native";
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Import tất cả các màn hình
 import InstagramHomeScreen from "./src/screens/InstagramHomeScreen";
 import LoginScreen from "./src/screens/Login/LoginScreen";
 import ProfileScreen from "./src/screens/profile/ProfileScreen";
+import UserProfileScreen from "./src/screens/profile/UserProfileScreen";
 import ReelsScreen from "./src/screens/Login/ReelsScreen";
 import CreatePostScreen from "./src/screens/CreatePostScreen";
 import NotificationsScreen from "./src/screens/NotificationsScreen";
@@ -22,8 +27,10 @@ import ProfileContent from "./src/screens/profile/ProfileContent";
 import ProfileInfo from "./src/screens/profile/ProfileInfo";
 import ProfileHeader from "./src/screens/profile/ProfileHeader";
 import FriendsSection from "./src/components/friends/FriendsSection";
-import MessagesScreen from "./src/screens/Messages/MessagesScreen";
-import ChatScreen from "./src/screens/Messages/ChatScreen";
+
+// Import các screen chat mới với UI hiện đại
+import NewMessagesScreen from "./src/screens/Messages/NewMessagesScreen";
+import NewChatScreen from "./src/screens/Messages/NewChatScreen";
 
 // Import services
 import webSocketService from './src/services/WebSocketService';
@@ -95,6 +102,11 @@ export default function App() {
             options={{ headerShown: false }}
         />
         <Stack.Screen
+            name="UserProfileScreen"
+            component={UserProfileScreen}
+            options={{ headerShown: false }}
+        />
+        <Stack.Screen
             name="FriendsSection"
             component={FriendsSection}
             options={{ headerShown: false }}
@@ -150,8 +162,30 @@ export default function App() {
             options={{ headerShown: false }}
         />
         <Stack.Screen
+            name="UserProfile"
+            component={UserProfileScreen}
+            options={{ headerShown: false }}
+        />
+        {/* Screen tin nhắn mới với UI hiện đại */}
+        <Stack.Screen
             name="Messages"
-            component={MessagesScreen}
+            component={NewMessagesScreen}
+            options={{ headerShown: false }}
+        />
+        <Stack.Screen
+            name="NewMessagesScreen"
+            component={NewMessagesScreen}
+            options={{ headerShown: false }}
+        />
+        <Stack.Screen
+            name="NewChatScreen"
+            component={NewChatScreen}
+            options={{ headerShown: false }}
+        />
+        {/* Giữ lại route Chat cho backward compatibility */}
+        <Stack.Screen
+            name="Chat"
+            component={NewChatScreen}
             options={{ headerShown: false }}
         />
           <Stack.Screen
@@ -164,11 +198,6 @@ export default function App() {
               component={EditPostScreen}
               options={{ headerShown: false }}
           />
-        <Stack.Screen
-            name="Chat"
-            component={ChatScreen}
-            options={{ headerShown: false }}
-        />
         <Stack.Screen
             name="EmailSearchHandler"
             component={EmailSearchHandler}

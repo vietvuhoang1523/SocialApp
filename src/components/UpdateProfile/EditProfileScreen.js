@@ -22,7 +22,7 @@ import {
 const EditProfileScreen = ({ navigation, route }) => {
     // Sử dụng ProfileContext
     const { userProfile, updateProfile } = useProfileContext();
-    const userProfileService = new UserProfileService();
+    const userProfileService = UserProfileService;
 
     // State cho các trường form
     const [formData, setFormData] = useState({
@@ -198,115 +198,116 @@ const EditProfileScreen = ({ navigation, route }) => {
 
         try {
             // Upload ảnh nếu có thay đổi
-            const updateData = {};
-
             if (profilePictureFile) {
                 await userProfileService.uploadProfilePicture(profilePictureFile);
-                updateData.profilePictureUrl = profilePicture;
             }
 
             if (coverImageFile) {
                 await userProfileService.uploadCoverImage(coverImageFile);
-                updateData.coverImageUrl = coverImage;
             }
 
-            // Cập nhật URLs ảnh vào context nếu có
-            if (Object.keys(updateData).length > 0) {
-                await updateProfile(updateData);
-            }
+            // Refresh profile sau khi cập nhật
+            const updatedProfile = await userProfileService.getCurrentUserProfile();
+            await updateProfile(updatedProfile);
 
-            Alert.alert(
-                'Thành công',
-                'Hồ sơ của bạn đã được cập nhật',
-                [{
-                    text: 'OK',
-                    onPress: () => navigation.goBack()
-                }]
-            );
+            Alert.alert('Thành công', 'Cập nhật hồ sơ thành công', [
+                { 
+                    text: 'OK', 
+                    onPress: () => {
+                        if (route.params?.onProfileUpdated) {
+                            route.params.onProfileUpdated();
+                        }
+                        navigation.goBack();
+                    }
+                }
+            ]);
         } catch (error) {
             console.error('Lỗi cập nhật hồ sơ:', error);
-            Alert.alert('Lỗi', error.message || 'Không thể cập nhật hồ sơ');
+            Alert.alert('Lỗi', 'Không thể cập nhật hồ sơ. Vui lòng thử lại sau.');
         } finally {
             setIsLoading(false);
         }
     };
 
     return (
-        <SafeAreaView style={styles.safeArea}>
-            <StatusBar barStyle="light-content" backgroundColor="#1877F2" />
-
+        <SafeAreaView style={styles.container}>
+            <StatusBar barStyle="light-content" backgroundColor="#E91E63" />
+            
             <ProfileHeader
                 navigation={navigation}
                 isLoading={isLoading}
                 handleSubmit={handleSubmit}
             />
 
-            <ScrollView style={styles.container}>
+            <ScrollView 
+                style={styles.scrollView}
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={styles.scrollContent}
+            >
                 <ImageSection
-                    coverImage={coverImage}
                     profilePicture={profilePicture}
-                    openImagePickerModal={openImagePickerModal}
+                    coverImage={coverImage}
+                    onProfileImagePress={() => openImagePickerModal('avatar')}
+                    onCoverImagePress={() => openImagePickerModal('cover')}
                 />
 
-                <View style={styles.formContainer}>
-                    <PersonalInfoSection
-                        firstname={formData.firstname}
-                        setFirstname={(value) => updateField('firstname', value)}
-                        lastname={formData.lastname}
-                        setLastname={(value) => updateField('lastname', value)}
-                        bio={formData.bio}
-                        setBio={(value) => updateField('bio', value)}
-                        gender={formData.gender}
-                        setGender={(value) => updateField('gender', value)}
-                        dateOfBirth={formData.dateOfBirth}
-                        setShowDatePicker={setShowDatePicker}
-                    />
+                <PersonalInfoSection
+                    firstname={formData.firstname}
+                    setFirstname={(value) => updateField('firstname', value)}
+                    lastname={formData.lastname}
+                    setLastname={(value) => updateField('lastname', value)}
+                    bio={formData.bio}
+                    setBio={(value) => updateField('bio', value)}
+                    gender={formData.gender}
+                    setGender={(value) => updateField('gender', value)}
+                    dateOfBirth={formData.dateOfBirth}
+                    setShowDatePicker={setShowDatePicker}
+                />
 
-                    <ContactInfoSection
-                        phoneNumber={formData.phoneNumber}
-                        setPhoneNumber={(value) => updateField('phoneNumber', value)}
-                        address={formData.address}
-                        setAddress={(value) => updateField('address', value)}
-                        website={formData.website}
-                        setWebsite={(value) => updateField('website', value)}
-                    />
+                <ContactInfoSection
+                    phoneNumber={formData.phoneNumber}
+                    setPhoneNumber={(value) => updateField('phoneNumber', value)}
+                    address={formData.address}
+                    setAddress={(value) => updateField('address', value)}
+                    website={formData.website}
+                    setWebsite={(value) => updateField('website', value)}
+                />
 
-                    <WorkEducationSection
-                        occupation={formData.occupation}
-                        setOccupation={(value) => updateField('occupation', value)}
-                        education={formData.education}
-                        setEducation={(value) => updateField('education', value)}
-                    />
+                <WorkEducationSection
+                    occupation={formData.occupation}
+                    setOccupation={(value) => updateField('occupation', value)}
+                    education={formData.education}
+                    setEducation={(value) => updateField('education', value)}
+                />
 
-                    <OtherInfoSection
-                        relationshipStatus={formData.relationshipStatus}
-                        setRelationshipStatus={(value) => updateField('relationshipStatus', value)}
-                        preferredLanguage={formData.preferredLanguage}
-                        setPreferredLanguage={(value) => updateField('preferredLanguage', value)}
-                        timezone={formData.timezone}
-                        setTimezone={(value) => updateField('timezone', value)}
-                    />
+                <OtherInfoSection
+                    relationshipStatus={formData.relationshipStatus}
+                    setRelationshipStatus={(value) => updateField('relationshipStatus', value)}
+                    preferredLanguage={formData.preferredLanguage}
+                    setPreferredLanguage={(value) => updateField('preferredLanguage', value)}
+                    timezone={formData.timezone}
+                    setTimezone={(value) => updateField('timezone', value)}
+                />
 
-                    <SubmitButton
-                        onPress={handleSubmit}
-                        isLoading={isLoading}
-                    />
-                </View>
+                <SubmitButton
+                    isLoading={isLoading}
+                    onPress={handleSubmit}
+                />
             </ScrollView>
 
             <CustomDatePicker
                 visible={showDatePicker}
-                tempDate={tempDate}
-                setTempDate={setTempDate}
                 onCancel={() => setShowDatePicker(false)}
                 onConfirm={handleConfirmDate}
+                tempDate={tempDate}
+                setTempDate={setTempDate}
             />
 
             <ImagePickerModal
                 visible={imagePickerModalVisible}
-                imageType={imageType}
                 onClose={() => setImagePickerModalVisible(false)}
-                onChooseImage={handleChooseImage}
+                onImageSelected={handleChooseImage}
+                title={imageType === 'avatar' ? 'Chọn ảnh đại diện' : 'Chọn ảnh bìa'}
             />
         </SafeAreaView>
     );

@@ -4,52 +4,60 @@ const { width, height } = Dimensions.get('window');
 
 export const styles = StyleSheet.create({
     // Main container styles
-    safeArea: {
-        flex: 1,
-        backgroundColor: '#1877F2',
-    },
     container: {
         flex: 1,
-        backgroundColor: '#F8F9FA',
+        backgroundColor: '#f8f9fa',
     },
-    formContainer: {
-        marginTop: 70,
-        paddingHorizontal: 16,
+    scrollView: {
+        flex: 1,
+    },
+    scrollContent: {
         paddingBottom: 30,
     },
 
     // Header styles
+    headerGradient: {
+        paddingTop: 10,
+        paddingBottom: 15,
+    },
     header: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        backgroundColor: '#1877F2',
-        paddingHorizontal: 16,
-        paddingVertical: 16,
+        paddingHorizontal: 20,
     },
     headerTitle: {
-        fontSize: 18,
+        fontSize: 20,
         fontWeight: 'bold',
         color: '#FFF',
+        flex: 1,
+        textAlign: 'center',
     },
     backButton: {
-        padding: 8,
+        padding: 5,
     },
     saveButton: {
-        paddingVertical: 6,
-        paddingHorizontal: 12,
-        borderRadius: 4,
-        backgroundColor: 'rgba(255,255,255,0.2)',
+        padding: 5,
+    },
+    saveButtonContent: {
+        flexDirection: 'row',
+        alignItems: 'center',
     },
     saveButtonText: {
         color: '#FFF',
         fontWeight: 'bold',
+        fontSize: 16,
+        marginLeft: 5,
     },
 
     // Cover image styles
     coverImageContainer: {
-        height: 200,
+        height: 180,
         position: 'relative',
+        borderRadius: 15,
+        overflow: 'hidden',
+        marginHorizontal: 15,
+        marginTop: 15,
     },
     coverImage: {
         width: '100%',
@@ -64,16 +72,19 @@ export const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         alignSelf: 'flex-end',
-        backgroundColor: 'rgba(0,0,0,0.5)',
-        paddingVertical: 6,
+        backgroundColor: 'rgba(233, 30, 99, 0.9)',
+        paddingVertical: 8,
         paddingHorizontal: 12,
         borderRadius: 20,
+        position: 'absolute',
+        bottom: 15,
+        right: 15,
     },
     editCoverText: {
         color: 'white',
         marginLeft: 6,
         fontSize: 12,
-        fontWeight: '500',
+        fontWeight: '600',
     },
 
     // Profile picture styles
@@ -81,6 +92,7 @@ export const styles = StyleSheet.create({
         position: 'absolute',
         bottom: -60,
         left: 20,
+        zIndex: 10,
     },
     profilePictureContainer: {
         position: 'relative',
@@ -96,7 +108,7 @@ export const styles = StyleSheet.create({
         position: 'absolute',
         bottom: 0,
         right: 0,
-        backgroundColor: '#1877F2',
+        backgroundColor: '#E91E63',
         borderRadius: 18,
         width: 36,
         height: 36,
@@ -110,14 +122,16 @@ export const styles = StyleSheet.create({
     sectionHeader: {
         flexDirection: 'row',
         alignItems: 'center',
-        marginVertical: 16,
-        paddingBottom: 8,
-        borderBottomWidth: 1,
-        borderBottomColor: '#E0E0E0',
+        marginTop: 20,
+        marginBottom: 15,
+        marginHorizontal: 15,
+        paddingBottom: 12,
+        borderBottomWidth: 2,
+        borderBottomColor: '#E91E63',
     },
     sectionTitle: {
-        fontSize: 16,
-        fontWeight: '600',
+        fontSize: 18,
+        fontWeight: 'bold',
         marginLeft: 8,
         color: '#333',
     },
@@ -125,20 +139,27 @@ export const styles = StyleSheet.create({
     // Input styles
     inputGroup: {
         marginBottom: 16,
+        marginHorizontal: 15,
     },
     label: {
-        fontSize: 14,
-        color: '#666',
-        marginBottom: 6,
+        fontSize: 16,
+        color: '#333',
+        marginBottom: 8,
+        fontWeight: '600',
     },
     input: {
         backgroundColor: '#FFF',
         borderWidth: 1,
         borderColor: '#E0E0E0',
-        borderRadius: 8,
-        padding: 12,
+        borderRadius: 12,
+        padding: 15,
         fontSize: 16,
         color: '#333',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.1,
+        shadowRadius: 2,
+        elevation: 2,
     },
     multilineInput: {
         height: 100,
@@ -149,28 +170,30 @@ export const styles = StyleSheet.create({
     genderContainer: {
         flexDirection: 'row',
         justifyContent: 'space-between',
+        gap: 10,
     },
     genderButton: {
         flex: 1,
-        padding: 12,
-        borderWidth: 1,
+        padding: 15,
+        borderWidth: 2,
         borderColor: '#E0E0E0',
-        borderRadius: 8,
-        marginHorizontal: 5,
+        borderRadius: 12,
         alignItems: 'center',
         backgroundColor: '#FFF',
     },
     selectedGenderButton: {
-        backgroundColor: '#1877F2',
-        borderColor: '#1877F2',
+        backgroundColor: '#E91E63',
+        borderColor: '#E91E63',
     },
     genderButtonText: {
         color: '#333',
-        fontWeight: '500',
+        fontWeight: '600',
+        fontSize: 16,
     },
     selectedGenderText: {
         color: 'white',
-        fontWeight: '600',
+        fontWeight: 'bold',
+        fontSize: 16,
     },
 
     // Date picker button styles
@@ -181,165 +204,168 @@ export const styles = StyleSheet.create({
         backgroundColor: '#FFF',
         borderWidth: 1,
         borderColor: '#E0E0E0',
-        borderRadius: 8,
-        padding: 12,
+        borderRadius: 12,
+        padding: 15,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.1,
+        shadowRadius: 2,
+        elevation: 2,
     },
     datePickerButtonText: {
         fontSize: 16,
         color: '#333',
+        fontWeight: '500',
     },
 
     // Submit button styles
     submitButton: {
         flexDirection: 'row',
-        backgroundColor: '#1877F2',
+        backgroundColor: '#E91E63',
         padding: 16,
-        borderRadius: 8,
+        borderRadius: 25,
         alignItems: 'center',
         justifyContent: 'center',
-        marginTop: 24,
+        marginTop: 30,
+        marginHorizontal: 15,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 8,
+        elevation: 8,
+    },
+    submitButtonGradient: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 16,
+        paddingHorizontal: 20,
+        borderRadius: 25,
     },
     submitButtonText: {
-        color: 'white',
+        color: '#FFF',
+        fontSize: 18,
         fontWeight: 'bold',
-        fontSize: 16,
+        marginLeft: 8,
+    },
+    disabledButton: {
+        opacity: 0.6,
     },
 
-    // Modal styles
-    modalBackground: {
+    // Image picker modal styles
+    modalOverlay: {
         flex: 1,
-        backgroundColor: 'rgba(0,0,0,0.5)',
-        justifyContent: 'center',
+        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+        justifyContent: 'flex-end',
+    },
+    modalContent: {
+        backgroundColor: '#FFF',
+        borderTopLeftRadius: 20,
+        borderTopRightRadius: 20,
+        padding: 20,
+        paddingBottom: 40,
+    },
+    modalTitle: {
+        fontSize: 20,
+        fontWeight: 'bold',
+        textAlign: 'center',
+        marginBottom: 20,
+        color: '#333',
+    },
+    modalButton: {
+        flexDirection: 'row',
         alignItems: 'center',
+        backgroundColor: '#f8f9fa',
+        padding: 15,
+        borderRadius: 12,
+        marginBottom: 10,
+    },
+    modalButtonText: {
+        fontSize: 16,
+        fontWeight: '600',
+        marginLeft: 15,
+        color: '#333',
+    },
+    modalCancelButton: {
+        backgroundColor: '#E91E63',
+        marginTop: 10,
+    },
+    modalCancelButtonText: {
+        color: '#FFF',
+        textAlign: 'center',
+        fontSize: 16,
+        fontWeight: 'bold',
     },
 
     // Date picker modal styles
     datePickerModal: {
-        width: width * 0.9,
-        backgroundColor: 'white',
-        borderRadius: 16,
+        backgroundColor: '#FFF',
         padding: 20,
-        elevation: 5,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.25,
-        shadowRadius: 4,
+        borderRadius: 15,
+        margin: 20,
     },
     datePickerTitle: {
-        fontSize: 18,
+        fontSize: 20,
         fontWeight: 'bold',
         textAlign: 'center',
         marginBottom: 20,
         color: '#333',
     },
-    datePickerContainer: {
+    datePickerRow: {
         flexDirection: 'row',
-        justifyContent: 'space-between',
+        justifyContent: 'space-around',
+        marginBottom: 20,
     },
     datePickerColumn: {
-        flex: 1,
-        marginHorizontal: 5,
-    },
-    datePickerLabel: {
-        textAlign: 'center',
-        marginBottom: 10,
-        fontWeight: 'bold',
-        color: '#666',
-    },
-    pickerScrollView: {
-        height: 150,
-    },
-    dateOption: {
-        paddingVertical: 10,
         alignItems: 'center',
     },
-    selectedDateOption: {
-        backgroundColor: '#E6F2FF',
-        borderRadius: 8,
-    },
-    dateOptionText: {
+    datePickerLabel: {
         fontSize: 16,
-        color: '#333',
-    },
-    selectedDateOptionText: {
-        color: '#1877F2',
-        fontWeight: 'bold',
+        fontWeight: '600',
+        color: '#E91E63',
+        marginBottom: 10,
     },
     datePickerButtons: {
         flexDirection: 'row',
-        justifyContent: 'space-between',
+        justifyContent: 'space-around',
         marginTop: 20,
     },
-    cancelButton: {
-        flex: 1,
-        padding: 12,
-        marginRight: 10,
-        borderRadius: 8,
+    datePickerButton: {
+        backgroundColor: '#E91E63',
+        paddingVertical: 10,
+        paddingHorizontal: 20,
+        borderRadius: 20,
+        minWidth: 80,
+    },
+    datePickerButtonSecondary: {
+        backgroundColor: '#f8f9fa',
         borderWidth: 1,
-        borderColor: '#E0E0E0',
-        alignItems: 'center',
-        backgroundColor: '#FFF',
+        borderColor: '#E91E63',
     },
-    confirmButton: {
-        flex: 1,
-        padding: 12,
-        marginLeft: 10,
-        borderRadius: 8,
-        backgroundColor: '#1877F2',
-        alignItems: 'center',
-    },
-    cancelButtonText: {
-        color: '#666',
-        fontWeight: '500',
-    },
-    confirmButtonText: {
-        color: 'white',
+    datePickerButtonText: {
+        color: '#FFF',
         fontWeight: 'bold',
+        textAlign: 'center',
+    },
+    datePickerButtonTextSecondary: {
+        color: '#E91E63',
     },
 
-    // Image picker modal styles
-    imagePickerModal: {
-        width: width * 0.9,
-        backgroundColor: 'white',
-        borderRadius: 16,
-        padding: 20,
-        elevation: 5,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.25,
-        shadowRadius: 4,
-    },
-    imagePickerTitle: {
-        fontSize: 18,
-        fontWeight: 'bold',
-        textAlign: 'center',
-        marginBottom: 20,
-        color: '#333',
-    },
-    imagePickerOption: {
+    // Auto-save indicator
+    autoSaveIndicator: {
         flexDirection: 'row',
         alignItems: 'center',
-        paddingVertical: 14,
-        borderBottomWidth: 1,
-        borderBottomColor: '#E0E0E0',
-    },
-    imagePickerIcon: {
-        marginRight: 16,
-    },
-    imagePickerOptionText: {
-        fontSize: 16,
-        color: '#333',
-    },
-    cancelOption: {
         justifyContent: 'center',
-        paddingVertical: 14,
-        marginTop: 8,
-        borderBottomWidth: 0,
+        paddingVertical: 8,
+        backgroundColor: 'rgba(233, 30, 99, 0.1)',
+        marginHorizontal: 15,
+        borderRadius: 8,
+        marginBottom: 10,
     },
-    cancelOptionText: {
-        fontSize: 16,
-        fontWeight: '500',
-        color: '#F44336',
-        textAlign: 'center',
+    autoSaveText: {
+        color: '#E91E63',
+        fontSize: 14,
+        fontWeight: '600',
+        marginLeft: 5,
     },
 });

@@ -82,6 +82,24 @@ class FriendService {
         }
     }
 
+    /**
+     * Gửi lời mời kết bạn theo user ID
+     * @param {number} userId - ID của người nhận lời mời
+     * @returns {Promise} Kết quả gửi lời mời
+     */
+    async sendFriendRequestById(userId) {
+        try {
+            console.log('Đang gửi lời mời kết bạn tới user ID:', userId);
+
+            const response = await this.api.post(`/send-request/${userId}`);
+
+            console.log('Phản hồi từ API gửi lời mời:', response.data);
+            return response.data;
+        } catch (error) {
+            console.error('Error sending friend request by ID:', error);
+            throw error;
+        }
+    }
 
     /**
      * Chấp nhận yêu cầu kết bạn
@@ -189,46 +207,45 @@ class FriendService {
     }
 
     /**
+     * Kiểm tra trạng thái bạn bè cho 1 user - An toàn hơn
+     * @param {number} userId - ID của người dùng cần kiểm tra
+     * @returns {Promise<string>} Trạng thái bạn bè
+     */
+    async checkSingleFriendStatus(userId) {
+        try {
+            console.log('🔍 Checking single friend status for user:', userId);
+            
+            // Sử dụng batch API với 1 user
+            const statusMap = await this.getBatchFriendshipStatus([userId]);
+            const status = statusMap[userId] || 'NOT_FRIEND';
+            
+            console.log('✅ Single friend status:', status);
+            return status;
+            
+        } catch (error) {
+            console.error('❌ Error checking single friend status:', error);
+            return 'NOT_FRIEND';
+        }
+    }
+
+    /**
      * Kiểm tra trạng thái bạn bè
      * @param {number} userId - ID của người dùng cần kiểm tra
      * @returns {Promise<string>} Trạng thái bạn bè
      */
     async checkFriendStatus(userId) {
         try {
-            // Giả sử endpoint này tồn tại trên backend
-            const response = await this.api.get(`/status/${userId}`);
-            return response.data.status;
+            console.log('🔍 Checking friend status for user:', userId);
+            
+            // Sử dụng single method mới
+            return await this.checkSingleFriendStatus(userId);
+            
         } catch (error) {
-            console.error('Error checking friend status:', error);
-
-            // Nếu API không tồn tại, tự xác định bằng các API khác
-            try {
-                // Kiểm tra danh sách bạn bè
-                const friends = await this.getFriends();
-                if (friends.some(friend => friend.userId === userId || friend.friendId === userId)) {
-                    return 'FRIEND';
-                }
-
-                // Kiểm tra yêu cầu đã gửi
-                const sentRequests = await this.getSentFriendRequests();
-                if (sentRequests.some(request => request.receiverId === userId)) {
-                    return 'PENDING';
-                }
-
-                // Kiểm tra yêu cầu đã nhận
-                const receivedRequests = await this.getReceivedFriendRequests();
-                if (receivedRequests.some(request => request.senderId === userId)) {
-                    return 'RECEIVED';
-                }
-
-                // Mặc định không phải bạn bè
-                return 'NOT_FRIEND';
-            } catch (statusError) {
-                console.error('Error determining friend status manually:', statusError);
-                return 'NOT_FRIEND';
-            }
+            console.error('❌ Error in checkFriendStatus:', error);
+            return 'NOT_FRIEND';
         }
     }
+
     // Trong FriendService.js
 
 // Thêm phương thức tìm kiếm người dùng theo email
@@ -248,27 +265,52 @@ class FriendService {
 
     /**
      * Hủy yêu cầu kết bạn đã gửi
-     * @param {number} userId - ID của người dùng đã gửi yêu cầu
+     * @param {number} friendshipId - ID của friendship record
      * @returns {Promise} Kết quả hủy yêu cầu
      */
-    async cancelFriendRequest(userId) {
+    async cancelFriendRequest(friendshipId) {
         try {
-            // Đầu tiên tìm ID của yêu cầu kết bạn
-            const sentRequests = await this.getSentFriendRequests();
-            const request = sentRequests.find(req => req.receiverId === userId);
+            console.log('Đang hủy yêu cầu kết bạn ID:', friendshipId);
 
-            if (!request) {
-                throw new Error('Không tìm thấy yêu cầu kết bạn');
-            }
+            const response = await this.api.delete(`/cancel-request/${friendshipId}`);
 
-            // Sau đó gọi API từ chối để hủy yêu cầu
-            const response = await this.api.delete(`/reject/${request.id}`);
+            console.log('Phản hồi từ API hủy lời mời:', response.data);
             return response.data;
         } catch (error) {
             console.error('Error canceling friend request:', error);
             throw error;
         }
     }
+
+    /**
+     * Lấy trạng thái kết bạn hàng loạt cho nhiều user
+     * @param {Array<number>} userIds - Danh sách ID người dùng cần kiểm tra
+     * @returns {Promise<Object>} Object mapping userId -> status
+     */
+    async getBatchFriendshipStatus(userIds) {
+        try {
+            console.log('🔍 Checking friendship status for users:', userIds);
+            
+            const response = await this.api.post('/batch-status', {
+                userIds: userIds
+            });
+            
+            console.log('✅ Batch friendship status response:', response.data);
+            return response.data.data || response.data;
+        } catch (error) {
+            console.error('❌ Error getting batch friendship status:', error);
+            
+            // Fallback: Return NOT_FRIEND for all users to avoid calling checkFriendStatus (infinite loop)
+            console.log('⚠️ Using fallback: setting all users as NOT_FRIEND');
+            const statusMap = {};
+            for (const userId of userIds) {
+                statusMap[userId] = 'NOT_FRIEND';
+            }
+            return statusMap;
+        }
+    }
 }
 
-export default FriendService;
+// Export instance thay vì class để có thể gọi method trực tiếp
+const friendService = new FriendService();
+export default friendService;
