@@ -28,50 +28,68 @@ class WebSocketService {
     // Get current user info for proper subscription paths
     async _getCurrentUserInfo() {
         try {
+            // ✅ FIX: Enhanced user info extraction with better email handling
+            console.log('🔍 Getting current user info for WebSocket...');
+            
             // Try to get from userData first
             const userData = await AsyncStorage.getItem('userData');
             if (userData) {
                 const user = JSON.parse(userData);
-                this.currentUser = {
-                    id: user.id,
-                    email: user.email,
-                    username: user.email // Backend uses email as username
-                };
-                return this.currentUser;
+                if (user.email && user.id) {
+                    this.currentUser = {
+                        id: user.id,
+                        email: user.email,
+                        username: user.email // Backend uses email as username
+                    };
+                    console.log('✅ Got user info from userData:', this.currentUser.email);
+                    return this.currentUser;
+                }
             }
 
             // Try to get from userProfile
             const userProfile = await AsyncStorage.getItem('userProfile');
             if (userProfile) {
                 const profile = JSON.parse(userProfile);
-                this.currentUser = {
-                    id: profile.id,
-                    email: profile.email,
-                    username: profile.email
-                };
-                return this.currentUser;
-            }
-
-            // Try to decode from token
-            const token = await AsyncStorage.getItem('accessToken');
-            if (token) {
-                try {
-                    const payload = token.split('.')[1];
-                    if (payload) {
-                        const decoded = JSON.parse(atob(payload));
-                        this.currentUser = {
-                            id: decoded.userId || decoded.sub,
-                            email: decoded.sub, // JWT subject is email
-                            username: decoded.sub
-                        };
-                        return this.currentUser;
-                    }
-                } catch (decodeError) {
-                    console.warn('Failed to decode token:', decodeError);
+                if (profile.email && profile.id) {
+                    this.currentUser = {
+                        id: profile.id,
+                        email: profile.email,
+                        username: profile.email
+                    };
+                    console.log('✅ Got user info from userProfile:', this.currentUser.email);
+                    return this.currentUser;
                 }
             }
 
-            console.warn('⚠️ Could not determine current user info');
+            // Try to decode from token - enhanced parsing
+            const token = await AsyncStorage.getItem('accessToken');
+            if (token) {
+                try {
+                    const parts = token.split('.');
+                    if (parts.length === 3) {
+                        const payload = parts[1];
+                        const decoded = JSON.parse(atob(payload));
+                        
+                        // ✅ FIX: Better email extraction from token
+                        const email = decoded.sub || decoded.email || decoded.username;
+                        const userId = decoded.userId || decoded.id;
+                        
+                        if (email && email.includes('@')) {
+                            this.currentUser = {
+                                id: userId,
+                                email: email,
+                                username: email
+                            };
+                            console.log('✅ Got user info from token:', this.currentUser.email);
+                            return this.currentUser;
+                        }
+                    }
+                } catch (decodeError) {
+                    console.warn('⚠️ Failed to decode token:', decodeError);
+                }
+            }
+
+            console.warn('⚠️ Could not determine current user info - missing email');
             return null;
         } catch (error) {
             console.error('❌ Error getting current user info:', error);
@@ -227,18 +245,36 @@ class WebSocketService {
             // ✅ Get user email for subscription routing (backend uses email as principal)
             let userEmail = this.currentUser?.email;
             if (!userEmail) {
-                // Try to extract from token
+                // ✅ FIX: Enhanced email extraction with better fallback
+                console.log('⚠️ No email in currentUser, trying to extract from token...');
                 try {
                     const token = await this._getToken();
-                    const payload = JSON.parse(atob(token.split('.')[1]));
-                    userEmail = payload.sub || payload.email;
+                    if (token) {
+                        const parts = token.split('.');
+                        if (parts.length === 3) {
+                            const payload = JSON.parse(atob(parts[1]));
+                            userEmail = payload.sub || payload.email || payload.username;
+                            
+                            // Ensure it's a valid email
+                            if (!userEmail || !userEmail.includes('@')) {
+                                console.error('❌ Invalid email extracted from token:', userEmail);
+                                userEmail = 'unknown@unknown.com'; // Fallback
+                            } else {
+                                console.log('✅ Extracted email from token:', userEmail);
+                            }
+                        }
+                    }
                 } catch (e) {
-                    console.error('Could not extract email from token:', e);
-                    userEmail = 'unknown';
+                    console.error('❌ Could not extract email from token:', e);
+                    userEmail = 'unknown@unknown.com'; // Fallback
                 }
             }
 
-            console.log('📡 Setting up subscriptions for user:', userEmail);
+            if (!userEmail || !userEmail.includes('@')) {
+                throw new Error('Cannot setup subscriptions - invalid user email: ' + userEmail);
+            }
+
+            console.log('📡 Setting up subscriptions for user email:', userEmail);
 
             // ✅ Wait a moment for connection to fully stabilize
             await new Promise(resolve => setTimeout(resolve, 1000));
@@ -251,9 +287,15 @@ class WebSocketService {
             // ✅ Subscribe to personal message queue - backend sends new messages here
             console.log('📡 Subscribing to /user/' + userEmail + '/queue/messages');
             this.client.subscribe(`/user/${userEmail}/queue/messages`, (message) => {
-                console.log('📨 Received new message:', message.body);
+                console.log('📨 Received new message via WebSocket:', message.body);
                 try {
                     const messageData = JSON.parse(message.body);
+                    console.log('📨 Message details:', {
+                        id: messageData.id,
+                        senderId: messageData.senderId,
+                        receiverId: messageData.receiverId,
+                        content: messageData.content?.substring(0, 50) + '...'
+                    });
                     this._notifyListeners('newMessage', messageData);
                 } catch (error) {
                     console.error('❌ Error parsing new message:', error);
