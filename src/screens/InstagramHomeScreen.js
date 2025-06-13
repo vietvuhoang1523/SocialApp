@@ -13,16 +13,20 @@ import {
     StatusBar,
     SafeAreaView,
     TextInput,
-    ScrollView
+    ScrollView,
+    Modal
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { LinearGradient } from 'expo-linear-gradient';
 import PostItem from '../hook/PostItem';
 import CreatePostService from '../services/CreatePostService';
+import SportsPostService from '../services/SportsPostService';
 import authService from '../services/AuthService';
 import Config from '../../src/services/config';
 import StoryItem from '../components/StoryItem';
+import SportsPostItem from '../components/SportsPostItem';
 import LoadingSpinner from '../components/LoadingSpinner';
+import { MaterialIcons } from '@expo/vector-icons';
 
 const { width, height } = Dimensions.get('window');
 
@@ -46,14 +50,20 @@ const createImageUrl = (path) => {
 const InstagramHomeScreen = ({ navigation }) => {
     const [stories, setStories] = useState([]);
     const [posts, setPosts] = useState([]);
+    const [sportsPosts, setSportsPosts] = useState([]);
     const [currentUser, setCurrentUser] = useState(null);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [page, setPage] = useState(0);
+    const [sportsPage, setSportsPage] = useState(0);
     const [isLastPage, setIsLastPage] = useState(false);
+    const [isSportsLastPage, setIsSportsLastPage] = useState(false);
     const [loadingMore, setLoadingMore] = useState(false);
+    const [loadingSportsPosts, setLoadingSportsPosts] = useState(false);
     const [searchText, setSearchText] = useState('');
     const [showSearch, setShowSearch] = useState(false);
+    const [showPostOptions, setShowPostOptions] = useState(false);
+    const [activeTab, setActiveTab] = useState('all'); // 'all', 'sports'
 
     const fetchCurrentUser = async () => {
         try {
@@ -117,9 +127,42 @@ const InstagramHomeScreen = ({ navigation }) => {
             setLoadingMore(false);
         }
     };
+    
+    const fetchSportsPosts = async (pageNumber = 0, shouldRefresh = false) => {
+        try {
+            if (shouldRefresh) {
+                setRefreshing(true);
+                setSportsPage(0);
+                pageNumber = 0;
+            } else if (pageNumber > 0) {
+                setLoadingSportsPosts(true);
+            } else if (!shouldRefresh) {
+                setLoadingSportsPosts(true);
+            }
+
+            const response = await SportsPostService.getSportsPosts(pageNumber, 10);
+            const newSportsPosts = response?.content || [];
+
+            if (shouldRefresh || pageNumber === 0) {
+                setSportsPosts(newSportsPosts);
+            } else {
+                setSportsPosts(prevPosts => [...prevPosts, ...newSportsPosts]);
+            }
+
+            setIsSportsLastPage(response?.last || newSportsPosts.length < 10);
+            setSportsPage(pageNumber);
+        } catch (error) {
+            console.error('Lỗi khi tải bài đăng thể thao:', error);
+            Alert.alert('Lỗi', 'Không thể tải bài đăng thể thao. Vui lòng thử lại sau.');
+        } finally {
+            setLoadingSportsPosts(false);
+            setRefreshing(false);
+        }
+    };
 
     const onRefresh = useCallback(() => {
         fetchPosts(0, true);
+        fetchSportsPosts(0, true);
         generateMockStories();
     }, []);
 
@@ -157,13 +200,24 @@ const InstagramHomeScreen = ({ navigation }) => {
     };
 
     const handleFabPress = () => {
+        setShowPostOptions(true);
+    };
+
+    const handleCreateRegularPost = () => {
+        setShowPostOptions(false);
         navigation.navigate('CreatePost');
+    };
+
+    const handleCreateSportsPost = () => {
+        setShowPostOptions(false);
+        navigation.navigate('CreateSportsPost');
     };
 
     useEffect(() => {
         const loadInitialData = async () => {
             await fetchCurrentUser();
             fetchPosts();
+            fetchSportsPosts();
             generateMockStories();
         };
         loadInitialData();
@@ -240,7 +294,7 @@ const InstagramHomeScreen = ({ navigation }) => {
                     <View style={styles.headerActions}>
                         <TouchableOpacity 
                             style={styles.headerButton}
-                            onPress={() => navigation.navigate('Messages')}
+                            onPress={() => navigation.navigate('Messages', { currentUser })}
                         >
                             <Ionicons name="chatbubble-outline" size={26} color="#333" />
                         </TouchableOpacity>
@@ -296,6 +350,31 @@ const InstagramHomeScreen = ({ navigation }) => {
                                 contentContainerStyle={styles.storiesContainer}
                             />
                         </View>
+                        
+                        {/* Content Type Tabs */}
+                        <View style={styles.tabContainer}>
+                            <TouchableOpacity 
+                                style={[styles.tabButton, activeTab === 'all' && styles.activeTabButton]}
+                                onPress={() => setActiveTab('all')}
+                            >
+                                <Text style={[styles.tabText, activeTab === 'all' && styles.activeTabText]}>
+                                    Tất cả
+                                </Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity 
+                                style={[styles.tabButton, activeTab === 'sports' && styles.activeTabButton]}
+                                onPress={() => {
+                                    setActiveTab('sports');
+                                    if (sportsPosts.length === 0) {
+                                        fetchSportsPosts();
+                                    }
+                                }}
+                            >
+                                <Text style={[styles.tabText, activeTab === 'sports' && styles.activeTabText]}>
+                                    Thể thao
+                                </Text>
+                            </TouchableOpacity>
+                        </View>
                     </View>
                 }
                 ListFooterComponent={loadingMore ? (
@@ -320,7 +399,97 @@ const InstagramHomeScreen = ({ navigation }) => {
                     </View>
                 )}
                 contentContainerStyle={posts.length === 0 ? styles.emptyFlatList : null}
+                style={activeTab === 'sports' ? { display: 'none' } : undefined}
             />
+
+            {/* Sports Posts List */}
+            {activeTab === 'sports' && (
+                <FlatList
+                    data={sportsPosts}
+                    renderItem={({ item }) => (
+                        <SportsPostItem 
+                            item={item} 
+                            navigation={navigation}
+                            currentUserId={currentUser?.id}
+                        />
+                    )}
+                    keyExtractor={(item) => `sport_${item.id.toString()}`}
+                    showsVerticalScrollIndicator={false}
+                    refreshControl={
+                        <RefreshControl 
+                            refreshing={refreshing} 
+                            onRefresh={onRefresh} 
+                            colors={['#E91E63']}
+                            tintColor="#E91E63"
+                            title="Đang tải..."
+                            titleColor="#E91E63"
+                        />
+                    }
+                    onEndReached={() => {
+                        if (!isSportsLastPage && !loadingSportsPosts && !refreshing) {
+                            fetchSportsPosts(sportsPage + 1);
+                        }
+                    }}
+                    onEndReachedThreshold={0.5}
+                    ListHeaderComponent={
+                        <View>
+                            <View style={styles.storiesSection}>
+                                <Text style={styles.storiesTitle}>Stories</Text>
+                                <FlatList
+                                    data={stories}
+                                    renderItem={renderStoryItem}
+                                    keyExtractor={(item) => item.id}
+                                    horizontal
+                                    showsHorizontalScrollIndicator={false}
+                                    contentContainerStyle={styles.storiesContainer}
+                                />
+                            </View>
+                            
+                            {/* Content Type Tabs */}
+                            <View style={styles.tabContainer}>
+                                <TouchableOpacity 
+                                    style={[styles.tabButton, activeTab === 'all' && styles.activeTabButton]}
+                                    onPress={() => setActiveTab('all')}
+                                >
+                                    <Text style={[styles.tabText, activeTab === 'all' && styles.activeTabText]}>
+                                        Tất cả
+                                    </Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity 
+                                    style={[styles.tabButton, activeTab === 'sports' && styles.activeTabButton]}
+                                    onPress={() => setActiveTab('sports')}
+                                >
+                                    <Text style={[styles.tabText, activeTab === 'sports' && styles.activeTabText]}>
+                                        Thể thao
+                                    </Text>
+                                </TouchableOpacity>
+                            </View>
+                        </View>
+                    }
+                    ListFooterComponent={loadingSportsPosts ? (
+                        <View style={styles.loadingMore}>
+                            <ActivityIndicator size="small" color="#E91E63" />
+                            <Text style={styles.loadingMoreText}>Đang tải thêm...</Text>
+                        </View>
+                    ) : null}
+                    ListEmptyComponent={!loadingSportsPosts && (
+                        <View style={styles.emptyContainer}>
+                            <MaterialIcons name="sports" size={60} color="#ddd" />
+                            <Text style={styles.emptyTitle}>Chưa có bài đăng thể thao nào</Text>
+                            <Text style={styles.emptyText}>
+                                Hãy tạo bài đăng thể thao mới để kêu gọi mọi người tham gia
+                            </Text>
+                            <TouchableOpacity 
+                                style={styles.exploreButton}
+                                onPress={handleCreateSportsPost}
+                            >
+                                <Text style={styles.exploreButtonText}>Tạo bài đăng thể thao</Text>
+                            </TouchableOpacity>
+                        </View>
+                    )}
+                    contentContainerStyle={sportsPosts.length === 0 ? styles.emptyFlatList : null}
+                />
+            )}
 
             {/* Floating Action Button */}
             <TouchableOpacity style={styles.fab} onPress={handleFabPress}>
@@ -372,6 +541,46 @@ const InstagramHomeScreen = ({ navigation }) => {
                     </View>
                 </TouchableOpacity>
             </View>
+
+            {/* Post Options Modal */}
+            <Modal
+                transparent={true}
+                visible={showPostOptions}
+                animationType="fade"
+                onRequestClose={() => setShowPostOptions(false)}
+            >
+                <TouchableOpacity 
+                    style={styles.modalOverlay}
+                    activeOpacity={1}
+                    onPress={() => setShowPostOptions(false)}
+                >
+                    <View style={styles.modalContent}>
+                        <TouchableOpacity 
+                            style={styles.optionItem}
+                            onPress={handleCreateRegularPost}
+                        >
+                            <Ionicons name="camera" size={24} color="#E91E63" />
+                            <Text style={styles.optionText}>Tạo bài đăng thường</Text>
+                        </TouchableOpacity>
+                        
+                        <TouchableOpacity 
+                            style={styles.optionItem}
+                            onPress={handleCreateSportsPost}
+                        >
+                            <MaterialIcons name="sports" size={24} color="#4CAF50" />
+                            <Text style={styles.optionText}>Tạo bài đăng thể thao</Text>
+                        </TouchableOpacity>
+                        
+                        <TouchableOpacity 
+                            style={[styles.optionItem, styles.cancelOption]}
+                            onPress={() => setShowPostOptions(false)}
+                        >
+                            <Ionicons name="close-circle" size={24} color="#666" />
+                            <Text style={styles.optionText}>Hủy</Text>
+                        </TouchableOpacity>
+                    </View>
+                </TouchableOpacity>
+            </Modal>
         </SafeAreaView>
     );
 };
@@ -573,6 +782,68 @@ const styles = StyleSheet.create({
         width: 26,
         height: 26,
         borderRadius: 13,
+    },
+    modalOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+        justifyContent: 'flex-end',
+    },
+    modalContent: {
+        backgroundColor: '#fff',
+        borderTopLeftRadius: 20,
+        borderTopRightRadius: 20,
+        padding: 20,
+        paddingBottom: 30,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: -4 },
+        shadowOpacity: 0.1,
+        shadowRadius: 8,
+        elevation: 10,
+    },
+    optionItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 16,
+        borderBottomWidth: 1,
+        borderBottomColor: '#f0f0f0',
+    },
+    optionText: {
+        fontSize: 16,
+        marginLeft: 16,
+        color: '#333',
+        fontWeight: '500',
+    },
+    cancelOption: {
+        borderBottomWidth: 0,
+        marginTop: 10,
+    },
+    tabContainer: {
+        flexDirection: 'row',
+        justifyContent: 'center',
+        alignItems: 'center',
+        paddingVertical: 10,
+        backgroundColor: '#fff',
+        borderBottomWidth: 1,
+        borderBottomColor: '#f0f0f0',
+    },
+    tabButton: {
+        paddingHorizontal: 20,
+        paddingVertical: 8,
+        borderBottomWidth: 2,
+        borderBottomColor: 'transparent',
+        marginHorizontal: 5,
+    },
+    activeTabButton: {
+        borderBottomWidth: 2,
+        borderBottomColor: '#E91E63',
+    },
+    tabText: {
+        fontSize: 16,
+        fontWeight: 'bold',
+        color: '#333',
+    },
+    activeTabText: {
+        color: '#E91E63',
     },
 });
 

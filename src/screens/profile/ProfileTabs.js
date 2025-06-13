@@ -24,6 +24,11 @@ const ProfileTabs = ({ activeTab, onTabChange }) => {
             key: 'videos',
             label: 'Video',
             icon: 'videocam-outline'
+        },
+        {
+            key: 'location',
+            label: 'Vị trí',
+            icon: 'location-outline'
         }
     ];
 

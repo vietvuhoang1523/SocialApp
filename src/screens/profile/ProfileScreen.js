@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import ProfileHeader from './ProfileHeader';
 import AuthService from '../../services/AuthService';
-import { ProfileProvider } from '../../components/ProfileContext';
+import { ProfileProvider, useProfileContext } from '../../components/ProfileContext';
 
 // Import các component đã xây dựng
 import ProfileContent from './ProfileContent';
@@ -101,34 +101,73 @@ const ProfileScreen = ({ navigation }) => {
     // Wrap everything with ProfileProvider for context
     return (
         <ProfileProvider>
-            <SafeAreaView style={styles.container}>
-                <StatusBar
-                    backgroundColor="#E91E63"
-                    barStyle="light-content"
-                    translucent={false}
-                />
-
-                <ProfileHeader
-                    navigation={navigation}
-                    onMoreOptionsPress={confirmLogout}
-                    scrollY={scrollY}
-                />
-
-                {/* Thay đổi cấu trúc: Đưa tất cả nội dung vào ProfileContent để quản lý */}
-                <ProfileContent
-                    activeTab={activeTab}
-                    onTabChange={handleTabChange}
-                    onRefresh={handleRefresh}
-                    isRefreshing={isRefreshing}
-                    navigation={navigation}
-                    scrollY={scrollY}
-                    onEditProfile={handleEditProfile}
-                    onViewIntro={handleViewIntro}
-                    onFindFriends={handleFindFriends}
-                    onViewAllFriends={handleViewAllFriends}
-                />
-            </SafeAreaView>
+            <ProfileScreenContent 
+                navigation={navigation}
+                activeTab={activeTab}
+                isRefreshing={isRefreshing}
+                scrollY={scrollY}
+                onTabChange={handleTabChange}
+                onRefresh={handleRefresh}
+                onLogout={confirmLogout}
+                onEditProfile={handleEditProfile}
+                onFindFriends={handleFindFriends}
+                onViewAllFriends={handleViewAllFriends}
+                onViewIntro={handleViewIntro}
+            />
         </ProfileProvider>
+    );
+};
+
+// Component sử dụng ProfileContext
+const ProfileScreenContent = ({ 
+    navigation, 
+    activeTab, 
+    isRefreshing, 
+    scrollY, 
+    onTabChange, 
+    onRefresh, 
+    onLogout, 
+    onEditProfile, 
+    onFindFriends, 
+    onViewAllFriends, 
+    onViewIntro 
+}) => {
+    // Get current user from context
+    const { userProfile } = useProfileContext();
+
+    // Navigate đến màn hình danh sách bạn bè với currentUser
+    const handleViewAllFriends = useCallback(() => {
+        navigation.navigate('Messages', { currentUser: userProfile });
+    }, [navigation, userProfile]);
+
+    return (
+        <SafeAreaView style={styles.container}>
+            <StatusBar
+                backgroundColor="#E91E63"
+                barStyle="light-content"
+                translucent={false}
+            />
+
+            <ProfileHeader
+                navigation={navigation}
+                onMoreOptionsPress={onLogout}
+                scrollY={scrollY}
+            />
+
+            {/* Thay đổi cấu trúc: Đưa tất cả nội dung vào ProfileContent để quản lý */}
+            <ProfileContent
+                activeTab={activeTab}
+                onTabChange={onTabChange}
+                onRefresh={onRefresh}
+                isRefreshing={isRefreshing}
+                navigation={navigation}
+                scrollY={scrollY}
+                onEditProfile={onEditProfile}
+                onViewIntro={onViewIntro}
+                onFindFriends={onFindFriends}
+                onViewAllFriends={handleViewAllFriends}
+            />
+        </SafeAreaView>
     );
 };
 

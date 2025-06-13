@@ -7,18 +7,77 @@ import {
     StyleSheet,
     Text,
     Animated,
-    ScrollView
+    ScrollView,
+    TouchableOpacity
 } from 'react-native';
 import PostItem from '../../hook/PostItem';
 import { CreatePostButton, EmptyContent } from '../../components/UIComponents';
 import usePosts from '../../hook/usePosts';
 import { useProfileContext } from '../../components/ProfileContext';
 import authService from '../../services/AuthService';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
 
 // Import các thành phần UI khác
 import ProfileInfo from './ProfileInfo';
 import FriendsSection from '../../components/friends/FriendsSection';
 import ProfileTabs from './ProfileTabs';
+import UserLocationController from './UserLocationController';
+
+// Sports Profile Section Component
+const SportsProfileSection = ({ navigation, userProfile }) => {
+    const handleNavigateToSportsProfile = () => {
+        navigation.navigate('SportsProfileScreen', {
+            currentUser: userProfile,
+            isViewMode: false
+        });
+    };
+
+    const handleNavigateToSportsMatching = () => {
+        navigation.navigate('SportsMatchingScreen', {
+            currentUser: userProfile
+        });
+    };
+
+    return (
+        <View style={styles.sportsProfileSection}>
+            <View style={styles.sportsProfileHeader}>
+                <Text style={styles.sportsProfileTitle}>🏃‍♂️ Thể thao</Text>
+                <Text style={styles.sportsProfileSubtitle}>Quản lý hồ sơ thể thao và tìm đối tác</Text>
+            </View>
+            
+            <View style={styles.sportsButtonsContainer}>
+                <TouchableOpacity 
+                    style={styles.sportsButton}
+                    onPress={handleNavigateToSportsProfile}
+                    activeOpacity={0.8}
+                >
+                    <LinearGradient
+                        colors={['#E91E63', '#C2185B']}
+                        style={styles.sportsButtonGradient}
+                    >
+                        <Ionicons name="person-circle" size={20} color="#fff" />
+                        <Text style={styles.sportsButtonText}>Sports Profile</Text>
+                    </LinearGradient>
+                </TouchableOpacity>
+
+                <TouchableOpacity 
+                    style={styles.sportsButton}
+                    onPress={handleNavigateToSportsMatching}
+                    activeOpacity={0.8}
+                >
+                    <LinearGradient
+                        colors={['#2196F3', '#1976D2']}
+                        style={styles.sportsButtonGradient}
+                    >
+                        <Ionicons name="search" size={20} color="#fff" />
+                        <Text style={styles.sportsButtonText}>Tìm đối tác</Text>
+                    </LinearGradient>
+                </TouchableOpacity>
+            </View>
+        </View>
+    );
+};
 
 const ProfileContent = ({
                             activeTab,
@@ -36,7 +95,7 @@ const ProfileContent = ({
     const [currentUserId, setCurrentUserId] = useState(null);
 
     // Sử dụng ProfileContext để có data đồng bộ
-    const { refreshProfile } = useProfileContext();
+    const { refreshProfile, userProfile } = useProfileContext();
 
     // Sử dụng custom hook để quản lý posts
     const {
@@ -154,6 +213,11 @@ const ProfileContent = ({
                 onViewAllFriends={onViewAllFriends}
             />
 
+            <SportsProfileSection 
+                navigation={navigation}
+                userProfile={userProfile}
+            />
+
             <ProfileTabs
                 activeTab={activeTab}
                 onTabChange={onTabChange}
@@ -227,6 +291,31 @@ const ProfileContent = ({
                         }
                     />
                 );
+            case 'location':
+                return (
+                    <ScrollView 
+                        style={styles.locationContainer}
+                        contentContainerStyle={{flexGrow: 1}}
+                        refreshControl={
+                            <RefreshControl
+                                refreshing={isRefreshing}
+                                onRefresh={handleUserRefresh}
+                                colors={['#1877F2']}
+                            />
+                        }
+                        showsVerticalScrollIndicator={false}
+                    >
+                        <View style={styles.tabHeaderContainer}>
+                            {renderListHeader()}
+                        </View>
+                        <View style={styles.locationControllerContainer}>
+                            <UserLocationController 
+                                navigation={navigation} 
+                                key="locationController"
+                            />
+                        </View>
+                    </ScrollView>
+                );
             default:
                 return (
                     <FlatList
@@ -272,7 +361,75 @@ const styles = StyleSheet.create({
     centeredContent: {
         padding: 20,
         alignItems: 'center',
-    }
+    },
+    sportsProfileSection: {
+        backgroundColor: '#fff',
+        marginHorizontal: 15,
+        marginVertical: 10,
+        padding: 20,
+        borderRadius: 15,
+        elevation: 3,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+    },
+    sportsProfileHeader: {
+        marginBottom: 15,
+        alignItems: 'center',
+    },
+    sportsProfileTitle: {
+        fontSize: 20,
+        fontWeight: 'bold',
+        color: '#333',
+        marginBottom: 5,
+    },
+    sportsProfileSubtitle: {
+        fontSize: 14,
+        color: '#666',
+        textAlign: 'center',
+    },
+    sportsButtonsContainer: {
+        flexDirection: 'row',
+        gap: 10,
+    },
+    sportsButton: {
+        flex: 1,
+        borderRadius: 12,
+        overflow: 'hidden',
+        elevation: 2,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.1,
+        shadowRadius: 2,
+    },
+    sportsButtonGradient: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 12,
+        paddingHorizontal: 15,
+        gap: 8,
+    },
+    sportsButtonText: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: '#fff',
+    },
+    // Styles cho tab vị trí
+    locationContainer: {
+        flex: 1,
+        backgroundColor: '#f8f9fa',
+    },
+    tabHeaderContainer: {
+        backgroundColor: '#f8f9fa',
+    },
+    locationControllerContainer: {
+        flex: 1,
+        marginTop: 10,
+        marginBottom: 30,
+        paddingBottom: 20,
+    },
 });
 
 export default ProfileContent;

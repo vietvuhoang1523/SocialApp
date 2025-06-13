@@ -14,6 +14,7 @@ import ProfileScreen from "./src/screens/profile/ProfileScreen";
 import UserProfileScreen from "./src/screens/profile/UserProfileScreen";
 import ReelsScreen from "./src/screens/Login/ReelsScreen";
 import CreatePostScreen from "./src/screens/CreatePostScreen";
+import CreateSportsPostScreen from "./src/screens/CreateSportsPostScreen";
 import NotificationsScreen from "./src/screens/NotificationsScreen";
 import MainTabNavigator from "./src/components/MainTabNavigator";
 import RegisterScreen from "./src/screens/Login/RegisterScreen";
@@ -28,9 +29,25 @@ import ProfileInfo from "./src/screens/profile/ProfileInfo";
 import ProfileHeader from "./src/screens/profile/ProfileHeader";
 import FriendsSection from "./src/components/friends/FriendsSection";
 
+// Import Sports Profile screens
+import SportsProfileScreen from "./src/screens/profile/SportsProfileScreen";
+import SportsMatchingScreen from "./src/screens/profile/SportsMatchingScreen";
+import SportsPostDetailScreen from "./src/screens/SportsPostDetailScreen";
+
+// Import Location screens
+import UserLocationController from "./src/screens/profile/UserLocationController";
+import SimpleLocationController from "./src/screens/profile/SimpleLocationController";
+import LocationMap from "./src/screens/profile/LocationMap";
+import LocationSettings from "./src/screens/profile/LocationSettings";
+import ManualLocationScreen from "./src/screens/profile/ManualLocationScreen";
+
 // Import các screen chat mới với UI hiện đại
 import NewMessagesScreen from "./src/screens/Messages/NewMessagesScreen";
 import NewChatScreen from "./src/screens/Messages/NewChatScreen";
+
+// Import video call screens
+import AudioCallScreen from "./src/screens/Calls/AudioCallScreen";
+import VideoCallScreen from "./src/screens/Calls/VideoCallScreen";
 
 // Import services
 import webSocketService from './src/services/WebSocketService';
@@ -166,6 +183,19 @@ export default function App() {
             component={UserProfileScreen}
             options={{ headerShown: false }}
         />
+        
+        {/* Sports Profile Screens */}
+        <Stack.Screen
+            name="SportsProfileScreen"
+            component={SportsProfileScreen}
+            options={{ headerShown: false }}
+        />
+        <Stack.Screen
+            name="SportsMatchingScreen"
+            component={SportsMatchingScreen}
+            options={{ headerShown: false }}
+        />
+        
         {/* Screen tin nhắn mới với UI hiện đại */}
         <Stack.Screen
             name="Messages"
@@ -188,21 +218,81 @@ export default function App() {
             component={NewChatScreen}
             options={{ headerShown: false }}
         />
-          <Stack.Screen
-              name="Comments"
-              component={CommentsScreen}
-              options={{ headerShown: false }}
-          />
-          <Stack.Screen
-              name="EditPost"
-              component={EditPostScreen}
-              options={{ headerShown: false }}
-          />
+        
+        {/* Video Call Screens */}
+        <Stack.Screen
+            name="AudioCallScreen"
+            component={AudioCallScreen}
+            options={{ 
+                headerShown: false,
+                gestureEnabled: false, // Prevent swipe to go back during call
+                animation: 'slide_from_bottom'
+            }}
+        />
+        <Stack.Screen
+            name="VideoCallScreen"
+            component={VideoCallScreen}
+            options={{ 
+                headerShown: false,
+                gestureEnabled: false, // Prevent swipe to go back during call
+                animation: 'slide_from_bottom'
+            }}
+        />
+
+        <Stack.Screen
+            name="Comments"
+            component={CommentsScreen}
+            options={{ headerShown: false }}
+        />
+        <Stack.Screen
+            name="EditPost"
+            component={EditPostScreen}
+            options={{ headerShown: false }}
+        />
         <Stack.Screen
             name="EmailSearchHandler"
             component={EmailSearchHandler}
             options={{ headerShown: false }}
         />
+        <Stack.Screen
+            name="CreateSportsPost"
+            component={CreateSportsPostScreen}
+            options={{ headerShown: false }}
+        />
+        
+        <Stack.Screen
+            name="SportsPostDetail"
+            component={SportsPostDetailScreen}
+            options={{ headerShown: false }}
+        />
+        
+        {/* Location Screens */}
+        <Stack.Screen
+            name="LocationMap"
+            component={LocationMap}
+            options={{ headerShown: false }}
+        />
+        <Stack.Screen
+            name="LocationSettings"
+            component={LocationSettings}
+            options={{ headerShown: false }}
+        />
+        <Stack.Screen
+            name="UserLocationController"
+            component={UserLocationController}
+            options={{ headerShown: false }}
+        />
+        <Stack.Screen
+            name="SimpleLocationController"
+            component={SimpleLocationController}
+            options={{ headerShown: false }}
+        />
+        <Stack.Screen
+            name="ManualLocationScreen"
+            component={ManualLocationScreen}
+            options={{ headerShown: false }}
+        />
+        
         <Stack.Screen name="MainApp" component={MainTabNavigator} />
       </Stack.Navigator>
   ), []);

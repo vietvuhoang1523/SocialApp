@@ -4,7 +4,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { BASE_URL, DEFAULT_TIMEOUT, DEFAULT_HEADERS, FORM_DATA_HEADERS } from './api';
 import webSocketService from './WebSocketService';
 import messagesService from './messagesService';
-import webSocketHelper from './WebSocketHelper';
 
 class ChatService {
     constructor() {
@@ -183,7 +182,7 @@ class ChatService {
                     return conversations;
                 } catch (wsError) {
                     console.log('⚠️ WebSocket timeout hoặc lỗi:', wsError.message);
-                    
+
                     // Thử lại một lần nữa với timeout ngắn hơn
                     if (wsError.message.includes('timeout')) {
                         console.log('🔄 Thử lại với timeout ngắn hơn...');
@@ -200,7 +199,7 @@ class ChatService {
 
             // Nếu WebSocket không hoạt động, tạo conversations từ messages cache hoặc return empty
             console.log('🔄 WebSocket không khả dụng, sử dụng phương án dự phòng');
-            
+
             // Phương án dự phòng: Trả về mảng rỗng thay vì call REST API không tồn tại
             console.log('📝 Trả về danh sách trống - backend chỉ hỗ trợ WebSocket');
             return [];
@@ -859,7 +858,7 @@ class ChatService {
             if (!currentUser?.id) {
                 throw new Error('Không tìm thấy thông tin người dùng');
             }
-            
+
             const result = await messagesService.getUnreadMessages(currentUser.id);
             console.log('✅ Nhận tin nhắn chưa đọc qua API:', result);
             return result;
@@ -906,12 +905,12 @@ class ChatService {
     setupChatListeners(partnerId, callbacks = {}) {
         try {
             console.log('🎧 Thiết lập chat listeners cho partner:', partnerId);
-            
+
             // Đăng ký callback cho tin nhắn mới
             if (callbacks.onNewMessage) {
                 webSocketHelper.onNewMessage((message) => {
                     // Lọc tin nhắn thuộc cuộc trò chuyện hiện tại
-                    if (message.senderId === partnerId || 
+                    if (message.senderId === partnerId ||
                         (message.receiverId === partnerId && message.senderId !== partnerId)) {
                         callbacks.onNewMessage(message);
                     }

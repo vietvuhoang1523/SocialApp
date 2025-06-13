@@ -23,7 +23,7 @@ class MessagesService {
 
         // Listen for message history - handle both array and paginated format
         webSocketService.on('messageHistory', (data) => {
-            console.log('📨 Received message history from WebSocket:', data);
+            console.log('Received messageHistory:', data);
             
             let messages = [];
             let pagination = null;
@@ -222,24 +222,39 @@ class MessagesService {
             if (webSocketService.isConnected()) {
                 try {
                     console.log('🔌 Using WebSocket for conversations...');
-                    
                     await webSocketService.getConversations();
-                    
                     return new Promise((resolve, reject) => {
                         const timeout = setTimeout(() => {
                             console.error('⚠️ WebSocket timeout for conversations');
                             reject(new Error('WebSocket timeout - conversations not received'));
                         }, this.wsTimeout);
 
-                        const handleResponse = (conversations) => {
+                        const handleResponse = (response) => {
                             clearTimeout(timeout);
                             webSocketService.off('conversations', handleResponse);
-                            resolve(conversations);
+                            console.log('🔍 Raw conversations response:', response);
+                            let conversationsData = [];
+                            // Handle different response formats from backend
+                            if (response && response.conversations && Array.isArray(response.conversations)) {
+                                // Backend returns: { conversations: [...], count: X, status: "success" }
+                                conversationsData = response.conversations;
+                                console.log(`📊 Found ${response.count || conversationsData.length} conversations in response`);
+                            } else if (Array.isArray(response)) {
+                                // Backend returns: [conversation1, conversation2, ...]
+                                conversationsData = response;
+                                console.log(`📊 Found ${conversationsData.length} conversations as array`);
+                            } else if (response && response.data && Array.isArray(response.data)) {
+                                // Another possible format
+                                conversationsData = response.data;
+                                console.log(`📊 Found ${conversationsData.length} conversations in data field`);
+                            } else {
+                                console.log('⚠️ Unexpected response format:', typeof response, response);
+                                conversationsData = [];
+                            }
+                            resolve(conversationsData);
                         };
-
                         webSocketService.on('conversations', handleResponse);
                     });
-
                 } catch (wsError) {
                     console.error('❌ WebSocket request failed for conversations:', wsError.message);
                     throw wsError;
@@ -247,7 +262,6 @@ class MessagesService {
             } else {
                 throw new Error('WebSocket not connected. Backend only supports WebSocket for conversations.');
             }
-
         } catch (error) {
             console.error('❌ Error getting conversations:', error);
             throw new Error('Failed to load conversations');
@@ -573,6 +587,31 @@ class MessagesService {
             console.error('❌ Force reconnection failed:', error);
             throw error;
         }
+    }
+
+    async sendGetMessages(user1Id, user2Id, page = 0, size = 20, order = 'desc', sortBy = ['timestamp']) {
+        return new Promise((resolve, reject) => {
+            if (!webSocketService.isConnected()) {
+                reject(new Error('WebSocket not connected'));
+                return;
+            }
+
+            // Lắng nghe response
+            const handleResponse = (data) => {
+                webSocketService.off('messageHistory', handleResponse);
+                resolve(data);
+            };
+            webSocketService.on('messageHistory', handleResponse);
+
+            // Gửi request
+            webSocketService.sendGetMessages(user1Id, user2Id, page, size, order, sortBy);
+
+            // Timeout nếu không có phản hồi
+            setTimeout(() => {
+                webSocketService.off('messageHistory', handleResponse);
+                reject(new Error('Timeout waiting for message history'));
+            }, 15000);
+        });
     }
 }
 

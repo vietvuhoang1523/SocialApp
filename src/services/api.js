@@ -4,7 +4,19 @@ import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Base URL for API
-export const BASE_URL = 'http://192.168.0.102:8082/api';
+export const BASE_URL = 'http://192.168.100.193:8082/api';
+export const FORM_DATA_HEADERS = {
+    'Accept': 'application/json',
+    'Content-Type': 'multipart/form-data',
+};
+export const ERROR_MESSAGES = {
+    400: 'Dữ liệu không hợp lệ. Vui lòng kiểm tra lại.',
+    401: 'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.',
+    403: 'Bạn không có quyền thực hiện hành động này.',
+    404: 'Không tìm thấy tài nguyên yêu cầu.',
+    500: 'Lỗi máy chủ. Vui lòng thử lại sau.',
+    default: 'Đã có lỗi xảy ra. Vui lòng thử lại sau.'
+};
 
 // Default timeout
 export const DEFAULT_TIMEOUT = 15000;
@@ -69,10 +81,21 @@ export const API_ENDPOINTS = {
     LOGIN: '/api/auth/login',
     REGISTER: '/api/auth/register',
     REFRESH_TOKEN: '/api/auth/refresh-token',
+    LOGOUT: '/api/auth/logout',
 
     // User endpoints
     USER_PROFILE: '/api/users/profile',
+    USER_UPDATE: '/api/users/update',
+    USER_AVATAR: '/api/users/avatar',
     SEARCH_USERS: '/api/users/search',
+
+    // Location endpoints
+    USER_LOCATION: '/v1/locations',
+    USER_LOCATION_PRIVACY: '/v1/locations/privacy',
+    USER_LOCATION_ENABLE: '/v1/locations/enable',
+    USER_LOCATION_DISABLE: '/v1/locations/disable',
+    USER_LOCATION_ME: '/v1/locations/me',
+    USER_NEARBY: '/v1/locations/nearby',
 
     // Message endpoints
     MESSAGES: '/api/messages',
@@ -82,6 +105,19 @@ export const API_ENDPOINTS = {
     // Friend endpoints
     FRIENDS: '/api/friends',
     FRIEND_REQUESTS: '/api/friends/requests',
+
+    // Social endpoints
+    POSTS: '/v1/posts',
+    COMMENTS: '/v1/comments',
+    LIKES: '/v1/likes',
+
+    // Sports endpoints
+    SPORTS: '/v1/sports',
+    SPORTS_MATCHES: '/v1/sports/matches',
+    SPORTS_PLAYERS: '/v1/sports/players',
+
+    // Notifications
+    NOTIFICATIONS: '/v1/notifications'
 };
 
 // Default pagination
@@ -126,6 +162,17 @@ export const formatError = (error) => {
             error: error
         };
     }
+};
+
+// Utility to format endpoint with parameters
+export const formatEndpoint = (endpoint, params = {}) => {
+    let formattedEndpoint = endpoint;
+
+    Object.keys(params).forEach(key => {
+        formattedEndpoint = formattedEndpoint.replace(`:${key}`, params[key]);
+    });
+
+    return formattedEndpoint;
 };
 
 // Normalize response

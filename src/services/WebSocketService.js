@@ -14,10 +14,10 @@ class WebSocketService {
         this.baseReconnectDelay = 2000;
         this.maxReconnectDelay = 30000;
         this.currentUser = null; // Store current user info
-        
+
         // ✅ Configuration to match backend exactly
         this.config = {
-            serverUrl: 'http://192.168.0.102:8082/ws', // ✅ Backend WebSocket endpoint
+            serverUrl: 'http://192.168.100.193:8082/ws', // ✅ Backend WebSocket endpoint
             heartbeatIncoming: 10000, // ✅ Match backend: 10s
             heartbeatOutgoing: 10000, // ✅ Match backend: 10s
             connectionTimeout: 30000, // 30 seconds for backend processing
@@ -30,7 +30,7 @@ class WebSocketService {
         try {
             // ✅ FIX: Enhanced user info extraction with better email handling
             console.log('🔍 Getting current user info for WebSocket...');
-            
+
             // Try to get from userData first
             const userData = await AsyncStorage.getItem('userData');
             if (userData) {
@@ -69,11 +69,11 @@ class WebSocketService {
                     if (parts.length === 3) {
                         const payload = parts[1];
                         const decoded = JSON.parse(atob(payload));
-                        
+
                         // ✅ FIX: Better email extraction from token
                         const email = decoded.sub || decoded.email || decoded.username;
                         const userId = decoded.userId || decoded.id;
-                        
+
                         if (email && email.includes('@')) {
                             this.currentUser = {
                                 id: userId,
@@ -101,7 +101,7 @@ class WebSocketService {
     async _getToken() {
         try {
             const tokenKeys = ['accessToken', 'token', 'authToken', 'userToken', 'jwtToken'];
-            
+
             for (const key of tokenKeys) {
                 const token = await AsyncStorage.getItem(key);
                 if (token) {
@@ -113,19 +113,19 @@ class WebSocketService {
                     console.log(`⚠️ Found non-JWT token in ${key}:`, token.substring(0, 20) + '...');
                 }
             }
-            
+
             // ✅ Debug: Show all storage keys to help find token
             console.log('🔍 Debugging AsyncStorage keys...');
             const allKeys = await AsyncStorage.getAllKeys();
             console.log('📦 All AsyncStorage keys:', allKeys);
-            
+
             for (const key of allKeys) {
                 if (key.toLowerCase().includes('token') || key.toLowerCase().includes('auth') || key.toLowerCase().includes('jwt')) {
                     const value = await AsyncStorage.getItem(key);
                     console.log(`🔑 ${key}:`, value ? value.substring(0, 50) + '...' : 'null');
                 }
             }
-            
+
             throw new Error('Không tìm thấy token hợp lệ');
         } catch (error) {
             console.error('❌ Error getting token:', error);
@@ -149,6 +149,8 @@ class WebSocketService {
 
         this.connecting = true;
         console.log('🔌 Connecting to WebSocket:', this.config.serverUrl);
+        console.log('🔍 Kiểm tra kết nối WebSocket...');
+        console.log('🌐 Địa chỉ server:', this.config.serverUrl);
 
         try {
             // ✅ Get token using enhanced detection
@@ -167,6 +169,14 @@ class WebSocketService {
             // ✅ Disable console debug if not needed
             if (!this.config.debug) {
                 this.client.debug = () => {};
+            } else {
+                // Thêm gỡ lỗi chi tiết cho các phản hồi WebSocket
+                this.client.debug = (message) => {
+                    console.log('🛠️ WebSocket Debug:', message);
+                    if (message.includes('Received data')) {
+                        console.log('📥 Raw WebSocket Data:', message);
+                    }
+                };
             }
 
             // ✅ Setup connection with proper authentication headers
@@ -175,8 +185,8 @@ class WebSocketService {
                 'Content-Type': 'application/json'
             };
 
-            console.log('🔑 Connecting with headers:', { 
-                Authorization: `Bearer ${token.substring(0, 20)}...` 
+            console.log('🔑 Connecting with headers:', {
+                Authorization: `Bearer ${token.substring(0, 20)}...`
             });
 
             return new Promise((resolve, reject) => {
@@ -191,10 +201,10 @@ class WebSocketService {
                     async (frame) => {
                         clearTimeout(timeoutId);
                         console.log('✅ WebSocket connected successfully:', frame);
-                    this.connected = true;
+                        this.connected = true;
                         this.connecting = false;
-                    this.reconnectAttempts = 0;
-                        
+                        this.reconnectAttempts = 0;
+
                         // Setup subscriptions asynchronously and handle errors
                         try {
                             await this._setupSubscriptions();
@@ -202,7 +212,7 @@ class WebSocketService {
                         } catch (setupError) {
                             console.error('❌ Subscription setup failed:', setupError);
                             // Still resolve as connection succeeded, subscriptions can be retried
-                    resolve(true);
+                            resolve(true);
                         }
                     },
                     (error) => {
@@ -217,6 +227,7 @@ class WebSocketService {
         } catch (error) {
             console.error('❌ Failed to connect to WebSocket:', error);
             this._cleanup();
+            console.error('❌ Lỗi kết nối WebSocket:', error.message);
             throw error;
         }
     }
@@ -224,18 +235,18 @@ class WebSocketService {
     // Setup subscriptions after successful connection
     async _setupSubscriptions() {
         console.log('📡 Setting up WebSocket subscriptions...');
-        
+
         // Enhanced null checks
         if (!this.client) {
             console.error('❌ Cannot setup subscriptions - client is null');
             return;
         }
-        
+
         if (!this.connected) {
             console.error('❌ Cannot setup subscriptions - not connected');
             return;
         }
-        
+
         if (!this.client.connected) {
             console.error('❌ Cannot setup subscriptions - STOMP client not connected');
             return;
@@ -254,7 +265,7 @@ class WebSocketService {
                         if (parts.length === 3) {
                             const payload = JSON.parse(atob(parts[1]));
                             userEmail = payload.sub || payload.email || payload.username;
-                            
+
                             // Ensure it's a valid email
                             if (!userEmail || !userEmail.includes('@')) {
                                 console.error('❌ Invalid email extracted from token:', userEmail);
@@ -307,7 +318,7 @@ class WebSocketService {
                 throw new Error('STOMP client disconnected during setup');
             }
 
-            // ✅ Subscribe to message history queue - backend sends history responses here  
+            // ✅ Subscribe to message history queue - backend sends history responses here
             console.log('📡 Subscribing to /user/' + userEmail + '/queue/messages-history');
             this.client.subscribe(`/user/${userEmail}/queue/messages-history`, (message) => {
                 console.log('📚 Received message history:', message.body);
@@ -380,7 +391,7 @@ class WebSocketService {
                 throw new Error('STOMP client disconnected during setup');
             }
 
-            // ✅ Subscribe to typing notifications  
+            // ✅ Subscribe to typing notifications
             console.log('📡 Subscribing to /user/' + userEmail + '/queue/typing');
             this.client.subscribe(`/user/${userEmail}/queue/typing`, (message) => {
                 console.log('⌨️ Received typing notification:', message.body);
@@ -415,7 +426,7 @@ class WebSocketService {
         } catch (error) {
             console.error('❌ Error setting up subscriptions:', error);
             this._notifyListeners('connectionStatus', 'error');
-            
+
             // Reset connection state on subscription error
             this.connected = false;
             if (this.client) {
@@ -471,7 +482,7 @@ class WebSocketService {
             };
 
             console.log('📤 Sending message to /app/send:', JSON.stringify(messageRequest));
-            
+
             // ⚡ FIX: Add timeout for send operation
             const sendPromise = new Promise((resolve, reject) => {
                 try {
@@ -481,23 +492,23 @@ class WebSocketService {
                     reject(sendError);
                 }
             });
-            
+
             const timeoutPromise = new Promise((_, reject) => {
                 setTimeout(() => reject(new Error('Message send timeout')), 8000);
             });
-            
+
             await Promise.race([sendPromise, timeoutPromise]);
             console.log('✅ Message sent successfully to backend');
             return true;
         } catch (error) {
             console.error('❌ Error sending message:', error);
-            
+
             // ⚡ FIX: Check if connection is still valid after error
             if (!this.isConnected()) {
                 console.error('❌ Connection lost during message send');
                 this.connected = false;
             }
-            
+
             throw error;
         }
     }
@@ -538,13 +549,13 @@ class WebSocketService {
             this.client.send('/app/get-messages', {}, JSON.stringify(request));
             console.log('✅ Message history request sent');
             return true;
-                        } catch (error) {
+        } catch (error) {
             console.error('❌ Error requesting messages:', error);
             throw error;
         }
     }
 
-    // Get conversations - backend endpoint /app/get-conversations  
+    // Get conversations - backend endpoint /app/get-conversations
     async getConversations() {
         // Enhanced connection check
         if (!this.isConnected()) {
@@ -620,9 +631,9 @@ class WebSocketService {
         await this._waitForStompReady();
 
         try {
-            const request = { 
-                senderId: parseInt(senderId), 
-                receiverId: parseInt(receiverId) 
+            const request = {
+                senderId: parseInt(senderId),
+                receiverId: parseInt(receiverId)
             };
             console.log('📤 Marking all messages as read:', JSON.stringify(request));
             this.client.send('/app/mark-all-read', {}, JSON.stringify(request));
@@ -638,8 +649,8 @@ class WebSocketService {
     async sendTyping(receiverId, isTyping = true) {
         if (!this.isConnected()) {
             console.warn('⚠️ WebSocket not connected, skipping typing notification');
-                return false;
-            }
+            return false;
+        }
 
         try {
             await this._waitForStompReady();
@@ -687,7 +698,7 @@ class WebSocketService {
         await this._waitForStompReady();
 
         try {
-            const request = { 
+            const request = {
                 messageId: messageId.toString(),
                 deleteForEveryone: deleteForEveryone
             };
@@ -731,7 +742,7 @@ class WebSocketService {
 
         this.reconnectAttempts++;
         const delay = Math.min(this.baseReconnectDelay * Math.pow(2, this.reconnectAttempts - 1), this.maxReconnectDelay);
-        
+
         console.log(`🔄 Scheduling reconnection ${this.reconnectAttempts}/${this.maxReconnectAttempts} in ${delay}ms`);
         this._notifyListeners('connectionStatus', 'reconnecting');
 
@@ -750,16 +761,16 @@ class WebSocketService {
         if (!this.eventListeners.has(event)) {
             this.eventListeners.set(event, new Map());
         }
-        
+
         const key = 'cb_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
         this.eventListeners.get(event).set(key, callback);
-        
+
         return key;
     }
 
     off(event, callbackKey) {
         if (!this.eventListeners.has(event)) return;
-        
+
         if (callbackKey) {
             this.eventListeners.get(event).delete(callbackKey);
         } else {
@@ -769,7 +780,7 @@ class WebSocketService {
 
     _notifyListeners(event, data) {
         if (!this.eventListeners.has(event)) return;
-        
+
         this.eventListeners.get(event).forEach(callback => {
             try {
                 callback(data);
@@ -786,12 +797,12 @@ class WebSocketService {
             return true;
         }
 
-        const isStompConnected = this.connected && 
-                                this.client && 
+        const isStompConnected = this.connected &&
+                                this.client &&
                                 this.client.connected;
-        
-        const isWebSocketOpen = this.client && 
-                               this.client.ws && 
+
+        const isWebSocketOpen = this.client &&
+                               this.client.ws &&
                                this.client.ws.readyState === 1; // WebSocket.OPEN = 1
 
         const isFullyConnected = isStompConnected && isWebSocketOpen;
@@ -830,24 +841,24 @@ class WebSocketService {
         try {
             // Try multiple storage keys for token
             let token = await AsyncStorage.getItem('accessToken');
-            
+
             if (!token) {
                 token = await AsyncStorage.getItem('token');
             }
-            
+
             if (!token) {
                 token = await AsyncStorage.getItem('authToken');
             }
-            
+
             if (!token) {
                 console.error('❌ No authentication token found in storage');
                 console.log('📋 Available storage keys:');
-                
+
                 // Debug: list all storage keys
                 try {
                     const keys = await AsyncStorage.getAllKeys();
                     console.log('🔑 Storage keys:', keys);
-                    
+
                     // Try to find any key that might contain token
                     for (const key of keys) {
                         const value = await AsyncStorage.getItem(key);
@@ -860,12 +871,12 @@ class WebSocketService {
                 } catch (debugError) {
                     console.error('❌ Error debugging storage:', debugError);
                 }
-                
+
                 if (!token) {
                     throw new Error('No authentication token found');
                 }
             }
-            
+
             console.log('✅ Found token:', token ? token.substring(0, 50) + '...' : 'null');
             return await this.connect();
         } catch (error) {
@@ -877,22 +888,22 @@ class WebSocketService {
     // Disconnect
     disconnect() {
         console.log('🔌 Disconnecting WebSocket...');
-        
+
         if (this.client && this.connected) {
             this.client.disconnect(() => {
                 console.log('WebSocket disconnected');
             });
         }
-        
+
         this.connected = false;
         this.connecting = false;
         this.client = null;
         this.currentUser = null;
-        
+
         if (this.eventListeners) {
             this.eventListeners.clear();
         }
-        
+
         this._notifyListeners('connectionStatus', 'disconnected');
     }
 
@@ -905,20 +916,20 @@ class WebSocketService {
         }
 
         const startTime = Date.now();
-        
+
         while (Date.now() - startTime < maxWaitTime) {
-            if (this.client && 
-                this.client.connected && 
-                this.client.ws && 
+            if (this.client &&
+                this.client.connected &&
+                this.client.ws &&
                 this.client.ws.readyState === 1) { // WebSocket.OPEN = 1
                 console.log('✅ STOMP client is ready for sending messages');
                 return true;
             }
-            
+
             console.log('⏳ Waiting for STOMP client to be ready...');
             await new Promise(resolve => setTimeout(resolve, 100)); // Wait 100ms
         }
-        
+
         console.warn('⚠️ STOMP client readiness timeout');
         throw new Error('STOMP client not ready after waiting');
     }

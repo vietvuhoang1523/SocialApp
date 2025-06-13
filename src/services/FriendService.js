@@ -137,20 +137,16 @@ class FriendService {
      */
     async getFriends() {
         try {
-            // const response = await this.api.get('/friends');
-            // return response.data;
-            // Đảm bảo endpoint này trả về danh sách bạn bè, không phải posts
-            console.log('Calling friends API...');
-            const response = await this.api.get('/friends'); // Kiểm tra lại endpoint này
-            console.log('Response from friends API:', response.data);
+            console.log('🔄 Calling getFriends API...');
+            const response = await this.api.get('/friends');
+            console.log('✅ Friends API response:', JSON.stringify(response.data, null, 2));
             return response.data;
         } catch (error) {
-            console.error('Error getting friends:', error);
+            console.error('❌ Error getting friends:', error);
+            console.error('❌ Error details:', error.response?.data || error.message);
             throw error;
         }
     }
-
-
 
     /**
      * Lấy danh sách yêu cầu kết bạn đã gửi

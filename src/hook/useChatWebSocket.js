@@ -47,8 +47,8 @@ const useChatWebSocket = (currentUserId, receiverId, handleNewWebSocketMessage) 
         if (!currentUserId || !receiverId) {
             console.log('⚠️ Missing user IDs, không thể kết nối WebSocket');
             console.log('currentUserId:', currentUserId, 'receiverId:', receiverId);
-            return;
-        }
+                    return;
+                }
 
         connectionKey.current = `chat_${currentUserId}_${receiverId}`;
         console.log(`🔌 Khởi tạo WebSocket connection: ${connectionKey.current}`);
@@ -115,15 +115,15 @@ const useChatWebSocket = (currentUserId, receiverId, handleNewWebSocketMessage) 
                 
                 // Auto clear typing after 3 seconds
                 if (notification.isTyping) {
-                    if (typingTimeoutRef.current) {
-                        clearTimeout(typingTimeoutRef.current);
-                    }
-                    typingTimeoutRef.current = setTimeout(() => {
+                            if (typingTimeoutRef.current) {
+                                clearTimeout(typingTimeoutRef.current);
+                            }
+                            typingTimeoutRef.current = setTimeout(() => {
                         setIsOtherUserTyping(false);
-                    }, 3000);
-                }
-            }
-        };
+                            }, 3000);
+                        }
+                    }
+                };
 
         // Hàm xử lý kết nối thành công
         const handleConnection = () => {
@@ -279,8 +279,8 @@ const useChatWebSocket = (currentUserId, receiverId, handleNewWebSocketMessage) 
         try {
             if (!webSocketService.isConnected()) {
                 console.warn('⚠️ WebSocket not connected, cannot send typing notification');
-                return false;
-            }
+            return false;
+        }
 
             const success = await webSocketService.sendTyping(receiverId, isTypingNow);
             if (success) {

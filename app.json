@@ -11,17 +11,18 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Ứng dụng cần truy cập vị trí để hiển thị nội dung phù hợp với khu vực của bạn."
+      }
     },
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#ffffff"
-      }
+      },
+      "permissions": ["ACCESS_FINE_LOCATION"]
     },
-    "web": {
-    },
-    "plugins": [
-
-    ]
+    "plugins": ["expo-location"],
+    "web": {}
   }
 }

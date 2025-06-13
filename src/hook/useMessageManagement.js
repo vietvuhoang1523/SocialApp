@@ -145,13 +145,11 @@ const useMessageManagement = (currentUser, user) => {
                 console.log(`✅ Fetched ${latestMessages.length} latest messages`);
 
                 setMessages(prev => {
-                    // Only add truly new messages
+                    // Chỉ thêm các message thực sự mới vào đầu mảng
                     const newMessages = latestMessages.filter(msg => !processedMessageIds.current.has(msg.id));
                     newMessages.forEach(msg => processedMessageIds.current.add(msg.id));
-                    
                     if (newMessages.length > 0) {
-                        console.log(`📨 Adding ${newMessages.length} new messages`);
-                        return [...newMessages, ...prev];
+                        return [...newMessages, ...prev]; // mới nhất đầu mảng
                     }
                     return prev;
                 });
@@ -185,54 +183,14 @@ const useMessageManagement = (currentUser, user) => {
             console.log('⚠️ Invalid WebSocket message received');
             return;
         }
-
         // Check if message already exists
         if (processedMessageIds.current.has(newMessage.id)) {
             console.log(`🔄 Message ${newMessage.id} already exists, skipping`);
             return;
         }
-
         console.log(`📨 New WebSocket message: ${newMessage.id} from ${newMessage.senderId}`);
-        
-        // Add to processed set
         processedMessageIds.current.add(newMessage.id);
-        
-        // ⚡ FIX: Better handling of temporary vs real messages
-        setMessages(prev => {
-            // Remove any temporary/sending messages from the same sender with similar content
-            const withoutTempMessages = prev.filter(msg => {
-                // Keep message if it's not temporary/sending/sent
-                if (!msg.isSending && !msg.isSent && !msg.id?.startsWith('temp_')) {
-                    return true;
-                }
-                
-                // Remove temporary/sent message if it's from same sender and has similar content
-                const isSameSender = msg.senderId === newMessage.senderId;
-                const hasSimilarContent = msg.content?.trim() === newMessage.content?.trim();
-                const isRecent = Math.abs(new Date(newMessage.timestamp) - new Date(msg.timestamp)) < 30000; // Within 30 seconds
-                
-                if (isSameSender && hasSimilarContent && isRecent) {
-                    console.log(`🗑️ Replacing temporary/sent message ${msg.id} with real message ${newMessage.id}`);
-                    return false;
-                }
-                
-                return true;
-            });
-            
-            // ⚡ FIX: Check if this message might be replacing a temporary message
-            const existingTempMessage = prev.find(msg => 
-                msg.senderId === newMessage.senderId &&
-                msg.content?.trim() === newMessage.content?.trim() &&
-                (msg.isSending || msg.isSent || msg.id?.startsWith('temp_')) &&
-                Math.abs(new Date(newMessage.timestamp) - new Date(msg.timestamp)) < 30000
-            );
-            
-            if (existingTempMessage) {
-                console.log(`🔄 Real message ${newMessage.id} arrived, replacing temporary message ${existingTempMessage.id}`);
-            }
-            
-            return [newMessage, ...withoutTempMessages];
-        });
+        setMessages(prev => [newMessage, ...prev]); // luôn thêm vào đầu mảng
     }, []);
 
     // 🧹 Cleanup on unmount
