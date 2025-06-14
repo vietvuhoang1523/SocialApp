@@ -10,6 +10,7 @@ import ProfileScreen from "../screens/profile/ProfileScreen";
 import NotificationsScreen from "../screens/NotificationsScreen";
 import CreatePostScreen from "../screens/CreatePostScreen";
 import ReelsScreen from "../screens/Login/ReelsScreen";
+import SportsAvailabilityScreen from "../screens/sports/SportsAvailabilityScreen";
 
 
 const Tab = createBottomTabNavigator();
@@ -36,6 +37,9 @@ export default function MainTabNavigator() {
                         case 'Profile':
                             iconName = focused ? 'account' : 'account-outline';
                             break;
+                        case 'Sports':
+                            iconName = focused ? 'basketball' : 'basketball-outline';
+                            break;
                     }
                     return <Icon name={iconName} size={size} color={color} />;
                 },
@@ -48,6 +52,7 @@ export default function MainTabNavigator() {
             <Tab.Screen name="Home" component={InstagramHomeScreen} />
             <Tab.Screen name="Search" component={ReelsScreen} />
             <Tab.Screen name="CreatePost" component={CreatePostScreen} />
+            <Tab.Screen name="Sports" component={SportsAvailabilityScreen} />
             <Tab.Screen name="Notifications" component={NotificationsScreen} />
             <Tab.Screen name="Profile" component={ProfileScreen} />
         </Tab.Navigator>

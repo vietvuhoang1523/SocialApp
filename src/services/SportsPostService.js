@@ -62,27 +62,27 @@ class SportsPostService {
             
             // Try methods in order, catching failures until one works
             try {
-                // Option 1: Try simple GET to /api/sports-posts
-                console.log('Attempting GET to /api/sports-posts');
-                response = await this.api.get('/api/sports-posts');
+                // Option 1: Try simple GET to /sports-posts
+                console.log('Attempting GET to /sports-posts');
+                response = await this.api.get('/sports-posts');
                 console.log('GET request successful');
             } catch (error1) {
-                console.warn('GET /api/sports-posts failed:', error1.message);
+                console.warn('GET /sports-posts failed:', error1.message);
                 
                 try {
-                    // Option 2: Try POST to /api/sports-posts/search
-                    console.log('Attempting POST to /api/sports-posts/search');
-                    response = await this.api.post('/api/sports-posts/search', {
+                    // Option 2: Try POST to /sports-posts/search
+                    console.log('Attempting POST to /sports-posts/search');
+                    response = await this.api.post('/sports-posts/search', {
                         page, size
                     });
                     console.log('POST request successful');
                 } catch (error2) {
-                    console.warn('POST /api/sports-posts/search failed:', error2.message);
+                    console.warn('POST /sports-posts/search failed:', error2.message);
                     
                     try {
-                        // Option 3: Try GET to /api/sports-posts/all
-                        console.log('Attempting GET to /api/sports-posts/all');
-                        response = await this.api.get('/api/sports-posts/all', {
+                        // Option 3: Try GET to /sports-posts/all
+                        console.log('Attempting GET to /sports-posts/all');
+                        response = await this.api.get('/sports-posts/all', {
                             params: { page, size }
                         });
                         console.log('Alternate GET request successful');
@@ -266,7 +266,7 @@ class SportsPostService {
     // Join/leave a sports post event
     async toggleJoin(postId) {
         try {
-            const response = await this.api.post(`/api/sports-posts/${postId}/join`);
+            const response = await this.api.post(`/sports-posts/${postId}/join`);
             return response.data;
         } catch (error) {
             this.handleError(error);
@@ -276,20 +276,70 @@ class SportsPostService {
     // Get sports post details
     async getSportsPostById(postId) {
         try {
-            const response = await this.api.get(`/api/sports-posts/${postId}`);
-            return response.data;
+            console.log(`🏀 Fetching sports post with ID: ${postId}`);
+            
+            if (!postId) {
+                console.error('Invalid postId provided:', postId);
+                return null;
+            }
+            
+            try {
+                const response = await this.api.get(`/sports-posts/${postId}`);
+                console.log(`✅ Successfully retrieved post ${postId}`);
+                return this.processPostsImageUrls([response.data])[0];
+            } catch (error) {
+                // Handle 404 errors gracefully
+                if (error.response && error.response.status === 404) {
+                    console.log(`⚠️ Post with ID ${postId} not found`);
+                    return null;
+                }
+                throw error; // Re-throw other errors
+            }
         } catch (error) {
+            console.error(`❌ Error fetching sports post ${postId}:`, error);
+            
+            if (error.response) {
+                console.error('📤 Response Status:', error.response.status);
+                console.error('📤 Response Data:', error.response.data);
+            }
+            
             this.handleError(error);
+            return null;
         }
     }
     
     // Get participants for a sports post
     async getParticipants(postId) {
         try {
-            const response = await this.api.get(`/api/sports-posts/${postId}/participants`);
-            return response.data;
+            console.log(`👥 Fetching participants for sports post with ID: ${postId}`);
+            
+            if (!postId) {
+                console.error('Invalid postId provided for participants:', postId);
+                return [];
+            }
+            
+            try {
+                const response = await this.api.get(`/sports-posts/${postId}/participants`);
+                console.log(`✅ Successfully retrieved ${response.data?.length || 0} participants for post ${postId}`);
+                return response.data || [];
+            } catch (error) {
+                // Handle 404 errors gracefully
+                if (error.response && error.response.status === 404) {
+                    console.log(`⚠️ No participants found for post ID ${postId}`);
+                    return [];
+                }
+                throw error; // Re-throw other errors
+            }
         } catch (error) {
+            console.error(`❌ Error fetching participants for post ${postId}:`, error);
+            
+            if (error.response) {
+                console.error('📤 Response Status:', error.response.status);
+                console.error('📤 Response Data:', error.response.data);
+            }
+            
             this.handleError(error);
+            return [];
         }
     }
     
@@ -319,7 +369,7 @@ class SportsPostService {
             
             console.log('🏀 Creating sports post with form data');
             
-            const response = await this.api.post('/api/sports-posts', formData, {
+            const response = await this.api.post('/sports-posts', formData, {
                 headers: FORM_DATA_HEADERS
             });
             

@@ -34,6 +34,11 @@ import SportsProfileScreen from "./src/screens/profile/SportsProfileScreen";
 import SportsMatchingScreen from "./src/screens/profile/SportsMatchingScreen";
 import SportsPostDetailScreen from "./src/screens/SportsPostDetailScreen";
 
+// Import Sports Availability screens
+import SportsAvailabilityScreen from "./src/screens/sports/SportsAvailabilityScreen";
+import CreateSportsAvailabilityScreen from "./src/screens/sports/CreateSportsAvailabilityScreen";
+import SportsAvailabilityDetailScreen from "./src/screens/sports/SportsAvailabilityDetailScreen";
+
 // Import Location screens
 import UserLocationController from "./src/screens/profile/UserLocationController";
 import SimpleLocationController from "./src/screens/profile/SimpleLocationController";
@@ -54,6 +59,7 @@ import webSocketService from './src/services/WebSocketService';
 import AuthService from './src/services/AuthService';
 //
 import { ProfileProvider } from './src/components/ProfileContext';
+import { ThemeProvider } from './src/hook/ThemeContext';
 import CommentsScreen from "./src/screens/CommentsScreen";
 import EditPostScreen from "./src/screens/EditPostScreen";
 
@@ -244,6 +250,23 @@ export default function App() {
             component={CommentsScreen}
             options={{ headerShown: false }}
         />
+        
+        {/* Sports Availability Screens */}
+        <Stack.Screen
+            name="SportsAvailability"
+            component={SportsAvailabilityScreen}
+            options={{ headerShown: false }}
+        />
+        <Stack.Screen
+            name="CreateSportsAvailability"
+            component={CreateSportsAvailabilityScreen}
+            options={{ headerShown: false }}
+        />
+        <Stack.Screen
+            name="SportsAvailabilityDetail"
+            component={SportsAvailabilityDetailScreen}
+            options={{ headerShown: false }}
+        />
         <Stack.Screen
             name="EditPost"
             component={EditPostScreen}
@@ -299,9 +322,11 @@ export default function App() {
 
   return (
       <ProfileProvider>
-          <NavigationContainer>
-              {AppNavigator}
-          </NavigationContainer>
+          <ThemeProvider>
+              <NavigationContainer>
+                  {AppNavigator}
+              </NavigationContainer>
+          </ThemeProvider>
       </ProfileProvider>
   );
 }

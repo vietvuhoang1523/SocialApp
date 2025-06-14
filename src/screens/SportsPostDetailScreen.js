@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
     View,
     Text,
@@ -33,24 +33,54 @@ const SportsPostDetailScreen = ({ route, navigation }) => {
     const [participantCount, setParticipantCount] = useState(0);
     const [actionLoading, setActionLoading] = useState(false);
     const [showFullDescription, setShowFullDescription] = useState(false);
+    const [fetchError, setFetchError] = useState(false);
+    const fetchAttemptRef = useRef(0);
+    const MAX_RETRY_COUNT = 1; // Only try once, no retries
 
     useEffect(() => {
         fetchSportsPostData();
     }, []);
 
     const fetchSportsPostData = async () => {
+        // Check if we've already tried MAX_RETRY_COUNT times
+        if (fetchAttemptRef.current >= MAX_RETRY_COUNT) {
+            console.log('Maximum retry attempts reached for post ID:', postId);
+            setLoading(false);
+            setFetchError(true);
+            return;
+        }
+        
+        fetchAttemptRef.current += 1;
+        
         try {
             setLoading(true);
             const response = await SportsPostService.getSportsPostById(postId);
+            
+            // Check if the response exists and is valid
+            if (!response) {
+                console.log('No data received for post ID:', postId);
+                setFetchError(true);
+                setLoading(false);
+                return;
+            }
+            
             setPost(response);
             setIsJoined(response.isParticipant || false);
             setParticipantCount(response.participantCount || 0);
             
-            // Also fetch participants
-            const participantsData = await SportsPostService.getParticipants(postId);
-            setParticipants(participantsData || []);
+            // Only fetch participants if we have a valid post
+            if (response.id) {
+                try {
+                    const participantsData = await SportsPostService.getParticipants(postId);
+                    setParticipants(participantsData || []);
+                } catch (participantsError) {
+                    console.error('Error fetching participants:', participantsError);
+                    // Continue with the post data even if participants can't be fetched
+                }
+            }
         } catch (error) {
-            console.error('Lỗi khi tải bài đăng thể thao:', error);
+            console.error('Error loading sports post:', error);
+            setFetchError(true);
             Alert.alert('Lỗi', 'Không thể tải thông tin bài đăng. Vui lòng thử lại sau.');
         } finally {
             setLoading(false);
@@ -163,7 +193,7 @@ const SportsPostDetailScreen = ({ route, navigation }) => {
         );
     }
 
-    if (!post) {
+    if (!post || fetchError) {
         return (
             <SafeAreaView style={styles.errorContainer}>
                 <MaterialIcons name="error-outline" size={60} color="#ff6b6b" />

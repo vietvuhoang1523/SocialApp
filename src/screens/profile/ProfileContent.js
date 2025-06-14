@@ -38,6 +38,10 @@ const SportsProfileSection = ({ navigation, userProfile }) => {
             currentUser: userProfile
         });
     };
+    
+    const handleNavigateToSportsAvailability = () => {
+        navigation.navigate('SportsAvailability');
+    };
 
     return (
         <View style={styles.sportsProfileSection}>
@@ -72,6 +76,20 @@ const SportsProfileSection = ({ navigation, userProfile }) => {
                     >
                         <Ionicons name="search" size={20} color="#fff" />
                         <Text style={styles.sportsButtonText}>Tìm đối tác</Text>
+                    </LinearGradient>
+                </TouchableOpacity>
+                
+                <TouchableOpacity 
+                    style={styles.sportsButton}
+                    onPress={handleNavigateToSportsAvailability}
+                    activeOpacity={0.8}
+                >
+                    <LinearGradient
+                        colors={['#4CAF50', '#388E3C']}
+                        style={styles.sportsButtonGradient}
+                    >
+                        <Ionicons name="calendar" size={20} color="#fff" />
+                        <Text style={styles.sportsButtonText}>Lịch chơi thể thao</Text>
                     </LinearGradient>
                 </TouchableOpacity>
             </View>

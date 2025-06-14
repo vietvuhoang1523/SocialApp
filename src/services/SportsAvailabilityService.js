@@ -53,7 +53,7 @@ class SportsAvailabilityService {
         try {
             console.log(`🏀 Fetching sports availabilities with page=${page} and size=${size}`);
             
-            const response = await this.api.post('/api/sports-availability/search', {
+            const response = await this.api.post('/sports-availability/search', {
                 page,
                 size,
                 ...filters
@@ -114,7 +114,7 @@ class SportsAvailabilityService {
     // Get availability details
     async getAvailabilityById(id) {
         try {
-            const response = await this.api.get(`/api/sports-availability/${id}`);
+            const response = await this.api.get(`/sports-availability/${id}`);
             return response.data;
         } catch (error) {
             this.handleError(error);
@@ -126,7 +126,7 @@ class SportsAvailabilityService {
         try {
             console.log('🏀 Creating sports availability with data:', data);
             
-            const response = await this.api.post('/api/sports-availability', data);
+            const response = await this.api.post('/sports-availability', data);
             
             console.log('✅ Sports availability created successfully:', response.data);
             
@@ -142,7 +142,7 @@ class SportsAvailabilityService {
         try {
             console.log(`🏀 Updating sports availability ${id} with data:`, data);
             
-            const response = await this.api.put(`/api/sports-availability/${id}`, data);
+            const response = await this.api.put(`/sports-availability/${id}`, data);
             
             console.log('✅ Sports availability updated successfully:', response.data);
             
@@ -156,7 +156,7 @@ class SportsAvailabilityService {
     // Cancel a sports availability
     async cancelAvailability(id, reason = '') {
         try {
-            const response = await this.api.post(`/api/sports-availability/${id}/cancel`, { reason });
+            const response = await this.api.post(`/sports-availability/${id}/cancel`, { reason });
             return response.data;
         } catch (error) {
             this.handleError(error);
@@ -166,7 +166,7 @@ class SportsAvailabilityService {
     // Request a match with another availability
     async requestMatch(availabilityId, targetAvailabilityId, message = '') {
         try {
-            const response = await this.api.post(`/api/sports-availability/${availabilityId}/match-request`, {
+            const response = await this.api.post(`/sports-availability/${availabilityId}/match-request`, {
                 targetAvailabilityId,
                 message
             });
@@ -179,7 +179,7 @@ class SportsAvailabilityService {
     // Get match requests for an availability
     async getMatchRequests(availabilityId) {
         try {
-            const response = await this.api.get(`/api/sports-availability/${availabilityId}/match-requests`);
+            const response = await this.api.get(`/sports-availability/${availabilityId}/match-requests`);
             return response.data;
         } catch (error) {
             this.handleError(error);
@@ -189,7 +189,7 @@ class SportsAvailabilityService {
     // Accept a match request
     async acceptMatchRequest(requestId) {
         try {
-            const response = await this.api.post(`/api/match-requests/${requestId}/accept`);
+            const response = await this.api.post(`/match-requests/${requestId}/accept`);
             return response.data;
         } catch (error) {
             this.handleError(error);
@@ -199,7 +199,7 @@ class SportsAvailabilityService {
     // Reject a match request
     async rejectMatchRequest(requestId, reason = '') {
         try {
-            const response = await this.api.post(`/api/match-requests/${requestId}/reject`, { reason });
+            const response = await this.api.post(`/match-requests/${requestId}/reject`, { reason });
             return response.data;
         } catch (error) {
             this.handleError(error);
