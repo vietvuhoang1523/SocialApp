@@ -1,5 +1,5 @@
 // src/screens/NotificationsScreen.js
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
     View,
     Text,
@@ -7,203 +7,196 @@ import {
     FlatList,
     Image,
     TouchableOpacity,
-    SafeAreaView
+    SafeAreaView,
+    ActivityIndicator,
+    RefreshControl,
+    Alert,
 } from 'react-native';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import { MaterialIcons, Ionicons } from 'react-native-vector-icons';
+import { useNotifications } from '../components/NotificationContext';
+import moment from 'moment';
+import 'moment/locale/vi';
 
-// Dữ liệu mẫu cho các thông báo
-const MOCK_NOTIFICATIONS = [
-    {
-        id: '1',
-        type: 'like',
-        user: {
-            id: '1',
-            username: 'sarah_designs',
-            profilePicture: 'https://randomuser.me/api/portraits/women/12.jpg'
-        },
-        content: 'đã thích ảnh của bạn',
-        postImage: 'https://picsum.photos/id/237/200/200',
-        time: '5 phút trước',
-        isNew: true
-    },
-    {
-        id: '2',
-        type: 'follow',
-        user: {
-            id: '2',
-            username: 'john_doe',
-            profilePicture: 'https://randomuser.me/api/portraits/men/32.jpg'
-        },
-        content: 'đã bắt đầu theo dõi bạn',
-        time: '15 phút trước',
-        isNew: true
-    },
-    {
-        id: '3',
-        type: 'comment',
-        user: {
-            id: '3',
-            username: 'travel_lover',
-            profilePicture: 'https://randomuser.me/api/portraits/women/68.jpg'
-        },
-        content: 'đã bình luận: "Tuyệt vời quá! 😍"',
-        postImage: 'https://picsum.photos/id/430/200/200',
-        time: '1 giờ trước',
-        isNew: true
-    },
-    {
-        id: '4',
-        type: 'mention',
-        user: {
-            id: '4',
-            username: 'mike_photo',
-            profilePicture: 'https://randomuser.me/api/portraits/men/44.jpg'
-        },
-        content: 'đã nhắc đến bạn trong một bình luận',
-        time: '2 giờ trước',
-        isNew: false
-    },
-    {
-        id: '5',
-        type: 'like_comment',
-        user: {
-            id: '5',
-            username: 'foodie_girl',
-            profilePicture: 'https://randomuser.me/api/portraits/women/65.jpg'
-        },
-        content: 'đã thích bình luận của bạn',
-        time: '3 giờ trước',
-        isNew: false
-    },
-    {
-        id: '6',
-        type: 'follow_request',
-        user: {
-            id: '6',
-            username: 'fitness_coach',
-            profilePicture: 'https://randomuser.me/api/portraits/men/29.jpg'
-        },
-        content: 'đã yêu cầu theo dõi bạn',
-        time: '5 giờ trước',
-        isNew: false
-    },
-    {
-        id: '7',
-        type: 'suggestion',
-        title: 'Gợi ý cho bạn',
-        users: [
-            {
-                id: '7',
-                username: 'art_gallery',
-                profilePicture: 'https://randomuser.me/api/portraits/women/22.jpg'
-            },
-            {
-                id: '8',
-                username: 'tech_geek',
-                profilePicture: 'https://randomuser.me/api/portraits/men/67.jpg'
-            },
-            {
-                id: '9',
-                username: 'nature_pics',
-                profilePicture: 'https://randomuser.me/api/portraits/women/17.jpg'
-            }
-        ],
-        time: 'Hôm nay',
-        isNew: false
-    },
-    {
-        id: '8',
-        type: 'like',
-        user: {
-            id: '10',
-            username: 'music_lover',
-            profilePicture: 'https://randomuser.me/api/portraits/women/89.jpg'
-        },
-        content: 'và 25 người khác đã thích ảnh của bạn',
-        postImage: 'https://picsum.photos/id/1005/200/200',
-        time: '1 ngày trước',
-        isNew: false
-    },
-    {
-        id: '9',
-        type: 'tag',
-        user: {
-            id: '11',
-            username: 'world_traveler',
-            profilePicture: 'https://randomuser.me/api/portraits/men/55.jpg'
-        },
-        content: 'đã gắn thẻ bạn trong một bài viết',
-        postImage: 'https://picsum.photos/id/177/200/200',
-        time: '2 ngày trước',
-        isNew: false
-    }
-];
+moment.locale('vi'); // Set locale to Vietnamese
 
-// Component chính
 const NotificationsScreen = ({ navigation }) => {
-    const [notifications, setNotifications] = useState([]);
-    const [activeTab, setActiveTab] = useState('all'); // 'all' hoặc 'you'
+    const [activeTab, setActiveTab] = useState('all'); // 'all' or 'you'
 
+    // Use the notification context
+    const { 
+        notifications, 
+        loading, 
+        hasMore,
+        unreadCount,
+        fetchNotifications,
+        markAsRead, 
+        markAllAsRead,
+        deleteNotification,
+        refreshNotifications
+    } = useNotifications();
+    
+    // Load notifications when the screen is first rendered
     useEffect(() => {
-        // Trong ứng dụng thực tế, bạn sẽ lấy thông báo từ API
-        setNotifications(MOCK_NOTIFICATIONS);
+        fetchNotifications(true);
     }, []);
 
-    // Hiển thị từng thông báo dựa trên loại
-    const renderNotification = ({ item }) => {
-        // Nếu là thông báo loại gợi ý
-        if (item.type === 'suggestion') {
-            return (
-                <View style={styles.suggestionContainer}>
-                    <Text style={styles.suggestionTitle}>{item.title}</Text>
-                    <FlatList
-                        horizontal
-                        data={item.users}
-                        keyExtractor={(user) => user.id}
-                        renderItem={({ item: user }) => (
-                            <View style={styles.suggestionUser}>
-                                <Image source={{ uri: user.profilePicture }} style={styles.suggestionUserImage} />
-                                <Text style={styles.suggestionUsername}>{user.username}</Text>
-                                <TouchableOpacity style={styles.followButton}>
-                                    <Text style={styles.followButtonText}>Theo dõi</Text>
-                                </TouchableOpacity>
-                            </View>
-                        )}
-                        showsHorizontalScrollIndicator={false}
-                    />
-                </View>
-            );
+    // Handle mark all as read
+    const handleMarkAllAsRead = async () => {
+        try {
+            await markAllAsRead();
+            Alert.alert('Thành công', 'Đã đánh dấu tất cả thông báo là đã đọc');
+        } catch (error) {
+            Alert.alert('Lỗi', 'Không thể đánh dấu tất cả thông báo là đã đọc');
         }
-
-        // Thông báo thông thường
+    };
+    
+    // Handle notification press
+    const handleNotificationPress = async (notification) => {
+        // Mark notification as read
+        if (!notification.read) {
+            await markAsRead(notification.id);
+        }
+        
+        // Navigate based on notification type
+        switch (notification.type) {
+            case 'LIKE_POST':
+                navigation.navigate('Post', { postId: notification.referenceId });
+                break;
+            case 'COMMENT':
+                navigation.navigate('Comments', { postId: notification.referenceId });
+                break;
+            case 'FOLLOW':
+            case 'FOLLOW_REQUEST':
+                navigation.navigate('UserProfileScreen', { userId: notification.actorId });
+                break;
+            case 'MESSAGE':
+                navigation.navigate('NewChatScreen', { userId: notification.actorId });
+                break;
+            case 'SPORTS_EVENT':
+                navigation.navigate('SportsPostDetailScreen', { postId: notification.referenceId });
+                break;
+            case 'SPORTS_MATCH':
+                navigation.navigate('SportsAvailabilityDetail', { availabilityId: notification.referenceId });
+                break;
+            default:
+                // Default action if type is not recognized
+                console.log('No specific action for notification type:', notification.type);
+        }
+    };
+    
+    // Handle notification delete
+    const handleNotificationDelete = async (notificationId) => {
+        Alert.alert(
+            'Xác nhận',
+            'Bạn có chắc chắn muốn xóa thông báo này?',
+            [
+                {
+                    text: 'Hủy',
+                    style: 'cancel'
+                },
+                {
+                    text: 'Xóa',
+                    onPress: async () => {
+                        try {
+                            await deleteNotification(notificationId);
+                        } catch (error) {
+                            Alert.alert('Lỗi', 'Không thể xóa thông báo');
+                        }
+                    },
+                    style: 'destructive'
+                }
+            ]
+        );
+    };
+    
+    // Convert API notification to UI format
+    const formatNotification = (notification) => {
+        const { id, type, actorName, actorAvatar, content, createdAt, read } = notification;
+        
+        return {
+            id,
+            type,
+            user: {
+                id: notification.actorId,
+                username: actorName,
+                profilePicture: actorAvatar || 'https://randomuser.me/api/portraits/men/1.jpg'
+            },
+            content: content || getDefaultContent(type),
+            postImage: notification.imageUrl,
+            time: moment(createdAt).fromNow(),
+            isNew: !read,
+            referenceId: notification.referenceId,
+            actorId: notification.actorId
+        };
+    };
+    
+    // Get default content based on notification type
+    const getDefaultContent = (type) => {
+        switch (type) {
+            case 'LIKE_POST':
+                return 'đã thích bài viết của bạn';
+            case 'COMMENT':
+                return 'đã bình luận về bài viết của bạn';
+            case 'FOLLOW':
+                return 'đã bắt đầu theo dõi bạn';
+            case 'FOLLOW_REQUEST':
+                return 'đã yêu cầu theo dõi bạn';
+            case 'MESSAGE':
+                return 'đã gửi cho bạn một tin nhắn';
+            case 'SPORTS_EVENT':
+                return 'đã mời bạn tham gia sự kiện thể thao';
+            case 'SPORTS_MATCH':
+                return 'đã khớp với lịch chơi thể thao của bạn';
+            default:
+                return 'đã tương tác với bạn';
+        }
+    };
+    
+    // Load more notifications when reaching the end
+    const handleLoadMore = () => {
+        if (!loading && hasMore) {
+            fetchNotifications();
+        }
+    };
+    
+    // Refresh notifications
+    const handleRefresh = () => {
+        refreshNotifications();
+    };
+    
+    // Render a notification item
+    const renderNotification = ({ item }) => {
+        const formattedItem = item.user ? item : formatNotification(item);
+        
         return (
             <TouchableOpacity
-                style={[styles.notificationItem, item.isNew && styles.newNotification]}
-                onPress={() => {
-                    // Xử lý khi người dùng nhấn vào thông báo
-                    // Ví dụ: navigation.navigate('Post', { postId: ... })
-                }}
+                style={[styles.notificationItem, formattedItem.isNew && styles.newNotification]}
+                onPress={() => handleNotificationPress(item)}
+                onLongPress={() => handleNotificationDelete(item.id)}
             >
-                <Image source={{ uri: item.user.profilePicture }} style={styles.userImage} />
+                <Image source={{ uri: formattedItem.user.profilePicture }} style={styles.userImage} />
 
                 <View style={styles.notificationContent}>
                     <Text style={styles.notificationText}>
-                        <Text style={styles.username}>{item.user.username}</Text> {item.content}
+                        <Text style={styles.username}>{formattedItem.user.username}</Text> {formattedItem.content}
                     </Text>
-                    <Text style={styles.timeText}>{item.time}</Text>
+                    <Text style={styles.timeText}>{formattedItem.time}</Text>
                 </View>
 
-                {item.postImage && (
-                    <Image source={{ uri: item.postImage }} style={styles.postThumbnail} />
+                {formattedItem.postImage && (
+                    <Image source={{ uri: formattedItem.postImage }} style={styles.postThumbnail} />
                 )}
 
-                {item.type === 'follow' && (
-                    <TouchableOpacity style={styles.actionButton}>
-                        <Text style={styles.actionButtonText}>Theo dõi lại</Text>
+                {formattedItem.type === 'FOLLOW' && (
+                    <TouchableOpacity 
+                        style={styles.actionButton}
+                        onPress={() => navigation.navigate('UserProfileScreen', { userId: formattedItem.actorId })}
+                    >
+                        <Text style={styles.actionButtonText}>Xem hồ sơ</Text>
                     </TouchableOpacity>
                 )}
 
-                {item.type === 'follow_request' && (
+                {formattedItem.type === 'FOLLOW_REQUEST' && (
                     <View style={styles.requestButtonsContainer}>
                         <TouchableOpacity style={styles.acceptButton}>
                             <Text style={styles.acceptButtonText}>Chấp nhận</Text>
@@ -217,10 +210,20 @@ const NotificationsScreen = ({ navigation }) => {
         );
     };
 
-    // Header với các tab
+    // Header with tabs
     const renderHeader = () => (
         <View style={styles.headerContainer}>
+            <View style={styles.headerTitleRow}>
             <Text style={styles.title}>Thông báo</Text>
+                {unreadCount > 0 && (
+                    <TouchableOpacity 
+                        style={styles.markReadButton}
+                        onPress={handleMarkAllAsRead}
+                    >
+                        <Text style={styles.markReadText}>Đánh dấu tất cả đã đọc</Text>
+                    </TouchableOpacity>
+                )}
+            </View>
             <View style={styles.tabsContainer}>
                 <TouchableOpacity
                     style={[styles.tab, activeTab === 'all' && styles.activeTab]}
@@ -238,6 +241,37 @@ const NotificationsScreen = ({ navigation }) => {
         </View>
     );
 
+    // Empty state
+    const renderEmptyState = () => {
+        if (loading) {
+            return (
+                <View style={styles.emptyContainer}>
+                    <ActivityIndicator size="large" color="#E91E63" />
+                    <Text style={styles.emptyText}>Đang tải thông báo...</Text>
+                </View>
+            );
+        }
+        
+        return (
+            <View style={styles.emptyContainer}>
+                <Ionicons name="notifications-off-outline" size={60} color="#bbb" />
+                <Text style={styles.emptyTitle}>Không có thông báo</Text>
+                <Text style={styles.emptyText}>Bạn chưa có thông báo nào.</Text>
+            </View>
+        );
+    };
+    
+    // Render footer loader
+    const renderFooter = () => {
+        if (!loading || notifications.length === 0) return null;
+        
+        return (
+            <View style={styles.footerLoader}>
+                <ActivityIndicator size="small" color="#E91E63" />
+            </View>
+        );
+    };
+
     return (
         <SafeAreaView style={styles.container}>
             {renderHeader()}
@@ -245,9 +279,20 @@ const NotificationsScreen = ({ navigation }) => {
             <FlatList
                 data={notifications}
                 renderItem={renderNotification}
-                keyExtractor={(item) => item.id}
+                keyExtractor={(item) => item.id.toString()}
                 showsVerticalScrollIndicator={false}
-                contentContainerStyle={styles.notificationsList}
+                contentContainerStyle={notifications.length === 0 ? styles.emptyList : styles.notificationsList}
+                ListEmptyComponent={renderEmptyState}
+                ListFooterComponent={renderFooter}
+                onEndReached={handleLoadMore}
+                onEndReachedThreshold={0.5}
+                refreshControl={
+                    <RefreshControl 
+                        refreshing={loading && notifications.length > 0}
+                        onRefresh={handleRefresh}
+                        colors={["#E91E63"]}
+                    />
+                }
             />
         </SafeAreaView>
     );
@@ -256,63 +301,87 @@ const NotificationsScreen = ({ navigation }) => {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: 'white',
+        backgroundColor: '#f8f8f8',
     },
     headerContainer: {
-        paddingTop: 10,
-        paddingHorizontal: 15,
+        backgroundColor: 'white',
+        padding: 16,
         borderBottomWidth: 1,
-        borderBottomColor: '#EFEFEF',
+        borderBottomColor: '#eee',
+    },
+    headerTitleRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 10,
     },
     title: {
         fontSize: 24,
         fontWeight: 'bold',
-        marginBottom: 15,
+        color: '#333',
+    },
+    markReadButton: {
+        padding: 5,
+    },
+    markReadText: {
+        fontSize: 12,
+        color: '#2196F3',
     },
     tabsContainer: {
         flexDirection: 'row',
-        marginBottom: 5,
     },
     tab: {
-        marginRight: 20,
-        paddingBottom: 10,
+        marginRight: 16,
+        paddingBottom: 8,
+        paddingHorizontal: 4,
     },
     activeTab: {
         borderBottomWidth: 2,
-        borderBottomColor: 'black',
+        borderBottomColor: '#E91E63',
     },
     tabText: {
         fontSize: 16,
-        color: '#999',
+        color: '#666',
     },
     activeTabText: {
-        color: 'black',
+        color: '#E91E63',
         fontWeight: 'bold',
     },
     notificationsList: {
-        paddingTop: 10,
+        paddingHorizontal: 16,
+        paddingTop: 12,
+    },
+    emptyList: {
+        flexGrow: 1,
     },
     notificationItem: {
         flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: 15,
-        paddingVertical: 12,
+        padding: 12,
+        backgroundColor: 'white',
+        borderRadius: 8,
+        marginBottom: 12,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.05,
+        shadowRadius: 1,
+        elevation: 1,
     },
     newNotification: {
-        backgroundColor: '#FAFAFA',
+        backgroundColor: '#F8F1F6',
     },
     userImage: {
         width: 44,
         height: 44,
         borderRadius: 22,
-        marginRight: 12,
     },
     notificationContent: {
         flex: 1,
-        marginRight: 10,
+        marginLeft: 12,
+        justifyContent: 'center',
     },
     notificationText: {
         fontSize: 14,
+        color: '#333',
         lineHeight: 20,
     },
     username: {
@@ -321,89 +390,75 @@ const styles = StyleSheet.create({
     timeText: {
         fontSize: 12,
         color: '#999',
-        marginTop: 3,
+        marginTop: 4,
     },
     postThumbnail: {
         width: 44,
         height: 44,
+        borderRadius: 4,
+        marginLeft: 8,
     },
     actionButton: {
-        backgroundColor: '#0095F6',
+        backgroundColor: '#E91E63',
         paddingHorizontal: 12,
         paddingVertical: 6,
-        borderRadius: 4,
+        borderRadius: 20,
+        alignSelf: 'center',
+        marginLeft: 8,
     },
     actionButtonText: {
         color: 'white',
-        fontWeight: 'bold',
         fontSize: 12,
+        fontWeight: 'bold',
     },
     requestButtonsContainer: {
-        flexDirection: 'column',
         alignItems: 'center',
-        justifyContent: 'center',
+        marginLeft: 8,
     },
     acceptButton: {
-        backgroundColor: '#0095F6',
+        backgroundColor: '#E91E63',
         paddingHorizontal: 12,
         paddingVertical: 6,
-        borderRadius: 4,
+        borderRadius: 20,
         marginBottom: 6,
     },
     acceptButtonText: {
         color: 'white',
-        fontWeight: 'bold',
         fontSize: 12,
+        fontWeight: 'bold',
     },
     declineButton: {
-        backgroundColor: '#EFEFEF',
+        backgroundColor: '#eee',
         paddingHorizontal: 12,
         paddingVertical: 6,
-        borderRadius: 4,
+        borderRadius: 20,
     },
     declineButtonText: {
+        color: '#666',
         fontSize: 12,
     },
-    suggestionContainer: {
-        paddingHorizontal: 15,
-        paddingVertical: 15,
-        borderBottomWidth: 1,
-        borderBottomColor: '#EFEFEF',
+    emptyContainer: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        paddingHorizontal: 20,
+        paddingBottom: 100,
     },
-    suggestionTitle: {
+    emptyTitle: {
+        fontSize: 20,
+        fontWeight: 'bold',
+        color: '#333',
+        marginTop: 12,
+    },
+    emptyText: {
         fontSize: 16,
-        fontWeight: 'bold',
-        marginBottom: 15,
-    },
-    suggestionUser: {
-        alignItems: 'center',
-        marginRight: 20,
-        width: 100,
-    },
-    suggestionUserImage: {
-        width: 60,
-        height: 60,
-        borderRadius: 30,
-        marginBottom: 8,
-    },
-    suggestionUsername: {
-        fontSize: 12,
-        fontWeight: 'bold',
+        color: '#999',
         textAlign: 'center',
-        marginBottom: 8,
+        marginTop: 8,
     },
-    followButton: {
-        backgroundColor: '#0095F6',
-        paddingHorizontal: 15,
-        paddingVertical: 5,
-        borderRadius: 4,
-        width: '100%',
+    footerLoader: {
+        paddingVertical: 20,
         alignItems: 'center',
-    },
-    followButtonText: {
-        color: 'white',
-        fontWeight: 'bold',
-        fontSize: 12,
     },
 });
 
