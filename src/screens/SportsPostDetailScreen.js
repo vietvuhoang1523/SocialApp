@@ -71,8 +71,8 @@ const SportsPostDetailScreen = ({ route, navigation }) => {
             // Only fetch participants if we have a valid post
             if (response.id) {
                 try {
-                    const participantsData = await SportsPostService.getParticipants(postId);
-                    setParticipants(participantsData || []);
+            const participantsData = await SportsPostService.getParticipants(postId);
+            setParticipants(participantsData || []);
                 } catch (participantsError) {
                     console.error('Error fetching participants:', participantsError);
                     // Continue with the post data even if participants can't be fetched

@@ -250,6 +250,199 @@ class CreatePostService {
             this.handleError(error);
         }
     }
+
+    // Tìm kiếm bài đăng nâng cao
+    async advancedSearch(params = {}) {
+        try {
+            console.log('🔍 Đang thực hiện tìm kiếm nâng cao với tham số:', params);
+            
+            // Tham số tìm kiếm có thể bao gồm: keyword, category, startDate, endDate, userId, page, size
+            const response = await this.api.get('/posts/advanced-search', {
+                params: {
+                    ...params,
+                    page: params.page || 0,
+                    size: params.size || 10
+                }
+            });
+            
+            console.log('✅ Kết quả tìm kiếm nâng cao:', response.data);
+            return response.data;
+        } catch (error) {
+            console.error('❌ Lỗi khi tìm kiếm nâng cao:', error);
+            this.handleError(error);
+        }
+    }
+    
+    // Lọc bài đăng theo danh mục
+    async filterByCategory(category, page = 0, size = 10) {
+        try {
+            console.log(`🔍 Đang lọc bài đăng theo danh mục: ${category}`);
+            
+            const response = await this.api.get('/posts/filter', {
+                params: {
+                    category,
+                    page,
+                    size
+                }
+            });
+            
+            console.log('✅ Kết quả lọc theo danh mục:', response.data);
+            return response.data;
+        } catch (error) {
+            console.error(`❌ Lỗi khi lọc bài đăng theo danh mục ${category}:`, error);
+            this.handleError(error);
+        }
+    }
+    
+    // Xóa nhiều bài đăng cùng lúc
+    async deleteManyPosts(postIds = []) {
+        try {
+            if (!Array.isArray(postIds) || postIds.length === 0) {
+                throw new Error('Danh sách ID bài đăng không hợp lệ');
+            }
+            
+            console.log(`🗑️ Đang xóa ${postIds.length} bài đăng:`, postIds);
+            
+            const response = await this.api.delete('/posts/batch', {
+                data: { postIds }
+            });
+            
+            console.log('✅ Xóa nhiều bài đăng thành công');
+            return true;
+        } catch (error) {
+            console.error('❌ Lỗi khi xóa nhiều bài đăng:', error);
+            this.handleError(error);
+        }
+    }
+    
+    // Cập nhật bài đăng với nhiều ảnh
+    async updatePostWithMultipleImages(postId, postData) {
+        try {
+            console.log('🖼️ Đang gửi request cập nhật bài đăng với nhiều hình ảnh:', postData);
+
+            // Validate số lượng hình ảnh
+            if (postData.imageFiles && postData.imageFiles.length > 10) {
+                throw new Error('Chỉ được upload tối đa 10 hình ảnh');
+            }
+
+            // Tạo FormData để upload nhiều ảnh và dữ liệu
+            const formData = new FormData();
+
+            // Thêm nội dung
+            if (postData.content) {
+                formData.append('content', postData.content);
+            }
+
+            // Thêm nhiều hình ảnh nếu có
+            if (postData.imageFiles && postData.imageFiles.length > 0) {
+                console.log(`📷 Thêm ${postData.imageFiles.length} hình ảnh`);
+                postData.imageFiles.forEach((imageFile, index) => {
+                    console.log(`📸 Thêm hình ảnh ${index + 1}:`, imageFile);
+                    formData.append('imageFiles', {
+                        uri: imageFile.uri,
+                        type: imageFile.type || 'image/jpeg',
+                        name: imageFile.name || `image_${index + 1}.jpg`
+                    });
+                });
+            }
+
+            // Thêm loại bài đăng
+            if (postData.type) {
+                formData.append('type', postData.type);
+            }
+            
+            // Thêm tham số giữ lại ảnh cũ hoặc xóa ảnh cũ
+            if (postData.keepExistingImages !== undefined) {
+                formData.append('keepExistingImages', postData.keepExistingImages);
+            }
+
+            console.log('📤 FormData được tạo với nhiều hình ảnh');
+
+            // Gửi đến endpoint cập nhật với nhiều ảnh
+            const response = await this.api.put(`/posts/${postId}/multi-images`, formData, {
+                headers: {
+                    ...this.getHeaders(true),
+                    'Content-Type': 'multipart/form-data'
+                },
+                timeout: 120000 // Tăng timeout lên 2 phút cho multiple images
+            });
+
+            console.log('✅ Response từ updatePostWithMultipleImages:', response.data);
+            return response.data;
+        } catch (error) {
+            console.error('❌ Lỗi khi cập nhật bài đăng với nhiều hình ảnh:', error);
+            this.handleError(error);
+        }
+    }
+
+    // Lấy bài đăng theo danh mục
+    async getPostsByCategory(category, page = 0, size = 10) {
+        try {
+            console.log(`📂 Đang lấy bài đăng theo danh mục ${category}`);
+            
+            const response = await this.api.get(`/posts/category/${category}`, {
+                params: {
+                    page,
+                    size
+                }
+            });
+            
+            console.log(`✅ Đã lấy ${response.data?.content?.length || 0} bài đăng theo danh mục ${category}`);
+            return response.data;
+        } catch (error) {
+            console.error(`❌ Lỗi khi lấy bài đăng theo danh mục ${category}:`, error);
+            this.handleError(error);
+        }
+    }
+    
+    // Lưu bài đăng (bookmark)
+    async bookmarkPost(postId) {
+        try {
+            console.log(`🔖 Đang lưu bài đăng ${postId}`);
+            
+            const response = await this.api.post(`/posts/${postId}/bookmark`);
+            console.log('✅ Đã lưu bài đăng thành công');
+            return response.data;
+        } catch (error) {
+            console.error(`❌ Lỗi khi lưu bài đăng ${postId}:`, error);
+            this.handleError(error);
+        }
+    }
+    
+    // Hủy lưu bài đăng (unbookmark)
+    async unbookmarkPost(postId) {
+        try {
+            console.log(`🔖 Đang hủy lưu bài đăng ${postId}`);
+            
+            const response = await this.api.delete(`/posts/${postId}/bookmark`);
+            console.log('✅ Đã hủy lưu bài đăng thành công');
+            return response.data;
+        } catch (error) {
+            console.error(`❌ Lỗi khi hủy lưu bài đăng ${postId}:`, error);
+            this.handleError(error);
+        }
+    }
+    
+    // Lấy danh sách bài đăng đã lưu
+    async getBookmarkedPosts(page = 0, size = 10) {
+        try {
+            console.log(`🔖 Đang lấy danh sách bài đăng đã lưu`);
+            
+            const response = await this.api.get('/posts/bookmarks', {
+                params: {
+                    page,
+                    size
+                }
+            });
+            
+            console.log(`✅ Đã lấy ${response.data?.content?.length || 0} bài đăng đã lưu`);
+            return response.data;
+        } catch (error) {
+            console.error('❌ Lỗi khi lấy danh sách bài đăng đã lưu:', error);
+            this.handleError(error);
+        }
+    }
+
     // bai viet cua nguoi dung
     async getCurrentUserPosts(page = 0, limit = 10, order = 'desc') {
         try {
@@ -582,6 +775,134 @@ class CreatePostService {
             throw error;
         }
     }
+    
+    // Báo cáo bài viết
+    async reportPost(postId, reason, details = '') {
+        try {
+            console.log(`⚠️ Đang báo cáo bài viết ${postId} với lý do: ${reason}`);
+            
+            const response = await this.api.post(`/posts/${postId}/report`, {
+                reason,
+                details
+            });
+            
+            console.log('✅ Đã gửi báo cáo thành công');
+            return response.data;
+        } catch (error) {
+            console.error(`❌ Lỗi khi báo cáo bài viết ${postId}:`, error);
+            this.handleError(error);
+        }
+    }
+    
+    // Lấy danh sách các lý do báo cáo
+    async getReportReasons() {
+        try {
+            console.log('📋 Đang lấy danh sách lý do báo cáo');
+            
+            const response = await this.api.get('/posts/report-reasons');
+            console.log('✅ Đã lấy danh sách lý do báo cáo thành công');
+            return response.data;
+        } catch (error) {
+            console.error('❌ Lỗi khi lấy danh sách lý do báo cáo:', error);
+            this.handleError(error);
+            return [
+                'Nội dung không phù hợp',
+                'Spam',
+                'Quấy rối',
+                'Thông tin sai lệch',
+                'Vi phạm bản quyền',
+                'Khác'
+            ]; // Trả về danh sách mặc định nếu API lỗi
+        }
+    }
+    
+    // Thống kê bài viết theo thời gian
+    async getPostStatistics(timeframe = 'week') {
+        try {
+            console.log(`📊 Đang lấy thống kê bài viết theo ${timeframe}`);
+            
+            const response = await this.api.get('/posts/statistics', {
+                params: { timeframe }
+            });
+            
+            console.log('✅ Đã lấy thống kê bài viết thành công');
+            return response.data;
+        } catch (error) {
+            console.error(`❌ Lỗi khi lấy thống kê bài viết theo ${timeframe}:`, error);
+            this.handleError(error);
+        }
+    }
+    
+    // Lấy bài viết phổ biến
+    async getTrendingPosts(page = 0, size = 10) {
+        try {
+            console.log('🔥 Đang lấy bài viết phổ biến');
+            
+            const response = await this.api.get('/posts/trending', {
+                params: {
+                    page,
+                    size
+                }
+            });
+            
+            console.log(`✅ Đã lấy ${response.data?.content?.length || 0} bài viết phổ biến`);
+            
+            // Xử lý URL hình ảnh cho các bài đăng
+            const processedPosts = this.processPostsImageUrls(response.data);
+            
+            return {
+                ...response.data,
+                content: processedPosts
+            };
+        } catch (error) {
+            console.error('❌ Lỗi khi lấy bài viết phổ biến:', error);
+            this.handleError(error);
+        }
+    }
+    
+    // Lấy bài viết theo hashtag
+    async getPostsByHashtag(hashtag, page = 0, size = 10) {
+        try {
+            console.log(`#️⃣ Đang lấy bài viết theo hashtag: ${hashtag}`);
+            
+            const response = await this.api.get(`/posts/hashtag/${encodeURIComponent(hashtag)}`, {
+                params: {
+                    page,
+                    size
+                }
+            });
+            
+            console.log(`✅ Đã lấy ${response.data?.content?.length || 0} bài viết với hashtag #${hashtag}`);
+            
+            // Xử lý URL hình ảnh cho các bài đăng
+            const processedPosts = this.processPostsImageUrls(response.data);
+            
+            return {
+                ...response.data,
+                content: processedPosts
+            };
+        } catch (error) {
+            console.error(`❌ Lỗi khi lấy bài viết theo hashtag #${hashtag}:`, error);
+            this.handleError(error);
+        }
+    }
+    
+    // Lấy các hashtag phổ biến
+    async getTrendingHashtags(limit = 10) {
+        try {
+            console.log(`#️⃣ Đang lấy ${limit} hashtag phổ biến`);
+            
+            const response = await this.api.get('/posts/trending-hashtags', {
+                params: { limit }
+            });
+            
+            console.log('✅ Đã lấy hashtag phổ biến thành công');
+            return response.data;
+        } catch (error) {
+            console.error('❌ Lỗi khi lấy hashtag phổ biến:', error);
+            this.handleError(error);
+        }
+    }
 }
 
-export default  new CreatePostService();
+export default new CreatePostService();

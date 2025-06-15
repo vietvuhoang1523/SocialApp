@@ -283,8 +283,8 @@ class SportsPostService {
                 return null;
             }
             
-            try {
-                const response = await this.api.get(`/sports-posts/${postId}`);
+        try {
+            const response = await this.api.get(`/sports-posts/${postId}`);
                 console.log(`✅ Successfully retrieved post ${postId}`);
                 return this.processPostsImageUrls([response.data])[0];
             } catch (error) {
@@ -318,8 +318,8 @@ class SportsPostService {
                 return [];
             }
             
-            try {
-                const response = await this.api.get(`/sports-posts/${postId}/participants`);
+        try {
+            const response = await this.api.get(`/sports-posts/${postId}/participants`);
                 console.log(`✅ Successfully retrieved ${response.data?.length || 0} participants for post ${postId}`);
                 return response.data || [];
             } catch (error) {

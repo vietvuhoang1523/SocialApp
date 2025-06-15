@@ -1,7 +1,10 @@
 // src/navigation/MainTabNavigator.js
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import { View } from "react-native";
+import NotificationBadge from './common/NotificationBadge';
+import { useNotifications } from './NotificationContext';
 
 // Import your screens with correct paths
 import InstagramHomeScreen from "../screens/InstagramHomeScreen";
@@ -16,6 +19,9 @@ import SportsAvailabilityScreen from "../screens/sports/SportsAvailabilityScreen
 const Tab = createBottomTabNavigator();
 
 export default function MainTabNavigator() {
+    // Get notification count from context
+    const { unreadCount } = useNotifications();
+
     return (
         <Tab.Navigator
             screenOptions={({ route }) => ({
@@ -33,6 +39,13 @@ export default function MainTabNavigator() {
                             break;
                         case 'Notifications':
                             iconName = focused ? 'heart' : 'heart-outline';
+                            // Add notification badge
+                            return (
+                                <View>
+                                    <Icon name={iconName} size={size} color={color} />
+                                    {route.name === 'Notifications' && <NotificationBadge count={unreadCount} />}
+                                </View>
+                            );
                             break;
                         case 'Profile':
                             iconName = focused ? 'account' : 'account-outline';
