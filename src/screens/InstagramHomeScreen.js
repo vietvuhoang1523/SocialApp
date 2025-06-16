@@ -27,6 +27,9 @@ import StoryItem from '../components/StoryItem';
 import SportsPostItem from '../components/SportsPostItem';
 import LoadingSpinner from '../components/LoadingSpinner';
 import { MaterialIcons } from '@expo/vector-icons';
+import NotificationBadge from '../components/common/NotificationBadge';
+import { useNotifications } from '../components/NotificationContext';
+import FriendService from '../services/FriendService';
 
 const { width, height } = Dimensions.get('window');
 
@@ -64,6 +67,10 @@ const InstagramHomeScreen = ({ navigation }) => {
     const [showSearch, setShowSearch] = useState(false);
     const [showPostOptions, setShowPostOptions] = useState(false);
     const [activeTab, setActiveTab] = useState('all'); // 'all', 'sports'
+    const [friendRequestCount, setFriendRequestCount] = useState(0);
+    
+    // Lấy số lượng thông báo chưa đọc từ context
+    const { unreadCount, refreshNotifications } = useNotifications();
 
     const fetchCurrentUser = async () => {
         try {
@@ -164,7 +171,21 @@ const InstagramHomeScreen = ({ navigation }) => {
         fetchPosts(0, true);
         fetchSportsPosts(0, true);
         generateMockStories();
-    }, []);
+        // Cập nhật thông báo khi làm mới
+        refreshNotifications();
+        // Cập nhật số lượng yêu cầu kết bạn
+        fetchFriendRequestsCount();
+    }, [refreshNotifications]);
+
+    // Hàm lấy số lượng yêu cầu kết bạn
+    const fetchFriendRequestsCount = async () => {
+        try {
+            const requests = await FriendService.getReceivedFriendRequests();
+            setFriendRequestCount(requests?.length || 0);
+        } catch (error) {
+            console.error('Lỗi khi lấy số lượng yêu cầu kết bạn:', error);
+        }
+    };
 
     const onEndReached = () => {
         if (!isLastPage && !loadingMore && !refreshing) {
@@ -219,6 +240,7 @@ const InstagramHomeScreen = ({ navigation }) => {
             fetchPosts();
             fetchSportsPosts();
             generateMockStories();
+            fetchFriendRequestsCount();
         };
         loadInitialData();
     }, []);
@@ -226,9 +248,11 @@ const InstagramHomeScreen = ({ navigation }) => {
     useEffect(() => {
         const unsubscribe = navigation.addListener('focus', () => {
             onRefresh();
+            // Cập nhật thông báo khi màn hình được hiển thị
+            refreshNotifications();
         });
         return unsubscribe;
-    }, [navigation, onRefresh]);
+    }, [navigation, onRefresh, refreshNotifications]);
 
     const renderPost = ({ item, index }) => {
         return (
@@ -294,6 +318,15 @@ const InstagramHomeScreen = ({ navigation }) => {
                     <View style={styles.headerActions}>
                         <TouchableOpacity 
                             style={styles.headerButton}
+                            onPress={() => navigation.navigate('Notifications')}
+                        >
+                            <View>
+                                <Ionicons name="notifications-outline" size={26} color="#333" />
+                                {unreadCount > 0 && <NotificationBadge count={unreadCount} size="small" />}
+                            </View>
+                        </TouchableOpacity>
+                        <TouchableOpacity 
+                            style={[styles.headerButton, {marginLeft: 15}]}
                             onPress={() => navigation.navigate('Messages', { currentUser })}
                         >
                             <Ionicons name="chatbubble-outline" size={26} color="#333" />
@@ -518,15 +551,28 @@ const InstagramHomeScreen = ({ navigation }) => {
                     <Ionicons name="search" size={26} color="#666" />
                 </TouchableOpacity>
                 
+                <TouchableOpacity 
+                    style={styles.navItem}
+                    onPress={() => navigation.navigate('FriendRequests')}
+                >
+                    <View>
+                        <Ionicons name="people-outline" size={26} color="#666" />
+                        {friendRequestCount > 0 && <NotificationBadge count={friendRequestCount} size="small" />}
+                    </View>
+                </TouchableOpacity>
+                
                 <View style={styles.navItem}>
                     <View style={styles.navPlaceholder} />
                 </View>
                 
                 <TouchableOpacity 
                     style={styles.navItem}
-                    onPress={() => navigation.navigate('FriendRequests')}
+                    onPress={() => navigation.navigate('Notifications')}
                 >
-                    <Ionicons name="heart-outline" size={26} color="#666" />
+                    <View>
+                        <Ionicons name="notifications-outline" size={26} color="#666" />
+                        {unreadCount > 0 && <NotificationBadge count={unreadCount} size="small" />}
+                    </View>
                 </TouchableOpacity>
                 
                 <TouchableOpacity 

@@ -2,6 +2,7 @@ import SockJS from 'sockjs-client';
 import { Stomp } from '@stomp/stompjs';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { EMERGENCY_MODE } from '../../EmergencyMode';
+import notificationService from './NotificationService';
 
 class WebSocketService {
     constructor() {
@@ -14,6 +15,7 @@ class WebSocketService {
         this.baseReconnectDelay = 2000;
         this.maxReconnectDelay = 30000;
         this.currentUser = null; // Store current user info
+        this.notificationSubscription = null; // Store notification subscription
 
         // ✅ Configuration to match backend exactly
         this.config = {
@@ -1024,6 +1026,67 @@ class WebSocketService {
             console.error('❌ Subscription retry failed:', error);
             return false;
         }
+    }
+
+    // Subscribe to notifications
+    _setupNotificationSubscription() {
+        if (!this.connected || !this.client || !this.currentUser) {
+            console.error('❌ Cannot subscribe to notifications, not connected or missing user info');
+            return false;
+        }
+
+        try {
+            console.log('🔔 Setting up notification subscription');
+            
+            // Unsubscribe from previous subscription if exists
+            if (this.notificationSubscription) {
+                this.notificationSubscription.unsubscribe();
+            }
+            
+            // Subscribe to user-specific notification topic
+            const notificationTopic = `/user/${this.currentUser.id}/queue/notifications`;
+            
+            this.notificationSubscription = this.client.subscribe(
+                notificationTopic, 
+                (message) => {
+                    try {
+                        console.log('📣 Received notification:', message.body);
+                        const notification = JSON.parse(message.body);
+                        
+                        // Update local notification count
+                        notificationService.incrementLocalUnreadCount();
+                        
+                        // Notify listeners
+                        this._notifyListeners('notification', notification);
+                    } catch (error) {
+                        console.error('❌ Error handling notification:', error);
+                    }
+                },
+                { id: `notification-${this.currentUser.id}` }
+            );
+            
+            console.log('✅ Notification subscription setup complete');
+            return true;
+        } catch (error) {
+            console.error('❌ Error subscribing to notifications:', error);
+            return false;
+        }
+    }
+    
+    // Subscribe to notifications
+    subscribeToNotifications(callback) {
+        const callbackKey = `notification_${Date.now()}`;
+        this.on('notification', callbackKey, callback);
+        return () => this.off('notification', callbackKey);
+    }
+    
+    // Helper functions for notification event listeners
+    onNotification(key, callback) {
+        return this.on('notification', key, callback);
+    }
+    
+    offNotification(key) {
+        return this.off('notification', key);
     }
 }
 

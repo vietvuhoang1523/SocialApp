@@ -1,8 +1,15 @@
 // src/navigation/MainTabNavigator.js
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
+<<<<<<< HEAD
 import { createStackNavigator } from '@react-navigation/stack';
 import { Ionicons } from '@expo/vector-icons';
+=======
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import { View } from "react-native";
+import NotificationBadge from './common/NotificationBadge';
+import { useNotifications } from './NotificationContext';
+>>>>>>> 470eddff2a288d1a4e85b18401fe95e7a18b1512
 
 // Import your screens with correct paths
 import InstagramHomeScreen from "../screens/InstagramHomeScreen";
@@ -26,6 +33,7 @@ import CreateWorkoutSessionScreen from '../screens/sports/CreateWorkoutSessionSc
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
 
+<<<<<<< HEAD
 // Renamed to SocialStack (formerly HomeStack)
 function SocialStack() {
     return (
@@ -140,11 +148,18 @@ function NotificationsStack() {
 }
 
 function MainTabNavigator() {
+=======
+export default function MainTabNavigator() {
+    // Get notification count from context
+    const { unreadCount } = useNotifications();
+
+>>>>>>> 470eddff2a288d1a4e85b18401fe95e7a18b1512
     return (
         <Tab.Navigator
             screenOptions={({ route }) => ({
                 tabBarIcon: ({ focused, color, size }) => {
                     let iconName;
+<<<<<<< HEAD
 
                     if (route.name === 'FindPlayers') {
                         iconName = focused ? 'people' : 'people-outline';
@@ -156,6 +171,34 @@ function MainTabNavigator() {
                         iconName = focused ? 'globe' : 'globe-outline';
                     } else if (route.name === 'Profile') {
                         iconName = focused ? 'person' : 'person-outline';
+=======
+                    switch (route.name) {
+                        case 'Home':
+                            iconName = focused ? 'home' : 'home-outline';
+                            break;
+                        case 'Search':
+                            iconName = focused ? 'magnify' : 'magnify';
+                            break;
+                        case 'CreatePost':
+                            iconName = 'plus-box-outline';
+                            break;
+                        case 'Notifications':
+                            iconName = focused ? 'heart' : 'heart-outline';
+                            // Add notification badge
+                            return (
+                                <View>
+                                    <Icon name={iconName} size={size} color={color} />
+                                    {route.name === 'Notifications' && <NotificationBadge count={unreadCount} />}
+                                </View>
+                            );
+                            break;
+                        case 'Profile':
+                            iconName = focused ? 'account' : 'account-outline';
+                            break;
+                        case 'Sports':
+                            iconName = focused ? 'basketball' : 'basketball-outline';
+                            break;
+>>>>>>> 470eddff2a288d1a4e85b18401fe95e7a18b1512
                     }
 
                     return <Ionicons name={iconName} size={size} color={color} />;

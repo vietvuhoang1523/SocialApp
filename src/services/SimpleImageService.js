@@ -2,7 +2,7 @@
 // Dịch vụ xử lý URL hình ảnh cho toàn bộ ứng dụng
 
 // Định nghĩa constants
-const API_BASE_URL = 'http://192.168.1.73:8082';
+const API_BASE_URL = 'http://192.168.100.193:8082';
 const IMAGE_API_PATH = '/api/files/image?bucketName=thanh&path=';
 
 /**

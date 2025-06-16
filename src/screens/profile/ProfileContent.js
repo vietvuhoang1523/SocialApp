@@ -39,7 +39,7 @@ const SportsProfileSection = ({ navigation, userProfile }) => {
             currentUser: userProfile
         });
     };
-    
+
     const handleNavigateToSportsAvailability = () => {
         navigation.navigate('SportsAvailability');
     };
@@ -223,7 +223,8 @@ const ProfileContent = ({
         handleRefresh,
         handleImageError,
         removePost,
-        updatePost
+        updatePost,
+        currentUserId: postsCurrentUserId
     } = usePosts();
 
     // Tham chiếu tới FlatList để kiểm soát scroll
@@ -311,7 +312,7 @@ const ProfileContent = ({
             onCommentPress={handleCommentPost}
             onSharePress={handleSharePost}
             navigation={navigation}
-            currentUserId={currentUserId}
+            currentUserId={postsCurrentUserId}
             onDeleteSuccess={handleDeleteSuccess}
             onEditSuccess={handleEditSuccess}
         />

@@ -1,5 +1,6 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import createPostService from '../services/CreatePostService';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Custom hook để quản lý các bài đăng
 export const usePosts = () => {
@@ -8,6 +9,27 @@ export const usePosts = () => {
     const [page, setPage] = useState(0);
     const [hasMore, setHasMore] = useState(true);
     const [imageLoadErrors, setImageLoadErrors] = useState({});
+    const [currentUserId, setCurrentUserId] = useState(null);
+
+    // Lấy thông tin người dùng hiện tại
+    useEffect(() => {
+        const getCurrentUser = async () => {
+            try {
+                const userData = await AsyncStorage.getItem('userData');
+                if (userData) {
+                    const parsedData = JSON.parse(userData);
+                    if (parsedData.id) {
+                        setCurrentUserId(parsedData.id);
+                        console.log('Đã lấy currentUserId từ AsyncStorage:', parsedData.id);
+                    }
+                }
+            } catch (error) {
+                console.error('Lỗi khi lấy userData từ AsyncStorage:', error);
+            }
+        };
+
+        getCurrentUser();
+    }, []);
 
     // Lấy bài viết từ API
     const fetchPosts = useCallback(async (pageNumber = 0, shouldRefresh = false) => {
@@ -86,6 +108,7 @@ export const usePosts = () => {
         hasMore,
         page,
         imageLoadErrors,
+        currentUserId,
         fetchPosts,
         handleLoadMore,
         handleRefresh,

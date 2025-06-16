@@ -305,9 +305,9 @@ const EditProfileScreen = ({ navigation, route }) => {
 
             <ImagePickerModal
                 visible={imagePickerModalVisible}
+                imageType={imageType}
                 onClose={() => setImagePickerModalVisible(false)}
-                onImageSelected={handleChooseImage}
-                title={imageType === 'avatar' ? 'Chọn ảnh đại diện' : 'Chọn ảnh bìa'}
+                onChooseImage={handleChooseImage}
             />
         </SafeAreaView>
     );

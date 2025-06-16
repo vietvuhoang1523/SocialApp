@@ -186,7 +186,7 @@ const CreateSportsAvailabilityScreen = () => {
                 <Ionicons name="time-outline" size={20} color={colors.primary} style={styles.timeIcon} />
                 <Text style={[styles.timeText, { color: colors.text }]}>
                   {formatTime(formData.availableUntil)} - {formatDate(formData.availableUntil)}
-                </Text>
+          </Text>
               </TouchableOpacity>
             </View>
             

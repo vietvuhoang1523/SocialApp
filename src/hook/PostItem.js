@@ -91,32 +91,93 @@ const PostItem = ({
 
     // Kiểm tra quyền sở hữu khi có đủ thông tin
     useEffect(() => {
-        const checkOwnership = () => {
-            // Kiểm tra cơ bản
-            if (!item?.id || !localCurrentUserId) {
+        const checkOwnership = async () => {
+            try {
+                // Hiển thị loading khi đang kiểm tra
+                setCheckingOwnership(true);
+                
+                // Kiểm tra cơ bản
+                if (!item?.id) {
+                    setIsOwner(false);
+                    setCheckingOwnership(false);
+                    return;
+                }
+
+                // Nếu không có currentUserId từ props, thử lấy từ AsyncStorage
+                let userId = localCurrentUserId;
+                if (!userId) {
+                    try {
+                        // Thử lấy từ userData
+                        const userData = await AsyncStorage.getItem('userData');
+                        if (userData) {
+                            const parsedData = JSON.parse(userData);
+                            userId = parsedData.id;
+                            setLocalCurrentUserId(userId);
+                        }
+                        
+                        // Nếu vẫn không có, thử lấy từ user
+                        if (!userId) {
+                            const userJson = await AsyncStorage.getItem('user');
+                            if (userJson) {
+                                const user = JSON.parse(userJson);
+                                userId = user.id;
+                                setLocalCurrentUserId(userId);
+                            }
+                        }
+                        
+                        // Nếu vẫn không có, thử lấy từ accessToken (decode JWT)
+                        if (!userId) {
+                            const token = await AsyncStorage.getItem('accessToken');
+                            if (token) {
+                                // Lấy thông tin user từ API
+                                try {
+                                    const response = await createPostService.api.get('/v1/users/profile');
+                                    if (response.data && response.data.id) {
+                                        userId = response.data.id;
+                                        setLocalCurrentUserId(userId);
+                                    }
+                                } catch (apiError) {
+                                    console.error('Lỗi khi lấy thông tin user từ API:', apiError);
+                                }
+                            }
+                        }
+                    } catch (error) {
+                        console.error('Lỗi khi lấy userData từ AsyncStorage:', error);
+                    }
+                }
+
+                if (!userId) {
+                    setIsOwner(false);
+                    setCheckingOwnership(false);
+                    return;
+                }
+
+                // Lấy ID của chủ bài viết
+                const postOwnerId = item?.userRes?.id || item?.user?.id;
+
+                if (!postOwnerId) {
+                    setIsOwner(false);
+                    setCheckingOwnership(false);
+                    return;
+                }
+
+                // So sánh đơn giản
+                const isUserOwner = String(userId) === String(postOwnerId);
+
+                console.log('🔍 Kiểm tra quyền sở hữu:', {
+                    postId: item.id,
+                    currentUserId: userId,
+                    postOwnerId: postOwnerId,
+                    isOwner: isUserOwner
+                });
+
+                setIsOwner(isUserOwner);
+                setCheckingOwnership(false);
+            } catch (error) {
+                console.error('Lỗi khi kiểm tra quyền sở hữu:', error);
                 setIsOwner(false);
-                return;
+                setCheckingOwnership(false);
             }
-
-            // Lấy ID của chủ bài viết
-            const postOwnerId = item?.userRes?.id || item?.user?.id;
-
-            if (!postOwnerId) {
-                setIsOwner(false);
-                return;
-            }
-
-            // So sánh đơn giản
-            const isUserOwner = String(localCurrentUserId) === String(postOwnerId);
-
-            console.log('🔍 Kiểm tra quyền sở hữu:', {
-                postId: item.id,
-                currentUserId: localCurrentUserId,
-                postOwnerId: postOwnerId,
-                isOwner: isUserOwner
-            });
-
-            setIsOwner(isUserOwner);
         };
 
         checkOwnership();
@@ -207,15 +268,38 @@ const PostItem = ({
                                 return;
                             }
 
+                            // Hiển thị loading khi đang xóa
+                            setCheckingOwnership(true);
+                            
+                            // Gọi API xóa bài viết
                             await createPostService.deletePost(item.id);
-                            Alert.alert("Thành công", "Đã xóa bài viết");
-
+                            
+                            // Ẩn loading sau khi xóa xong
+                            setCheckingOwnership(false);
+                            
+                            // Gọi callback để cập nhật UI trước khi hiển thị thông báo
                             if (onDeleteSuccess) {
                                 onDeleteSuccess(item.id);
                             }
+                            
+                            // Hiển thị thông báo thành công
+                            setTimeout(() => {
+                                Alert.alert(
+                                    "Thành công", 
+                                    "Đã xóa bài viết thành công",
+                                    [{ text: "OK" }]
+                                );
+                            }, 300);
                         } catch (error) {
+                            // Ẩn loading nếu có lỗi
+                            setCheckingOwnership(false);
+                            
                             console.error('Lỗi khi xóa bài viết:', error);
-                            Alert.alert("Lỗi", "Không thể xóa bài viết. Vui lòng thử lại sau.");
+                            Alert.alert(
+                                "Lỗi", 
+                                "Không thể xóa bài viết. Vui lòng thử lại sau.",
+                                [{ text: "OK" }]
+                            );
                         }
                     }
                 }
@@ -247,6 +331,25 @@ const PostItem = ({
                         <ActivityIndicator size="small" color="#1877F2" style={styles.ownershipLoader} />
                     )}
 
+                    {/* Hiển thị nút sửa và xóa trực tiếp nếu là chủ bài viết */}
+                    {isOwner && !checkingOwnership && (
+                        <View style={styles.ownerActions}>
+                            <TouchableOpacity 
+                                style={styles.headerActionButton} 
+                                onPress={handleEditPost}
+                            >
+                                <Ionicons name="create-outline" size={20} color="#1877F2" />
+                            </TouchableOpacity>
+                            
+                            <TouchableOpacity 
+                                style={styles.headerActionButton} 
+                                onPress={handleDeletePost}
+                            >
+                                <Ionicons name="trash-outline" size={20} color="#E53935" />
+                            </TouchableOpacity>
+                        </View>
+                    )}
+
                     <TouchableOpacity style={styles.moreOptions} onPress={toggleOptionsMenu}>
                         <Ionicons name="ellipsis-horizontal" size={20} color="#65676B" />
                     </TouchableOpacity>
@@ -274,9 +377,9 @@ const PostItem = ({
                                     <Text style={[styles.optionText, { color: '#1877F2' }]}>Chỉnh sửa bài viết</Text>
                                 </TouchableOpacity>
 
-                                <TouchableOpacity style={styles.optionItem} onPress={handleDeletePost}>
+                                <TouchableOpacity style={[styles.optionItem, styles.deleteOption]} onPress={handleDeletePost}>
                                     <Ionicons name="trash-outline" size={20} color="#E53935" />
-                                    <Text style={[styles.optionText, { color: '#E53935' }]}>Xóa bài viết</Text>
+                                    <Text style={[styles.optionText, { color: '#E53935', fontWeight: 'bold' }]}>Xóa bài viết</Text>
                                 </TouchableOpacity>
 
                                 {/* Thêm đường phân cách */}
@@ -335,7 +438,27 @@ const PostItem = ({
                     </Text>
                 </TouchableOpacity>
 
-                {onSharePress && (
+                {isOwner && (
+                    <>
+                        <TouchableOpacity
+                            style={styles.footerItem}
+                            onPress={handleEditPost}
+                        >
+                            <Ionicons name="create-outline" size={20} color="#1877F2" />
+                            <Text style={styles.footerText}>Sửa</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                            style={styles.footerItem}
+                            onPress={handleDeletePost}
+                        >
+                            <Ionicons name="trash-outline" size={20} color="#E53935" />
+                            <Text style={styles.footerText}>Xóa</Text>
+                        </TouchableOpacity>
+                    </>
+                )}
+
+                {onSharePress && !isOwner && (
                     <TouchableOpacity
                         style={styles.footerItem}
                         onPress={() => onSharePress(item?.id)}
@@ -346,6 +469,7 @@ const PostItem = ({
                 )}
             </View>
 
+        
         </View>
     );
 };
@@ -452,6 +576,32 @@ const styles = StyleSheet.create({
     footerText: {
         marginLeft: 5,
         color: '#65676B',
+    },
+    deleteOption: {
+        backgroundColor: 'rgba(229, 57, 53, 0.1)',
+        borderRadius: 8,
+        marginVertical: 4,
+    },
+    ownerActions: {
+        flexDirection: 'row',
+        marginRight: 5,
+    },
+    headerActionButton: {
+        padding: 5,
+        marginHorizontal: 2,
+    },
+    debugInfo: {
+        backgroundColor: '#f0f0f0',
+        padding: 8,
+        marginTop: 8,
+        borderRadius: 4,
+        borderWidth: 1,
+        borderColor: '#ddd',
+    },
+    debugText: {
+        fontSize: 10,
+        color: '#666',
+        fontFamily: 'monospace',
     },
 });
 

@@ -60,6 +60,7 @@ import AuthService from './src/services/AuthService';
 //
 import { ProfileProvider } from './src/components/ProfileContext';
 import { ThemeProvider } from './src/hook/ThemeContext';
+import { NotificationProvider } from './src/components/NotificationContext';
 import CommentsScreen from "./src/screens/CommentsScreen";
 import EditPostScreen from "./src/screens/EditPostScreen";
 
@@ -170,6 +171,16 @@ export default function App() {
             options={{ headerShown: false }}
         />
         <Stack.Screen
+            name="CreateSportsPost"
+            component={CreateSportsPostScreen}
+            options={{ headerShown: false }}
+        />
+        <Stack.Screen
+            name="SportsPostDetail"
+            component={SportsPostDetailScreen}
+            options={{ headerShown: false }}
+        />
+        <Stack.Screen
             name="Register"
             component={RegisterScreen}
             options={{ headerShown: false }}
@@ -185,12 +196,64 @@ export default function App() {
             options={{ headerShown: false }}
         />
         <Stack.Screen
-            name="UserProfile"
-            component={UserProfileScreen}
+            name="Comments"
+            component={CommentsScreen}
             options={{ headerShown: false }}
         />
-        
-        {/* Sports Profile Screens */}
+        <Stack.Screen
+            name="EditPost"
+            component={EditPostScreen}
+            options={{ headerShown: false }}
+        />
+        {/* New Chat Screens */}
+        <Stack.Screen
+            name="NewMessages"
+            component={NewMessagesScreen}
+            options={{ headerShown: false }}
+        />
+        <Stack.Screen
+            name="NewChatScreen"
+            component={NewChatScreen}
+            options={{ headerShown: false }}
+        />
+        {/* Call Screens */}
+        <Stack.Screen
+            name="AudioCall"
+            component={AudioCallScreen}
+            options={{ headerShown: false }}
+        />
+        <Stack.Screen
+            name="VideoCall"
+            component={VideoCallScreen}
+            options={{ headerShown: false }}
+        />
+        {/* Location */}
+        <Stack.Screen
+            name="UserLocation"
+            component={UserLocationController}
+            options={{ headerShown: false }}
+        />
+        <Stack.Screen
+            name="SimpleLocation"
+            component={SimpleLocationController}
+            options={{ headerShown: false }}
+        />
+        <Stack.Screen
+            name="LocationMap"
+            component={LocationMap}
+            options={{ headerShown: false }}
+        />
+        <Stack.Screen
+            name="LocationSettings"
+            component={LocationSettings}
+            options={{ headerShown: false }}
+        />
+        <Stack.Screen
+            name="ManualLocation"
+            component={ManualLocationScreen}
+            options={{ headerShown: false }}
+        />
+        {/* Sports Profile */}
         <Stack.Screen
             name="SportsProfileScreen"
             component={SportsProfileScreen}
@@ -201,59 +264,9 @@ export default function App() {
             component={SportsMatchingScreen}
             options={{ headerShown: false }}
         />
-        
-        {/* Screen tin nhắn mới với UI hiện đại */}
+        {/* Sports Availability */}
         <Stack.Screen
-            name="Messages"
-            component={NewMessagesScreen}
-            options={{ headerShown: false }}
-        />
-        <Stack.Screen
-            name="NewMessagesScreen"
-            component={NewMessagesScreen}
-            options={{ headerShown: false }}
-        />
-        <Stack.Screen
-            name="NewChatScreen"
-            component={NewChatScreen}
-            options={{ headerShown: false }}
-        />
-        {/* Giữ lại route Chat cho backward compatibility */}
-        <Stack.Screen
-            name="Chat"
-            component={NewChatScreen}
-            options={{ headerShown: false }}
-        />
-        
-        {/* Video Call Screens */}
-        <Stack.Screen
-            name="AudioCallScreen"
-            component={AudioCallScreen}
-            options={{ 
-                headerShown: false,
-                gestureEnabled: false, // Prevent swipe to go back during call
-                animation: 'slide_from_bottom'
-            }}
-        />
-        <Stack.Screen
-            name="VideoCallScreen"
-            component={VideoCallScreen}
-            options={{ 
-                headerShown: false,
-                gestureEnabled: false, // Prevent swipe to go back during call
-                animation: 'slide_from_bottom'
-            }}
-        />
-
-        <Stack.Screen
-            name="Comments"
-            component={CommentsScreen}
-            options={{ headerShown: false }}
-        />
-        
-        {/* Sports Availability Screens */}
-        <Stack.Screen
-            name="SportsAvailability"
+            name="SportsAvailabilityScreen"
             component={SportsAvailabilityScreen}
             options={{ headerShown: false }}
         />
@@ -267,66 +280,211 @@ export default function App() {
             component={SportsAvailabilityDetailScreen}
             options={{ headerShown: false }}
         />
+        {/* Main Tab Navigator - Must be last */}
         <Stack.Screen
-            name="EditPost"
-            component={EditPostScreen}
+            name="MainTab"
+            component={MainTabNavigator}
             options={{ headerShown: false }}
         />
-        <Stack.Screen
-            name="EmailSearchHandler"
-            component={EmailSearchHandler}
-            options={{ headerShown: false }}
-        />
-        <Stack.Screen
-            name="CreateSportsPost"
-            component={CreateSportsPostScreen}
-            options={{ headerShown: false }}
-        />
-        
-        <Stack.Screen
-            name="SportsPostDetail"
-            component={SportsPostDetailScreen}
-            options={{ headerShown: false }}
-        />
-        
-        {/* Location Screens */}
-        <Stack.Screen
-            name="LocationMap"
-            component={LocationMap}
-            options={{ headerShown: false }}
-        />
-        <Stack.Screen
-            name="LocationSettings"
-            component={LocationSettings}
-            options={{ headerShown: false }}
-        />
-        <Stack.Screen
-            name="UserLocationController"
-            component={UserLocationController}
-            options={{ headerShown: false }}
-        />
-        <Stack.Screen
-            name="SimpleLocationController"
-            component={SimpleLocationController}
-            options={{ headerShown: false }}
-        />
-        <Stack.Screen
-            name="ManualLocationScreen"
-            component={ManualLocationScreen}
-            options={{ headerShown: false }}
-        />
-        
-        <Stack.Screen name="MainApp" component={MainTabNavigator} />
       </Stack.Navigator>
   ), []);
 
   return (
+    <ThemeProvider>
       <ProfileProvider>
-          <ThemeProvider>
-              <NavigationContainer>
-                  {AppNavigator}
-              </NavigationContainer>
-          </ThemeProvider>
+        <NotificationProvider>
+          <NavigationContainer>
+            <Stack.Navigator initialRouteName="Login">
+              <Stack.Screen
+                  name="Login"
+                  component={LoginScreen}
+                  options={{ headerShown: false }}
+              />
+              <Stack.Screen
+                  name="FriendSearch"
+                  component={FriendSearchScreen}
+                  options={{ headerShown: false }}
+              />
+              <Stack.Screen
+                  name="FriendRequests"
+                  component={FriendRequestsScreen}
+                  options={{ headerShown: false }}
+              />
+              <Stack.Screen
+                  name="Home"
+                  component={InstagramHomeScreen}
+                  options={{ headerShown: false }}
+              />
+              <Stack.Screen
+                  name="Profile"
+                  component={ProfileScreen}
+                  options={{ headerShown: false }}
+              />
+              <Stack.Screen
+                  name="UserProfileScreen"
+                  component={UserProfileScreen}
+                  options={{ headerShown: false }}
+              />
+              <Stack.Screen
+                  name="FriendsSection"
+                  component={FriendsSection}
+                  options={{ headerShown: false }}
+              />
+              <Stack.Screen
+                  name="ProfileHeader"
+                  component={ProfileHeader}
+                  options={{ headerShown: false }}
+              />
+              <Stack.Screen
+                  name="ProfileInfo"
+                  component={ProfileInfo}
+                  options={{ headerShown: false }}
+              />
+              <Stack.Screen
+                  name="ProfileContent"
+                  component={ProfileContent}
+                  options={{ headerShown: false }}
+              />
+              <Stack.Screen
+                  name="ProfileTabs"
+                  component={ProfileTabs}
+                  options={{ headerShown: false }}
+              />
+              <Stack.Screen
+                  name="Reels"
+                  component={ReelsScreen}
+                  options={{ headerShown: false }}
+              />
+              <Stack.Screen
+                  name="Notifications"
+                  component={NotificationsScreen}
+                  options={{ headerShown: false }}
+              />
+              <Stack.Screen
+                  name="CreatePost"
+                  component={CreatePostScreen}
+                  options={{ headerShown: false }}
+              />
+              <Stack.Screen
+                  name="CreateSportsPost"
+                  component={CreateSportsPostScreen}
+                  options={{ headerShown: false }}
+              />
+              <Stack.Screen
+                  name="SportsPostDetail"
+                  component={SportsPostDetailScreen}
+                  options={{ headerShown: false }}
+              />
+              <Stack.Screen
+                  name="Register"
+                  component={RegisterScreen}
+                  options={{ headerShown: false }}
+              />
+              <Stack.Screen
+                  name="ForgotPassword"
+                  component={ForgotPasswordScreen}
+                  options={{ headerShown: false }}
+              />
+              <Stack.Screen
+                  name="EditProfile"
+                  component={EditProfileScreen}
+                  options={{ headerShown: false }}
+              />
+              <Stack.Screen
+                  name="Comments"
+                  component={CommentsScreen}
+                  options={{ headerShown: false }}
+              />
+              <Stack.Screen
+                  name="EditPost"
+                  component={EditPostScreen}
+                  options={{ headerShown: false }}
+              />
+              {/* New Chat Screens */}
+              <Stack.Screen
+                  name="NewMessages"
+                  component={NewMessagesScreen}
+                  options={{ headerShown: false }}
+              />
+              <Stack.Screen
+                  name="NewChatScreen"
+                  component={NewChatScreen}
+                  options={{ headerShown: false }}
+              />
+              {/* Call Screens */}
+              <Stack.Screen
+                  name="AudioCall"
+                  component={AudioCallScreen}
+                  options={{ headerShown: false }}
+              />
+              <Stack.Screen
+                  name="VideoCall"
+                  component={VideoCallScreen}
+                  options={{ headerShown: false }}
+              />
+              {/* Location */}
+              <Stack.Screen
+                  name="UserLocation"
+                  component={UserLocationController}
+                  options={{ headerShown: false }}
+              />
+              <Stack.Screen
+                  name="SimpleLocation"
+                  component={SimpleLocationController}
+                  options={{ headerShown: false }}
+              />
+              <Stack.Screen
+                  name="LocationMap"
+                  component={LocationMap}
+                  options={{ headerShown: false }}
+              />
+              <Stack.Screen
+                  name="LocationSettings"
+                  component={LocationSettings}
+                  options={{ headerShown: false }}
+              />
+              <Stack.Screen
+                  name="ManualLocation"
+                  component={ManualLocationScreen}
+                  options={{ headerShown: false }}
+              />
+              {/* Sports Profile */}
+              <Stack.Screen
+                  name="SportsProfileScreen"
+                  component={SportsProfileScreen}
+                  options={{ headerShown: false }}
+              />
+              <Stack.Screen
+                  name="SportsMatchingScreen"
+                  component={SportsMatchingScreen}
+                  options={{ headerShown: false }}
+              />
+              {/* Sports Availability */}
+              <Stack.Screen
+                  name="SportsAvailabilityScreen"
+                  component={SportsAvailabilityScreen}
+                  options={{ headerShown: false }}
+              />
+              <Stack.Screen
+                  name="CreateSportsAvailability"
+                  component={CreateSportsAvailabilityScreen}
+                  options={{ headerShown: false }}
+              />
+              <Stack.Screen
+                  name="SportsAvailabilityDetail"
+                  component={SportsAvailabilityDetailScreen}
+                  options={{ headerShown: false }}
+              />
+              {/* Main Tab Navigator - Must be last */}
+              <Stack.Screen
+                  name="MainTab"
+                  component={MainTabNavigator}
+                  options={{ headerShown: false }}
+              />
+            </Stack.Navigator>
+          </NavigationContainer>
+        </NotificationProvider>
       </ProfileProvider>
+    </ThemeProvider>
   );
 }
