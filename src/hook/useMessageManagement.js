@@ -15,17 +15,40 @@ const useMessageManagement = (currentUser, user) => {
     const isLoadingRef = useRef(false);
     const processedMessageIds = useRef(new Set());
     const paginationInfoRef = useRef(null);
+    const lastMessageTimestampRef = useRef(null);
 
     // 📊 Stats for debugging
     useEffect(() => {
         console.log(`📊 Messages state updated: ${messages.length} total messages`);
         if (messages.length > 0) {
             const latest = messages[0];
-            console.log(`📊 Latest message: ${latest?.content?.substring(0, 30)}... from ${latest?.senderId} at ${latest?.createdAt}`);
+            console.log(`📊 Latest message: ${latest?.content?.substring(0, 30)}... from ${latest?.senderId} at ${latest?.timestamp || latest?.createdAt}`);
+            
+            if (latest?.timestamp || latest?.createdAt) {
+                lastMessageTimestampRef.current = latest?.timestamp || latest?.createdAt;
+            }
         }
     }, [messages.length]);
 
-    // 📥 Fetch messages with pagination using correct API
+    const sortMessagesByTimestamp = useCallback((msgs) => {
+        return [...msgs].sort((a, b) => {
+            const timeA = new Date(a.timestamp || a.createdAt || 0).getTime();
+            const timeB = new Date(b.timestamp || b.createdAt || 0).getTime();
+            return timeB - timeA;
+        });
+    }, []);
+
+    const deduplicateMessages = useCallback((msgs) => {
+        const uniqueIds = new Set();
+        return msgs.filter(msg => {
+            if (!msg.id || uniqueIds.has(msg.id)) {
+                return false;
+            }
+            uniqueIds.add(msg.id);
+            return true;
+        });
+    }, []);
+
     const fetchMessages = useCallback(async (page = 0, isRefresh = false) => {
         if (isLoadingRef.current && !isRefresh) {
             console.log('⚠️ Already loading messages, skipping...');
@@ -48,7 +71,6 @@ const useMessageManagement = (currentUser, user) => {
                 console.log(`📥 Fetching messages page ${page}...`);
             }
 
-            // Use paginated API with correct method name
             const response = await messagesService.getMessagesBetweenUsersPaginated(
                 currentUser.id, 
                 user.id, 
@@ -65,24 +87,25 @@ const useMessageManagement = (currentUser, user) => {
                 console.log(`✅ Fetched ${newMessages.length} messages from API`);
 
                 if (isRefresh || page === 0) {
-                    // Reset for refresh or first load
-                    setMessages(newMessages);
+                    const sortedMessages = sortMessagesByTimestamp(newMessages);
+                    setMessages(sortedMessages);
                     currentPageRef.current = 0;
+                    
                     processedMessageIds.current.clear();
-                    newMessages.forEach(msg => processedMessageIds.current.add(msg.id));
+                    sortedMessages.forEach(msg => processedMessageIds.current.add(msg.id));
                 } else {
-                    // Append for pagination
                     setMessages(prev => {
                         const filteredNew = newMessages.filter(msg => !processedMessageIds.current.has(msg.id));
                         filteredNew.forEach(msg => processedMessageIds.current.add(msg.id));
-                        return [...prev, ...filteredNew];
+                        
+                        const combinedMessages = [...prev, ...filteredNew];
+                        return sortMessagesByTimestamp(combinedMessages);
                     });
                 }
                 
                 currentPageRef.current = page;
                 paginationInfoRef.current = response.pagination;
                 
-                // Update hasMore based on pagination info
                 if (response.pagination) {
                     setHasMore(response.pagination.hasNext);
                 } else {
@@ -110,15 +133,13 @@ const useMessageManagement = (currentUser, user) => {
             setRefreshing(false);
             isLoadingRef.current = false;
         }
-    }, [currentUser?.id, user?.id]);
+    }, [currentUser?.id, user?.id, sortMessagesByTimestamp]);
 
-    // 📥 Load initial messages
     const loadMessages = useCallback(async () => {
         console.log('🚀 Loading initial messages...');
         await fetchMessages(0, false);
-    }, [currentUser?.id, user?.id]);
+    }, [fetchMessages]);
 
-    // 🔄 Fetch new messages (for real-time updates)
     const fetchNewMessages = useCallback(async () => {
         if (!currentUser?.id || !user?.id) {
             console.log('⚠️ Missing user IDs for fetchNewMessages');
@@ -128,7 +149,8 @@ const useMessageManagement = (currentUser, user) => {
         try {
             console.log('🆕 Fetching new messages...');
             
-            // Get first page to check for new messages
+            const fetchTime = new Date().toISOString();
+            
             const response = await messagesService.getMessagesBetweenUsersPaginated(
                 currentUser.id, 
                 user.id, 
@@ -145,11 +167,18 @@ const useMessageManagement = (currentUser, user) => {
                 console.log(`✅ Fetched ${latestMessages.length} latest messages`);
 
                 setMessages(prev => {
-                    // Chỉ thêm các message thực sự mới vào đầu mảng
                     const newMessages = latestMessages.filter(msg => !processedMessageIds.current.has(msg.id));
+                    
+                    if (lastMessageTimestampRef.current) {
+                        console.log(`🔍 Checking for duplicates with timestamp after ${lastMessageTimestampRef.current}`);
+                    }
+                    
                     newMessages.forEach(msg => processedMessageIds.current.add(msg.id));
+                    
                     if (newMessages.length > 0) {
-                        return [...newMessages, ...prev]; // mới nhất đầu mảng
+                        console.log(`✅ Adding ${newMessages.length} new messages`);
+                        const combinedMessages = [...newMessages, ...prev];
+                        return deduplicateMessages(sortMessagesByTimestamp(combinedMessages));
                     }
                     return prev;
                 });
@@ -157,15 +186,13 @@ const useMessageManagement = (currentUser, user) => {
         } catch (error) {
             console.error('❌ Error fetching new messages:', error);
         }
-    }, [currentUser?.id, user?.id]);
+    }, [currentUser?.id, user?.id, sortMessagesByTimestamp, deduplicateMessages]);
 
-    // 🔄 Refresh handler
     const onRefresh = useCallback(async () => {
         console.log('🔄 Refreshing messages...');
         await fetchMessages(0, true);
-    }, [currentUser?.id, user?.id]);
+    }, [fetchMessages]);
 
-    // 📄 Load more messages (pagination)
     const loadMoreMessages = useCallback(async () => {
         if (!hasMore || isLoadingRef.current) {
             console.log('⚠️ Cannot load more: hasMore =', hasMore, ', isLoading =', isLoadingRef.current);
@@ -175,34 +202,48 @@ const useMessageManagement = (currentUser, user) => {
         const nextPage = currentPageRef.current + 1;
         console.log(`📄 Loading more messages, page ${nextPage}...`);
         await fetchMessages(nextPage, false);
-    }, [hasMore, currentUser?.id, user?.id]);
+    }, [hasMore, fetchMessages]);
 
-    // 📨 Handle new WebSocket message
     const handleNewWebSocketMessage = useCallback((newMessage) => {
         if (!newMessage || !newMessage.id) {
             console.log('⚠️ Invalid WebSocket message received');
             return;
         }
-        // Check if message already exists
+        
         if (processedMessageIds.current.has(newMessage.id)) {
             console.log(`🔄 Message ${newMessage.id} already exists, skipping`);
             return;
         }
+        
         console.log(`📨 New WebSocket message: ${newMessage.id} from ${newMessage.senderId}`);
+        
         processedMessageIds.current.add(newMessage.id);
-        setMessages(prev => [newMessage, ...prev]); // luôn thêm vào đầu mảng
-    }, []);
+        
+        setMessages(prev => {
+            const messageExists = prev.some(msg => msg.id === newMessage.id);
+            if (messageExists) {
+                console.log(`⚠️ Message ${newMessage.id} already in state, not adding again`);
+                return prev;
+            }
+            
+            const msgTimestamp = newMessage.timestamp || newMessage.createdAt;
+            if (msgTimestamp) {
+                lastMessageTimestampRef.current = msgTimestamp;
+            }
+            
+            return sortMessagesByTimestamp([newMessage, ...prev]);
+        });
+    }, [sortMessagesByTimestamp]);
 
-    // 🧹 Cleanup on unmount
     useEffect(() => {
         return () => {
             processedMessageIds.current.clear();
             isLoadingRef.current = false;
+            lastMessageTimestampRef.current = null;
         };
     }, []);
 
     return {
-        // State
         messages,
         setMessages,
         loading,
@@ -210,7 +251,6 @@ const useMessageManagement = (currentUser, user) => {
         hasMore,
         error,
         
-        // Functions
         fetchMessages,
         loadMessages,
         fetchNewMessages,

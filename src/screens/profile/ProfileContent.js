@@ -8,7 +8,8 @@ import {
     Text,
     Animated,
     ScrollView,
-    TouchableOpacity
+    TouchableOpacity,
+    Image
 } from 'react-native';
 import PostItem from '../../hook/PostItem';
 import { CreatePostButton, EmptyContent } from '../../components/UIComponents';
@@ -94,6 +95,104 @@ const SportsProfileSection = ({ navigation, userProfile }) => {
                 </TouchableOpacity>
             </View>
         </View>
+    );
+};
+
+// Sports Tab Component
+const SportsTab = ({ navigation, userProfile, onRefresh, isRefreshing, scrollY }) => {
+    // Dummy sports data - in a real app, this would come from an API or context
+    const sportsData = [
+        { id: 1, name: 'Bóng đá', level: 'Trung bình', frequency: '2-3 lần/tuần', icon: 'football-outline' },
+        { id: 2, name: 'Bơi lội', level: 'Nâng cao', frequency: '3-4 lần/tuần', icon: 'water-outline' },
+        { id: 3, name: 'Tennis', level: 'Sơ cấp', frequency: '1-2 lần/tuần', icon: 'tennisball-outline' },
+    ];
+
+    const renderSportItem = ({ item }) => (
+        <View style={styles.sportItemContainer}>
+            <View style={styles.sportIconContainer}>
+                <Ionicons name={item.icon} size={28} color="#E91E63" />
+            </View>
+            <View style={styles.sportInfoContainer}>
+                <Text style={styles.sportName}>{item.name}</Text>
+                <View style={styles.sportDetailsRow}>
+                    <View style={styles.sportDetail}>
+                        <Text style={styles.sportDetailLabel}>Trình độ:</Text>
+                        <Text style={styles.sportDetailValue}>{item.level}</Text>
+                    </View>
+                    <View style={styles.sportDetail}>
+                        <Text style={styles.sportDetailLabel}>Tần suất:</Text>
+                        <Text style={styles.sportDetailValue}>{item.frequency}</Text>
+                    </View>
+                </View>
+            </View>
+        </View>
+    );
+
+    return (
+        <FlatList
+            data={sportsData}
+            renderItem={renderSportItem}
+            keyExtractor={(item) => item.id.toString()}
+            ListHeaderComponent={
+                <View style={styles.sportsTabHeader}>
+                    <Text style={styles.sportsTabTitle}>Thông tin thể thao của bạn</Text>
+                    <Text style={styles.sportsTabSubtitle}>
+                        Quản lý các môn thể thao yêu thích và tìm đối tác phù hợp
+                    </Text>
+                    
+                    <TouchableOpacity 
+                        style={styles.editSportsProfileButton}
+                        onPress={() => navigation.navigate('SportsProfileScreen', {
+                            currentUser: userProfile,
+                            isViewMode: false
+                        })}
+                    >
+                        <LinearGradient
+                            colors={['#E91E63', '#C2185B']}
+                            style={styles.editButtonGradient}
+                        >
+                            <Ionicons name="create-outline" size={18} color="#fff" />
+                            <Text style={styles.editButtonText}>Chỉnh sửa hồ sơ thể thao</Text>
+                        </LinearGradient>
+                    </TouchableOpacity>
+                </View>
+            }
+            ListEmptyComponent={
+                <View style={styles.emptySportsContainer}>
+                    <Ionicons name="fitness-outline" size={60} color="#ccc" />
+                    <Text style={styles.emptySportsText}>
+                        Bạn chưa có thông tin thể thao nào
+                    </Text>
+                    <TouchableOpacity 
+                        style={styles.createSportsProfileButton}
+                        onPress={() => navigation.navigate('SportsProfileScreen', {
+                            currentUser: userProfile,
+                            isViewMode: false
+                        })}
+                    >
+                        <LinearGradient
+                            colors={['#E91E63', '#C2185B']}
+                            style={styles.createButtonGradient}
+                        >
+                            <Text style={styles.createButtonText}>Tạo hồ sơ thể thao</Text>
+                        </LinearGradient>
+                    </TouchableOpacity>
+                </View>
+            }
+            contentContainerStyle={styles.sportsTabContainer}
+            refreshControl={
+                <RefreshControl
+                    refreshing={isRefreshing}
+                    onRefresh={onRefresh}
+                    colors={['#1877F2']}
+                />
+            }
+            onScroll={Animated.event(
+                [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+                { useNativeDriver: false }
+            )}
+            scrollEventThrottle={16}
+        />
     );
 };
 
@@ -309,6 +408,21 @@ const ProfileContent = ({
                         }
                     />
                 );
+            case 'sports':
+                return (
+                    <View style={styles.tabContentContainer}>
+                        <View style={styles.tabHeaderContainer}>
+                            {renderListHeader()}
+                        </View>
+                        <SportsTab 
+                            navigation={navigation}
+                            userProfile={userProfile}
+                            onRefresh={handleUserRefresh}
+                            isRefreshing={isRefreshing}
+                            scrollY={scrollY}
+                        />
+                    </View>
+                );
             case 'location':
                 return (
                     <ScrollView 
@@ -447,6 +561,134 @@ const styles = StyleSheet.create({
         marginTop: 10,
         marginBottom: 30,
         paddingBottom: 20,
+    },
+    // Styles for Sports Tab
+    tabContentContainer: {
+        flex: 1,
+    },
+    sportsTabContainer: {
+        flexGrow: 1,
+        paddingBottom: 20,
+    },
+    sportsTabHeader: {
+        backgroundColor: '#fff',
+        padding: 20,
+        marginHorizontal: 15,
+        marginVertical: 10,
+        borderRadius: 15,
+        elevation: 3,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+        alignItems: 'center',
+    },
+    sportsTabTitle: {
+        fontSize: 20,
+        fontWeight: 'bold',
+        color: '#333',
+        marginBottom: 5,
+    },
+    sportsTabSubtitle: {
+        fontSize: 14,
+        color: '#666',
+        textAlign: 'center',
+        marginBottom: 15,
+    },
+    editSportsProfileButton: {
+        width: '100%',
+        borderRadius: 12,
+        overflow: 'hidden',
+        marginTop: 10,
+    },
+    editButtonGradient: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 12,
+        gap: 8,
+    },
+    editButtonText: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: '#fff',
+    },
+    sportItemContainer: {
+        flexDirection: 'row',
+        backgroundColor: '#fff',
+        marginHorizontal: 15,
+        marginVertical: 8,
+        padding: 15,
+        borderRadius: 15,
+        elevation: 2,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.1,
+        shadowRadius: 2,
+    },
+    sportIconContainer: {
+        width: 50,
+        height: 50,
+        borderRadius: 25,
+        backgroundColor: 'rgba(233, 30, 99, 0.1)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginRight: 15,
+    },
+    sportInfoContainer: {
+        flex: 1,
+    },
+    sportName: {
+        fontSize: 16,
+        fontWeight: 'bold',
+        color: '#333',
+        marginBottom: 5,
+    },
+    sportDetailsRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+    },
+    sportDetail: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    sportDetailLabel: {
+        fontSize: 13,
+        color: '#666',
+        marginRight: 4,
+    },
+    sportDetailValue: {
+        fontSize: 13,
+        fontWeight: '600',
+        color: '#333',
+    },
+    emptySportsContainer: {
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 30,
+        marginTop: 20,
+    },
+    emptySportsText: {
+        fontSize: 16,
+        color: '#666',
+        textAlign: 'center',
+        marginVertical: 15,
+    },
+    createSportsProfileButton: {
+        width: '80%',
+        borderRadius: 12,
+        overflow: 'hidden',
+        marginTop: 15,
+    },
+    createButtonGradient: {
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 12,
+    },
+    createButtonText: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: '#fff',
     },
 });
 

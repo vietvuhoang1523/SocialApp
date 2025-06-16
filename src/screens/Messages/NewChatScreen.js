@@ -253,13 +253,13 @@ const NewChatScreen = ({ route, navigation }) => {
             refreshInterval = setInterval(() => {
                 console.log('💓 WebSocket disconnected, refreshing messages...');
                 fetchNewMessages();
-            }, 5000); // Every 5 seconds when disconnected
+            }, 8000); // Increased from 5s to 8s to reduce duplicate messages
         } else {
             // Less frequent refresh when connected (backup only)
             refreshInterval = setInterval(() => {
                 console.log('🔄 Periodic message sync (WebSocket backup)...');
                 fetchNewMessages();
-            }, 30000); // Every 30 seconds when connected
+            }, 45000); // Increased from 30s to 45s to reduce duplicate messages
         }
 
         return () => {
@@ -275,7 +275,7 @@ const NewChatScreen = ({ route, navigation }) => {
             return;
         }
 
-        // ✅ FIX: Enhanced message sending with better real-time handling
+        // ✅ FIX: Prevent duplicate message sending
         console.log('📤 Sending message via NewChatScreen:', {
             hasWebSocket: wsConnected,
             messageLength: messageText.length,
@@ -283,17 +283,16 @@ const NewChatScreen = ({ route, navigation }) => {
             wsStatus: wsStatus
         });
 
+        // ✅ FIX: Set sending flag to prevent multiple sends
         sendMessageHandler(messageText, attachment);
         
-        // ✅ FIX: Immediate optimistic update for better UX
-        if (wsConnected) {
-            console.log('✅ Message sent via WebSocket - expecting real-time delivery');
-        } else {
-            console.log('⚠️ WebSocket disconnected - message sent via API, triggering refresh');
-            // Trigger immediate refresh for API-sent messages
+        // ✅ FIX: Removed immediate refresh to prevent duplicate messages
+        if (!wsConnected) {
+            console.log('⚠️ WebSocket disconnected - message sent via API');
+            // Delayed refresh to allow API to process the message
             setTimeout(() => {
                 fetchNewMessages();
-            }, 1000);
+            }, 1500);
         }
     }, [messageText, attachment, sending, sendMessageHandler, wsConnected, wsStatus, fetchNewMessages]);
 

@@ -33,7 +33,9 @@ const SportsAvailabilityCard = ({ availability, onPress }) => {
     status,
     createdAt,
     requiredSkillLevel,
-    isCompetitive
+    isCompetitive,
+    matchRequestCount,
+    viewCount
   } = availability;
   
   const sportIcon = SportTypeIcons[sportType] || 'football';
@@ -70,6 +72,77 @@ const SportsAvailabilityCard = ({ availability, onPress }) => {
     
     return `${skillLevelPreferences.length} trình độ`;
   };
+
+  // Tính thời gian còn lại
+  const getTimeRemaining = () => {
+    const now = new Date();
+    const diffMs = startTime - now;
+    
+    if (diffMs < 0) {
+      if (now < endTime) {
+        return 'Đang diễn ra';
+      }
+      return 'Đã kết thúc';
+    }
+    
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    
+    if (diffHours > 24) {
+      const diffDays = Math.floor(diffHours / 24);
+      return `Còn ${diffDays} ngày`;
+    }
+    
+    if (diffHours === 0) {
+      const diffMinutes = Math.floor(diffMs / (1000 * 60));
+      return `Còn ${diffMinutes} phút`;
+    }
+    
+    return `Còn ${diffHours} giờ`;
+  };
+  
+  // Kiểm tra xem có đang diễn ra không
+  const isOngoing = () => {
+    const now = new Date();
+    return now >= startTime && now <= endTime;
+  };
+  
+  // Kiểm tra xem đã kết thúc chưa
+  const isEnded = () => {
+    const now = new Date();
+    return now > endTime;
+  };
+  
+  // Lấy màu trạng thái
+  const getStatusColor = () => {
+    if (isEnded()) {
+      return colors.error;
+    }
+    if (isOngoing()) {
+      return colors.success;
+    }
+    return colors.warning;
+  };
+  
+  // Lấy thông tin về môn thể thao bằng tiếng Việt
+  const getSportTypeVietnamese = (type) => {
+    const sportTypes = {
+      FOOTBALL: 'Bóng đá',
+      BASKETBALL: 'Bóng rổ',
+      VOLLEYBALL: 'Bóng chuyền',
+      TENNIS: 'Quần vợt',
+      BADMINTON: 'Cầu lông',
+      TABLE_TENNIS: 'Bóng bàn',
+      SWIMMING: 'Bơi lội',
+      RUNNING: 'Chạy bộ',
+      CYCLING: 'Đạp xe',
+      GYM: 'Tập gym',
+      YOGA: 'Yoga',
+      MARTIAL_ARTS: 'Võ thuật',
+      OTHER: 'Khác'
+    };
+    
+    return sportTypes[type] || type;
+  };
   
   return (
     <TouchableOpacity 
@@ -77,6 +150,18 @@ const SportsAvailabilityCard = ({ availability, onPress }) => {
       onPress={onPress}
       activeOpacity={0.8}
     >
+      {/* Status badge */}
+      <View 
+        style={[
+          styles.statusBadge, 
+          { backgroundColor: getStatusColor() + '20' }
+        ]}
+      >
+        <Text style={[styles.statusText, { color: getStatusColor() }]}>
+          {getTimeRemaining()}
+        </Text>
+      </View>
+      
       <View style={styles.header}>
         <View style={styles.userInfo}>
           <Image 
@@ -90,7 +175,9 @@ const SportsAvailabilityCard = ({ availability, onPress }) => {
         </View>
         <View style={[styles.sportBadge, { backgroundColor: colors.primary + '20' }]}>
           <FontAwesome5 name={sportIcon} size={16} color={colors.primary} />
-          <Text style={[styles.sportText, { color: colors.primary }]}>{sportType}</Text>
+          <Text style={[styles.sportText, { color: colors.primary }]}>
+            {getSportTypeVietnamese(sportType)}
+          </Text>
         </View>
       </View>
       
@@ -147,6 +234,27 @@ const SportsAvailabilityCard = ({ availability, onPress }) => {
           </Text>
         </View>
       </View>
+      
+      {/* Stats row */}
+      <View style={styles.statsRow}>
+        <View style={styles.statItem}>
+          <Ionicons name="eye-outline" size={14} color={colors.textLight} />
+          <Text style={[styles.statText, { color: colors.textLight }]}>
+            {viewCount || 0}
+          </Text>
+        </View>
+        
+        <View style={styles.statItem}>
+          <Ionicons name="people-outline" size={14} color={colors.textLight} />
+          <Text style={[styles.statText, { color: colors.textLight }]}>
+            {matchRequestCount || 0} người quan tâm
+          </Text>
+        </View>
+        
+        <View style={styles.joinButton}>
+          <Text style={styles.joinButtonText}>Tham gia</Text>
+        </View>
+      </View>
     </TouchableOpacity>
   );
 };
@@ -161,6 +269,19 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
     shadowRadius: 1,
+  },
+  statusBadge: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    zIndex: 1,
+  },
+  statusText: {
+    fontSize: 12,
+    fontWeight: '600',
   },
   header: {
     flexDirection: 'row',
@@ -220,6 +341,7 @@ const styles = StyleSheet.create({
   footer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
+    marginBottom: 12,
   },
   badge: {
     flexDirection: 'row',
@@ -233,6 +355,34 @@ const styles = StyleSheet.create({
   badgeText: {
     fontSize: 12,
     marginLeft: 4,
+  },
+  statsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
+  },
+  statItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  statText: {
+    fontSize: 12,
+    marginLeft: 4,
+  },
+  joinButton: {
+    backgroundColor: '#4CAF50',
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    borderRadius: 16,
+  },
+  joinButtonText: {
+    color: 'white',
+    fontWeight: '600',
+    fontSize: 12,
   },
 });
 

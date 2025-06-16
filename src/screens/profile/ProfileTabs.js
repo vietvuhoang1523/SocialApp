@@ -21,6 +21,11 @@ const ProfileTabs = ({ activeTab, onTabChange }) => {
             icon: 'image-outline'
         },
         {
+            key: 'sports',
+            label: 'Thể thao',
+            icon: 'basketball-outline'
+        },
+        {
             key: 'videos',
             label: 'Video',
             icon: 'videocam-outline'

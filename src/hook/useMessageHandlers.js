@@ -1,5 +1,5 @@
 // useMessageHandlers.js - Hook xử lý gửi tin nhắn và các hành động liên quan
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import messagesService from '../services/messagesService';
 
 const useMessageHandlers = (
@@ -15,6 +15,10 @@ const useMessageHandlers = (
 ) => {
     // 📱 State
     const [sending, setSending] = useState(false);
+    
+    // ✅ FIX: Theo dõi ID tin nhắn đã gửi để tránh gửi lại
+    const sentMessageIds = useRef(new Set());
+    const pendingSends = useRef(new Set());
 
     // 🕒 Format time helper
     const formatTime = useCallback((timestamp) => {
@@ -67,6 +71,19 @@ const useMessageHandlers = (
         }
 
         const messageContent = messageText?.trim() || '';
+        
+        // ✅ FIX: Tạo message fingerprint để kiểm tra trùng lặp
+        const messageFingerprint = `${currentUser.id}_${user.id}_${messageContent}_${Date.now()}`;
+        
+        // ✅ FIX: Kiểm tra xem tin nhắn đã được gửi gần đây chưa
+        if (pendingSends.current.has(messageFingerprint)) {
+            console.log('⚠️ Duplicate message send prevented:', messageFingerprint);
+            return;
+        }
+        
+        // ✅ FIX: Đánh dấu tin nhắn đang được gửi
+        pendingSends.current.add(messageFingerprint);
+        
         const tempId = `temp_${Date.now()}_${Math.random()}`;
 
         // 📝 Create temporary message
@@ -79,7 +96,9 @@ const useMessageHandlers = (
             createdAt: new Date().toISOString(),
             isSending: true,
             isError: false,
-            attachment: attachment || null
+            attachment: attachment || null,
+            // ✅ FIX: Thêm fingerprint để theo dõi
+            _fingerprint: messageFingerprint
         };
 
         try {
@@ -87,7 +106,21 @@ const useMessageHandlers = (
             console.log(`📤 Sending message: "${messageContent.substring(0, 50)}${messageContent.length > 50 ? '...' : ''}"`);
 
             // Add temporary message to UI immediately
-            setMessages(prev => [tempMessage, ...prev]);
+            setMessages(prev => {
+                // ✅ FIX: Kiểm tra xem tin nhắn tương tự đã tồn tại chưa
+                const isDuplicate = prev.some(msg => 
+                    msg.content === messageContent && 
+                    msg.senderId === currentUser.id &&
+                    Date.now() - new Date(msg.timestamp).getTime() < 10000 // Trong vòng 10 giây
+                );
+                
+                if (isDuplicate) {
+                    console.log('⚠️ Phát hiện tin nhắn trùng lặp, không thêm vào UI');
+                    return prev;
+                }
+                
+                return [tempMessage, ...prev];
+            });
 
             // Clear input
             setMessageText('');
@@ -109,6 +142,12 @@ const useMessageHandlers = (
                     if (wsResult && wsResult.success === true) {
                         console.log('✅ WebSocket send successful');
                         realMessage = wsResult.message;
+                        
+                        // ✅ FIX: Đánh dấu ID tin nhắn đã gửi thành công
+                        if (realMessage && realMessage.id) {
+                            sentMessageIds.current.add(realMessage.id);
+                        }
+                        
                         success = true;
                     } else {
                         console.log('⚠️ WebSocket send returned unexpected result:', wsResult);
@@ -143,8 +182,12 @@ const useMessageHandlers = (
                     if (response && response.success) {
                         console.log('✅ messagesService fallback successful');
                         success = true;
-                        // messagesService doesn't return the message directly, 
-                        // we'll get it via WebSocket or next refresh
+                        
+                        // ✅ FIX: Đánh dấu ID tin nhắn đã gửi thành công nếu có
+                        if (response.message && response.message.id) {
+                            sentMessageIds.current.add(response.message.id);
+                            realMessage = response.message;
+                        }
                     } else {
                         console.log('❌ messagesService fallback returned false');
                         throw new Error('messagesService returned unsuccessful result');
@@ -158,11 +201,21 @@ const useMessageHandlers = (
             if (success) {
                 if (realMessage) {
                     // Replace temporary message with real message
-                    setMessages(prev => prev.map(msg => 
-                                msg.id === tempId
-                            ? { ...realMessage, isSending: false, isError: false }
-                                    : msg
-                    ));
+                    setMessages(prev => {
+                        // ✅ FIX: Kiểm tra xem tin nhắn thật đã tồn tại trong danh sách chưa
+                        const realMessageExists = prev.some(msg => msg.id === realMessage.id && msg.id !== tempId);
+                        
+                        if (realMessageExists) {
+                            console.log('⚠️ Real message already exists, removing temp message');
+                            return prev.filter(msg => msg.id !== tempId);
+                        }
+                        
+                        return prev.map(msg => 
+                            msg.id === tempId
+                                ? { ...realMessage, isSending: false, isError: false }
+                                : msg
+                        );
+                    });
                     console.log('✅ Message sent successfully with ID:', realMessage.id);
                 } else {
                     // ⚡ FIX: Keep temporary message visible instead of removing it
@@ -178,7 +231,17 @@ const useMessageHandlers = (
                     setTimeout(() => {
                         console.log('🔄 Fetching new messages as fallback in case WebSocket didn\'t deliver');
                         fetchNewMessages?.();
-                    }, 3000); // Wait 3 seconds for WebSocket, then fallback
+                        
+                        // ✅ FIX: Xóa tin nhắn tạm nếu đã quá thời gian chờ
+                        setMessages(prev => {
+                            const tempMessageExists = prev.some(msg => msg.id === tempId);
+                            if (tempMessageExists) {
+                                console.log('⚠️ Temp message still exists after timeout, removing');
+                                return prev.filter(msg => msg.id !== tempId);
+                            }
+                            return prev;
+                        });
+                    }, 5000); // Tăng thời gian chờ lên 5 giây
                 }
             } else {
                 // Mark as error
@@ -192,9 +255,6 @@ const useMessageHandlers = (
 
             // ❌ REMOVED: Don't fetch new messages after sending to avoid duplicates
             // The message will arrive via WebSocket automatically
-            // setTimeout(() => {
-            //     fetchNewMessages?.();
-            // }, 1000);
 
         } catch (error) {
             console.error('❌ Error in sendMessage:', error);
@@ -207,6 +267,11 @@ const useMessageHandlers = (
             ));
         } finally {
             setSending(false);
+            
+            // ✅ FIX: Xóa khỏi danh sách đang gửi sau một khoảng thời gian
+            setTimeout(() => {
+                pendingSends.current.delete(messageFingerprint);
+            }, 10000); // 10 giây
         }
     }, [
         currentUser?.id,

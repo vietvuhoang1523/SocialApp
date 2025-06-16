@@ -126,6 +126,18 @@ const NewMessagesScreen = ({ navigation, route }) => {
                 // Listen for new messages
                 messagesService.on('newMessage', (message) => {
                     console.log('📩 New message received for conversation list:', message);
+                    
+                    // ✅ FIX: Thêm kiểm tra để đảm bảo message hợp lệ
+                    if (!message || !message.id) {
+                        console.log('⚠️ Received invalid message object');
+                        return;
+                    }
+                    
+                    // ✅ FIX: Đảm bảo message có timestamp
+                    if (!message.timestamp) {
+                        message.timestamp = new Date().toISOString();
+                    }
+                    
                     updateConversationWithNewMessage(message);
                 });
 
@@ -620,12 +632,35 @@ const NewMessagesScreen = ({ navigation, route }) => {
     // 📨 Update conversation with new message
     const updateConversationWithNewMessage = (message) => {
         setConversations(prev => {
+            // ✅ FIX: Kiểm tra ID tin nhắn để tránh trùng lặp
+            const messageAlreadyProcessed = prev.some(conv => 
+                conv.lastMessage && conv.lastMessage.id === message.id
+            );
+            
+            if (messageAlreadyProcessed) {
+                console.log('🔍 Tin nhắn đã được xử lý trước đó, bỏ qua:', message.id);
+                return prev;
+            }
+            
             const conversationIndex = prev.findIndex(conv => 
                 (conv.otherUser.id === message.senderId && message.receiverId === currentUser?.id) ||
                 (conv.otherUser.id === message.receiverId && message.senderId === currentUser?.id)
             );
 
             if (conversationIndex !== -1) {
+                // ✅ FIX: Kiểm tra timestamp để đảm bảo chỉ cập nhật tin nhắn mới hơn
+                const existingConv = prev[conversationIndex];
+                const existingTimestamp = existingConv.lastMessage?.timestamp ? 
+                    new Date(existingConv.lastMessage.timestamp).getTime() : 0;
+                const newTimestamp = message.timestamp ? 
+                    new Date(message.timestamp).getTime() : 0;
+                
+                // Nếu tin nhắn mới cũ hơn tin nhắn hiện tại, không cập nhật
+                if (newTimestamp < existingTimestamp) {
+                    console.log('⚠️ Tin nhắn mới cũ hơn tin nhắn hiện tại, không cập nhật');
+                    return prev;
+                }
+                
                 const updatedConversations = [...prev];
                 updatedConversations[conversationIndex] = {
                     ...updatedConversations[conversationIndex],
@@ -635,7 +670,7 @@ const NewMessagesScreen = ({ navigation, route }) => {
                         (updatedConversations[conversationIndex].unreadCount || 0) + 1 : 0
                 };
 
-                // Move to top
+                // ✅ FIX: Tạo bản sao mới của mảng để đảm bảo React nhận ra thay đổi
                 const [movedConv] = updatedConversations.splice(conversationIndex, 1);
                 return [movedConv, ...updatedConversations];
             }
@@ -643,13 +678,13 @@ const NewMessagesScreen = ({ navigation, route }) => {
             // Create new conversation if doesn't exist
             const newConversation = {
                 id: `conv_${message.senderId}_${message.receiverId}`,
-                    otherUser: {
+                otherUser: {
                     id: message.senderId === currentUser?.id ? message.receiverId : message.senderId,
-                        fullName: 'Người dùng mới',
+                    fullName: 'Người dùng mới',
                     username: 'newuser',
-                        avatar: null
-                    },
-                    lastMessage: message,
+                    avatar: null
+                },
+                lastMessage: message,
                 unreadCount: message.senderId !== currentUser?.id ? 1 : 0,
                 updatedAt: message.timestamp
             };
