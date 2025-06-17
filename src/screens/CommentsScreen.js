@@ -253,8 +253,19 @@ const CommentsScreen = ({ route, navigation }) => {
 
     // Render item bình luận
     const renderCommentItem = ({ item }) => {
-        const avatarUrl = item.user?.profilePictureUrl
-            ? getFullImageUrl(item.user.profilePictureUrl)
+        // Kiểm tra và đảm bảo item có đủ dữ liệu
+        if (!item) return null;
+        
+        // Đảm bảo trường user luôn tồn tại
+        const user = item.user || {
+            id: item.userId || 0,
+            username: 'Người dùng',
+            fullName: 'Người dùng',
+            profilePictureUrl: null
+        };
+        
+        const avatarUrl = user.profilePictureUrl
+            ? getFullImageUrl(user.profilePictureUrl)
             : 'https://randomuser.me/api/portraits/men/1.jpg';
 
         return (
@@ -266,8 +277,8 @@ const CommentsScreen = ({ route, navigation }) => {
                 />
                 <View style={styles.commentContent}>
                     <View style={styles.commentBubble}>
-                        <Text style={styles.username}>{item.user?.fullName || item.user?.username || 'Người dùng'}</Text>
-                        <Text style={styles.commentText}>{item.content}</Text>
+                        <Text style={styles.username}>{user.fullName || user.username || 'Người dùng'}</Text>
+                        <Text style={styles.commentText}>{item.content || ''}</Text>
                     </View>
                     <View style={styles.commentActions}>
                         <Text style={styles.timestamp}>{formatTimeAgo(item.createdAt)}</Text>
@@ -288,7 +299,7 @@ const CommentsScreen = ({ route, navigation }) => {
 
                         <TouchableOpacity
                             style={styles.actionButton}
-                            onPress={() => setNewComment(`@${item.user?.username} `)}
+                            onPress={() => setNewComment(`@${user.username} `)}
                         >
                             <Icon name="chatbubble-outline" size={16} color="#65676B" />
                             <Text style={styles.actionButtonText}>Trả lời</Text>

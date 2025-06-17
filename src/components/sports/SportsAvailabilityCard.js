@@ -1,19 +1,24 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   View, 
   Text, 
   StyleSheet, 
   TouchableOpacity, 
-  Image 
+  Image,
+  ActivityIndicator,
+  Alert
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons, FontAwesome5 } from '@expo/vector-icons';
 import { useTheme } from '../../hook/ThemeContext';
 import { formatDistanceToNow } from 'date-fns';
 import { vi } from 'date-fns/locale';
 import { SportTypeIcons } from '../../constants/SportConstants';
+import { joinSportsPost } from '../../services/sportsService';
 
-const SportsAvailabilityCard = ({ availability, onPress }) => {
+const SportsAvailabilityCard = ({ availability, onPress, onJoinSuccess }) => {
   const { colors } = useTheme();
+  const [joining, setJoining] = useState(false);
+  const [joinStatus, setJoinStatus] = useState(availability?.userParticipationStatus || null);
   
   if (!availability) return null;
   
@@ -35,7 +40,8 @@ const SportsAvailabilityCard = ({ availability, onPress }) => {
     requiredSkillLevel,
     isCompetitive,
     matchRequestCount,
-    viewCount
+    viewCount,
+    userParticipationStatus
   } = availability;
   
   const sportIcon = SportTypeIcons[sportType] || 'football';
@@ -142,6 +148,124 @@ const SportsAvailabilityCard = ({ availability, onPress }) => {
     };
     
     return sportTypes[type] || type;
+  };
+  
+  // Handle join button press
+  const handleJoinPress = async () => {
+    // Prevent creator from joining their own post
+    if (availability.isCreator) {
+      Alert.alert('Thông báo', 'Bạn không thể tham gia bài đăng của chính mình');
+      return;
+    }
+
+    // If already joined or has pending request
+    if (joinStatus === 'ACCEPTED') {
+      Alert.alert(
+        'Đã tham gia',
+        'Bạn đã tham gia hoạt động này rồi',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
+    if (joinStatus === 'PENDING') {
+      Alert.alert(
+        'Yêu cầu đang chờ duyệt',
+        'Yêu cầu tham gia của bạn đang chờ người tạo duyệt',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
+    // If ended
+    if (isEnded()) {
+      Alert.alert('Thông báo', 'Hoạt động này đã kết thúc');
+      return;
+    }
+
+    // Show join confirmation
+    Alert.alert(
+      'Xác nhận tham gia',
+      'Bạn có muốn gửi tin nhắn kèm theo yêu cầu tham gia không?',
+      [
+        {
+          text: 'Hủy',
+          style: 'cancel'
+        },
+        {
+          text: 'Không cần',
+          onPress: () => submitJoinRequest('')
+        },
+        {
+          text: 'Có, gửi tin nhắn',
+          onPress: () => showJoinMessagePrompt()
+        }
+      ]
+    );
+  };
+
+  const showJoinMessagePrompt = () => {
+    Alert.prompt(
+      'Tin nhắn tham gia',
+      'Nhập tin nhắn bạn muốn gửi đến người tạo:',
+      [
+        {
+          text: 'Hủy',
+          style: 'cancel'
+        },
+        {
+          text: 'Gửi',
+          onPress: (message) => submitJoinRequest(message || '')
+        }
+      ],
+      'plain-text'
+    );
+  };
+
+  const submitJoinRequest = async (joinMessage) => {
+    try {
+      setJoining(true);
+      const response = await joinSportsPost(id, joinMessage);
+      setJoinStatus('PENDING');
+      
+      // Update parent component if needed
+      if (onJoinSuccess) {
+        onJoinSuccess(id);
+      }
+      
+      Alert.alert(
+        'Thành công',
+        'Yêu cầu tham gia đã được gửi và đang chờ duyệt',
+        [{ text: 'OK' }]
+      );
+    } catch (error) {
+      Alert.alert(
+        'Lỗi',
+        error.message || 'Không thể gửi yêu cầu tham gia. Vui lòng thử lại sau.',
+        [{ text: 'OK' }]
+      );
+    } finally {
+      setJoining(false);
+    }
+  };
+
+  // Get join button text based on status
+  const getJoinButtonText = () => {
+    if (joining) return '';
+    if (joinStatus === 'ACCEPTED') return 'Đã tham gia';
+    if (joinStatus === 'PENDING') return 'Đang chờ';
+    if (joinStatus === 'REJECTED') return 'Bị từ chối';
+    if (isEnded()) return 'Đã kết thúc';
+    return 'Tham gia';
+  };
+
+  // Get join button color based on status
+  const getJoinButtonColor = () => {
+    if (joinStatus === 'ACCEPTED') return colors.success;
+    if (joinStatus === 'PENDING') return colors.warning;
+    if (joinStatus === 'REJECTED') return colors.error;
+    if (isEnded()) return colors.textLight;
+    return '#4CAF50'; // Default green
   };
   
   return (
@@ -251,9 +375,17 @@ const SportsAvailabilityCard = ({ availability, onPress }) => {
           </Text>
         </View>
         
-        <View style={styles.joinButton}>
-          <Text style={styles.joinButtonText}>Tham gia</Text>
-        </View>
+        <TouchableOpacity 
+          style={[styles.joinButton, { backgroundColor: getJoinButtonColor() }]}
+          onPress={handleJoinPress}
+          disabled={joining || joinStatus === 'ACCEPTED' || isEnded()}
+        >
+          {joining ? (
+            <ActivityIndicator size="small" color="#ffffff" />
+          ) : (
+            <Text style={styles.joinButtonText}>{getJoinButtonText()}</Text>
+          )}
+        </TouchableOpacity>
       </View>
     </TouchableOpacity>
   );
@@ -374,10 +506,11 @@ const styles = StyleSheet.create({
     marginLeft: 4,
   },
   joinButton: {
-    backgroundColor: '#4CAF50',
     paddingHorizontal: 16,
     paddingVertical: 6,
     borderRadius: 16,
+    minWidth: 80,
+    alignItems: 'center',
   },
   joinButtonText: {
     color: 'white',

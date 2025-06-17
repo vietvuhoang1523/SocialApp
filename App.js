@@ -39,6 +39,12 @@ import SportsAvailabilityScreen from "./src/screens/sports/SportsAvailabilityScr
 import CreateSportsAvailabilityScreen from "./src/screens/sports/CreateSportsAvailabilityScreen";
 import SportsAvailabilityDetailScreen from "./src/screens/sports/SportsAvailabilityDetailScreen";
 
+// Import Report and Workout screens
+import ReportScreen from "./src/screens/ReportScreen";
+import WorkoutTrackingScreen from "./src/screens/workout/WorkoutTrackingScreen";
+import WorkoutHistoryScreen from "./src/screens/workout/WorkoutHistoryScreen";
+import ReportManagementScreen from "./src/screens/admin/ReportManagementScreen";
+
 // Import Location screens
 import UserLocationController from "./src/screens/profile/UserLocationController";
 import SimpleLocationController from "./src/screens/profile/SimpleLocationController";
@@ -280,6 +286,27 @@ export default function App() {
             component={SportsAvailabilityDetailScreen}
             options={{ headerShown: false }}
         />
+        {/* Report and Workout screens */}
+        <Stack.Screen
+            name="Report"
+            component={ReportScreen}
+            options={{ headerShown: false }}
+        />
+        <Stack.Screen
+            name="WorkoutTracking"
+            component={WorkoutTrackingScreen}
+            options={{ headerShown: false }}
+        />
+        <Stack.Screen
+            name="WorkoutHistory"
+            component={WorkoutHistoryScreen}
+            options={{ headerShown: false }}
+        />
+        <Stack.Screen
+            name="ReportManagement"
+            component={ReportManagementScreen}
+            options={{ headerShown: false }}
+        />
         {/* Main Tab Navigator - Must be last */}
         <Stack.Screen
             name="MainTab"
@@ -473,6 +500,27 @@ export default function App() {
               <Stack.Screen
                   name="SportsAvailabilityDetail"
                   component={SportsAvailabilityDetailScreen}
+                  options={{ headerShown: false }}
+              />
+              {/* Report and Workout screens */}
+              <Stack.Screen
+                  name="Report"
+                  component={ReportScreen}
+                  options={{ headerShown: false }}
+              />
+              <Stack.Screen
+                  name="WorkoutTracking"
+                  component={WorkoutTrackingScreen}
+                  options={{ headerShown: false }}
+              />
+              <Stack.Screen
+                  name="WorkoutHistory"
+                  component={WorkoutHistoryScreen}
+                  options={{ headerShown: false }}
+              />
+              <Stack.Screen
+                  name="ReportManagement"
+                  component={ReportManagementScreen}
                   options={{ headerShown: false }}
               />
               {/* Main Tab Navigator - Must be last */}

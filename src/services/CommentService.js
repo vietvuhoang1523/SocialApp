@@ -71,6 +71,26 @@ class CommentService {
             const response = await this.api.get(
                 `/comments/post/${postId}?page=${page}&size=${size}&sortBy=${sortBy}&sortDir=${sortDir}`
             );
+            
+            // Kiểm tra và xử lý dữ liệu trả về
+            if (response.data && response.data.content) {
+                // Đảm bảo mỗi comment có các trường cần thiết
+                response.data.content = response.data.content.map(comment => ({
+                    ...comment,
+                    // Đảm bảo trường user luôn tồn tại
+                    user: comment.user || {
+                        id: comment.userId || 0,
+                        username: 'Người dùng',
+                        fullName: 'Người dùng',
+                        profilePictureUrl: null
+                    },
+                    // Đảm bảo các trường khác luôn tồn tại
+                    likeCount: comment.likeCount || 0,
+                    isLiked: !!comment.isLiked,
+                    content: comment.content || ''
+                }));
+            }
+            
             return response.data;
         } catch (error) {
             console.error('Lỗi khi lấy bình luận của bài đăng:', error);
@@ -159,6 +179,24 @@ class CommentService {
     async getCommentById(commentId) {
         try {
             const response = await this.api.get(`/comments/${commentId}`);
+            
+            // Đảm bảo dữ liệu trả về có định dạng đúng
+            if (response.data) {
+                const comment = response.data;
+                return {
+                    ...comment,
+                    user: comment.user || {
+                        id: comment.userId || 0,
+                        username: 'Người dùng',
+                        fullName: 'Người dùng',
+                        profilePictureUrl: null
+                    },
+                    likeCount: comment.likeCount || 0,
+                    isLiked: !!comment.isLiked,
+                    content: comment.content || ''
+                };
+            }
+            
             return response.data;
         } catch (error) {
             console.error('Lỗi khi lấy thông tin bình luận:', error);
@@ -180,6 +218,23 @@ class CommentService {
             const response = await this.api.get(
                 `/comments/user/${userId}?page=${page}&size=${size}&sortBy=${sortBy}&sortDir=${sortDir}`
             );
+            
+            // Kiểm tra và xử lý dữ liệu trả về
+            if (response.data && response.data.content) {
+                response.data.content = response.data.content.map(comment => ({
+                    ...comment,
+                    user: comment.user || {
+                        id: comment.userId || userId,
+                        username: 'Người dùng',
+                        fullName: 'Người dùng',
+                        profilePictureUrl: null
+                    },
+                    likeCount: comment.likeCount || 0,
+                    isLiked: !!comment.isLiked,
+                    content: comment.content || ''
+                }));
+            }
+            
             return response.data;
         } catch (error) {
             console.error('Lỗi khi lấy bình luận của người dùng:', error);

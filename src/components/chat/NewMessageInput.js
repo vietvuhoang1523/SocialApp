@@ -1,5 +1,5 @@
 // NewMessageInput.js - Input tin nhắn mới với UI hiện đại
-import React, { memo, useState, useRef, useCallback } from 'react';
+import React, { memo, useState, useRef, useCallback, useEffect } from 'react';
 import {
     View,
     Text,
@@ -10,7 +10,8 @@ import {
     Alert,
     Dimensions,
     Platform,
-    KeyboardAvoidingView
+    KeyboardAvoidingView,
+    ActivityIndicator
 } from 'react-native';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -20,24 +21,27 @@ import { LinearGradient } from 'expo-linear-gradient';
 const { width: screenWidth } = Dimensions.get('window');
 
 const NewMessageInput = memo(({
-    messageText,
-    onChangeText,
+    text,
+    setText,
     onSend,
     attachment,
     setAttachment,
     sending = false,
-    disabled = false
+    connectionStatus = 'connected',
+    onTyping
 }) => {
     // 📱 State
     const [isExpanded, setIsExpanded] = useState(false);
     const [isRecording, setIsRecording] = useState(false);
     const [showAttachmentOptions, setShowAttachmentOptions] = useState(false);
+    const [typingTimeout, setTypingTimeout] = useState(null);
 
     // 📝 References
     const textInputRef = useRef(null);
     const scaleAnim = useRef(new Animated.Value(1)).current;
     const expandAnim = useRef(new Animated.Value(0)).current;
     const recordAnim = useRef(new Animated.Value(1)).current;
+    const lastTypingState = useRef(false);
 
     // 📱 Focus input
     const focusInput = useCallback(() => {
@@ -46,16 +50,31 @@ const NewMessageInput = memo(({
 
     // 📱 Handle send message
     const handleSend = useCallback(() => {
+        // Check if sending is disabled
+        const isDisabled = connectionStatus === 'error' || connectionStatus === 'disconnected';
+        
         // ⚡ Debounce protection - prevent double press
-        if (sending || disabled) {
-            console.log('⚠️ Send blocked - sending:', sending, 'disabled:', disabled);
+        if (sending || isDisabled) {
+            if (isDisabled) {
+                Alert.alert(
+                    'Mất kết nối',
+                    'Không thể gửi tin nhắn khi mất kết nối. Vui lòng thử lại sau.',
+                    [{ text: 'Đã hiểu' }]
+                );
+            }
             return;
         }
 
-        if (messageText.trim().length > 0 || attachment) {
+        if (text.trim().length > 0 || attachment) {
             console.log('📤 Triggering send message...');
-            onSend();
+            onSend(text, attachment);
             setIsExpanded(false);
+            
+            // Reset typing state
+            if (onTyping && lastTypingState.current) {
+                onTyping(false);
+                lastTypingState.current = false;
+            }
             
             // Animate send button
             Animated.sequence([
@@ -70,17 +89,15 @@ const NewMessageInput = memo(({
                     useNativeDriver: true,
                 })
             ]).start();
-        } else {
-            console.log('⚠️ No content to send');
         }
-    }, [messageText, attachment, onSend, scaleAnim, sending, disabled]);
+    }, [text, attachment, onSend, scaleAnim, sending, connectionStatus, onTyping]);
 
-    // 📱 Handle text change
-    const handleTextChange = useCallback((text) => {
-        onChangeText(text);
+    // 📱 Handle text change with typing notifications
+    const handleTextChange = useCallback((value) => {
+        setText(value);
         
         // Auto-expand input for long text
-        const shouldExpand = text.length > 50;
+        const shouldExpand = value.length > 50;
         if (shouldExpand !== isExpanded) {
             setIsExpanded(shouldExpand);
             Animated.timing(expandAnim, {
@@ -89,7 +106,49 @@ const NewMessageInput = memo(({
                 useNativeDriver: false,
             }).start();
         }
-    }, [onChangeText, isExpanded, expandAnim]);
+        
+        // Handle typing notifications
+        if (onTyping) {
+            // Only send typing notification if text is not empty
+            const isTyping = value.trim().length > 0;
+            
+            // Only send notification when typing state changes
+            if (isTyping !== lastTypingState.current) {
+                onTyping(isTyping);
+                lastTypingState.current = isTyping;
+            }
+            
+            // Clear previous timeout
+            if (typingTimeout) {
+                clearTimeout(typingTimeout);
+            }
+            
+            // If user is typing, set a timeout to reset typing state after 3 seconds of inactivity
+            if (isTyping) {
+                const timeout = setTimeout(() => {
+                    if (lastTypingState.current) {
+                        onTyping(false);
+                        lastTypingState.current = false;
+                    }
+                }, 3000);
+                setTypingTimeout(timeout);
+            }
+        }
+    }, [setText, isExpanded, expandAnim, onTyping, typingTimeout]);
+
+    // Clean up typing timeout on unmount
+    useEffect(() => {
+        return () => {
+            if (typingTimeout) {
+                clearTimeout(typingTimeout);
+            }
+            
+            // Reset typing state when component unmounts
+            if (onTyping && lastTypingState.current) {
+                onTyping(false);
+            }
+        };
+    }, [typingTimeout, onTyping]);
 
     // 📷 Pick image from gallery
     const pickImage = useCallback(async () => {
@@ -224,12 +283,16 @@ const NewMessageInput = memo(({
         setShowAttachmentOptions(prev => !prev);
     }, []);
 
-    // 🎨 Get send button color
+    // 🎨 Get send button color based on connection status and message content
     const getSendButtonColor = () => {
         if (sending) return ['#ccc', '#999'];
-        if (messageText.trim().length > 0 || attachment) return ['#667eea', '#764ba2'];
+        if (connectionStatus === 'error' || connectionStatus === 'disconnected') return ['#e0e0e0', '#bdbdbd'];
+        if (text.trim().length > 0 || attachment) return ['#0084ff', '#0084ff'];
         return ['#e0e0e0', '#bdbdbd'];
     };
+
+    // Determine if input should be disabled
+    const isDisabled = connectionStatus === 'error' || connectionStatus === 'disconnected';
 
     return (
         <View style={styles.container}>
@@ -241,7 +304,7 @@ const NewMessageInput = memo(({
                             <Ionicons 
                                 name={attachment.type === 'image' ? 'image' : 'document'} 
                                 size={20} 
-                                color="#667eea" 
+                                color="#0084ff" 
                             />
                         </View>
                         <View style={styles.attachmentInfo}>
@@ -249,153 +312,114 @@ const NewMessageInput = memo(({
                                 {attachment.name}
                             </Text>
                             <Text style={styles.attachmentSize}>
-                                {attachment.size ? `${(attachment.size / 1024).toFixed(1)} KB` : 'Unknown size'}
+                                {(attachment.size / 1024).toFixed(1)} KB
                             </Text>
                         </View>
-                        <TouchableOpacity 
-                            style={styles.removeAttachment}
-                            onPress={removeAttachment}
-                        >
-                            <Ionicons name="close" size={20} color="#999" />
+                        <TouchableOpacity style={styles.removeButton} onPress={removeAttachment}>
+                            <Ionicons name="close-circle" size={22} color="#ff3b30" />
                         </TouchableOpacity>
                     </View>
                 </View>
             )}
 
+            {/* Input Container */}
+            <View style={[
+                styles.inputContainer,
+                isDisabled && styles.inputContainerDisabled
+            ]}>
+                {/* Attachment Button */}
+                <TouchableOpacity 
+                    style={styles.attachButton}
+                    onPress={toggleAttachmentOptions}
+                    disabled={isDisabled}
+                >
+                    <Ionicons 
+                        name="add-circle-outline" 
+                        size={24} 
+                        color={isDisabled ? "#bdbdbd" : "#0084ff"} 
+                    />
+                </TouchableOpacity>
+
+                {/* Text Input */}
+                <Animated.View 
+                    style={[
+                        styles.textInputContainer,
+                        {
+                            height: expandAnim.interpolate({
+                                inputRange: [0, 1],
+                                outputRange: [40, 80]
+                            })
+                        }
+                    ]}
+                >
+                    <TextInput
+                        ref={textInputRef}
+                        style={styles.textInput}
+                        placeholder={isDisabled ? "Không thể gửi tin nhắn khi mất kết nối" : "Nhập tin nhắn..."}
+                        placeholderTextColor={isDisabled ? "#999" : "#666"}
+                        value={text}
+                        onChangeText={handleTextChange}
+                        multiline
+                        editable={!isDisabled}
+                    />
+                </Animated.View>
+
+                {/* Send Button */}
+                <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
+                    <TouchableOpacity 
+                        style={styles.sendButton} 
+                        onPress={handleSend}
+                        disabled={isDisabled || (text.trim().length === 0 && !attachment)}
+                    >
+                        <LinearGradient
+                            colors={getSendButtonColor()}
+                            style={styles.sendButtonGradient}
+                            start={{ x: 0, y: 0 }}
+                            end={{ x: 1, y: 1 }}
+                        >
+                            {sending ? (
+                                <ActivityIndicator size="small" color="#fff" />
+                            ) : (
+                                <Ionicons name="send" size={20} color="#fff" />
+                            )}
+                        </LinearGradient>
+                    </TouchableOpacity>
+                </Animated.View>
+            </View>
+
             {/* Attachment Options */}
             {showAttachmentOptions && (
                 <View style={styles.attachmentOptions}>
-                    <TouchableOpacity style={styles.attachmentOption} onPress={takePhoto}>
-                        <View style={[styles.attachmentOptionIcon, { backgroundColor: '#4CAF50' }]}>
-                            <Ionicons name="camera" size={24} color="#fff" />
-                        </View>
-                        <Text style={styles.attachmentOptionText}>Camera</Text>
-                    </TouchableOpacity>
-                    
                     <TouchableOpacity style={styles.attachmentOption} onPress={pickImage}>
-                        <View style={[styles.attachmentOptionIcon, { backgroundColor: '#2196F3' }]}>
-                            <Ionicons name="image" size={24} color="#fff" />
+                        <View style={[styles.attachmentOptionIcon, { backgroundColor: '#4CAF50' }]}>
+                            <Ionicons name="images" size={22} color="#fff" />
                         </View>
                         <Text style={styles.attachmentOptionText}>Thư viện</Text>
                     </TouchableOpacity>
                     
+                    <TouchableOpacity style={styles.attachmentOption} onPress={takePhoto}>
+                        <View style={[styles.attachmentOptionIcon, { backgroundColor: '#2196F3' }]}>
+                            <Ionicons name="camera" size={22} color="#fff" />
+                        </View>
+                        <Text style={styles.attachmentOptionText}>Camera</Text>
+                    </TouchableOpacity>
+                    
                     <TouchableOpacity style={styles.attachmentOption} onPress={pickDocument}>
                         <View style={[styles.attachmentOptionIcon, { backgroundColor: '#FF9800' }]}>
-                            <Ionicons name="document" size={24} color="#fff" />
+                            <Ionicons name="document" size={22} color="#fff" />
                         </View>
-                        <Text style={styles.attachmentOptionText}>File</Text>
+                        <Text style={styles.attachmentOptionText}>Tài liệu</Text>
                     </TouchableOpacity>
                 </View>
             )}
 
-            {/* Input Container */}
-            <View style={styles.inputContainer}>
-                {/* Text Input */}
-                <View style={styles.inputWrapper}>
-                    <TouchableOpacity
-                        style={styles.attachmentButton}
-                        onPress={toggleAttachmentOptions}
-                        disabled={disabled}
-                    >
-                        <Ionicons 
-                            name={showAttachmentOptions ? "close" : "add"} 
-                            size={24} 
-                            color={disabled ? "#ccc" : "#667eea"} 
-                        />
-                    </TouchableOpacity>
-
-                    <TextInput
-                        ref={textInputRef}
-                        style={[
-                            styles.textInput,
-                            isExpanded && styles.expandedInput,
-                            disabled && styles.disabledInput
-                        ]}
-                        placeholder={disabled ? "Đang kết nối..." : "Nhập tin nhắn..."}
-                        placeholderTextColor="#999"
-                        value={messageText}
-                        onChangeText={handleTextChange}
-                        multiline
-                        maxLength={1000}
-                        editable={!disabled && !sending}
-                        returnKeyType="default"
-                        blurOnSubmit={false}
-                    />
-
-                    {/* Emoji Button */}
-                    <TouchableOpacity
-                        style={styles.emojiButton}
-                        onPress={() => {
-                            // TODO: Implement emoji picker
-                            console.log('Emoji picker');
-                        }}
-                        disabled={disabled}
-                    >
-                        <Ionicons 
-                            name="happy-outline" 
-                            size={24} 
-                            color={disabled ? "#ccc" : "#667eea"} 
-                        />
-                    </TouchableOpacity>
-                </View>
-
-                {/* Action Buttons */}
-                <View style={styles.actionButtons}>
-                    {messageText.trim().length === 0 && !attachment ? (
-                        // Voice Recording Button
-                        <Animated.View style={{ transform: [{ scale: recordAnim }] }}>
-                            <TouchableOpacity
-                                style={[
-                                    styles.voiceButton,
-                                    isRecording && styles.recordingButton
-                                ]}
-                                onPress={toggleRecording}
-                                disabled={disabled}
-                            >
-                                <Ionicons 
-                                    name={isRecording ? "stop" : "mic"} 
-                                    size={24} 
-                                    color="#fff" 
-                                />
-                            </TouchableOpacity>
-                        </Animated.View>
-                    ) : (
-                        // Send Button
-                        <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
-                            <TouchableOpacity
-                                style={styles.sendButton}
-                                onPress={handleSend}
-                                disabled={disabled || sending || (messageText.trim().length === 0 && !attachment)}
-                            >
-                                <LinearGradient
-                                    colors={getSendButtonColor()}
-                                    style={styles.sendButtonGradient}
-                                >
-                                    {sending ? (
-                                        <Animated.View style={styles.sendingIcon}>
-                                            <Ionicons name="hourglass" size={24} color="#fff" />
-                                        </Animated.View>
-                                    ) : (
-                                        <Ionicons name="send" size={20} color="#fff" />
-                                    )}
-                                </LinearGradient>
-                            </TouchableOpacity>
-                        </Animated.View>
-                    )}
-                </View>
-            </View>
-
-            {/* Recording Indicator */}
-            {isRecording && (
-                <View style={styles.recordingIndicator}>
-                    <View style={styles.recordingDot} />
-                    <Text style={styles.recordingText}>Đang ghi âm...</Text>
-                    <TouchableOpacity 
-                        style={styles.cancelRecording}
-                        onPress={() => setIsRecording(false)}
-                    >
-                        <Text style={styles.cancelRecordingText}>Hủy</Text>
-                    </TouchableOpacity>
+            {/* Connection Status Indicator (only shown when disconnected) */}
+            {(connectionStatus === 'error' || connectionStatus === 'disconnected') && (
+                <View style={styles.connectionWarning}>
+                    <Ionicons name="cloud-offline-outline" size={14} color="#ff3b30" />
+                    <Text style={styles.connectionWarningText}>
+                        Mất kết nối - Tin nhắn sẽ được gửi khi kết nối lại
+                    </Text>
                 </View>
             )}
         </View>
@@ -407,21 +431,60 @@ const styles = StyleSheet.create({
         backgroundColor: '#fff',
         borderTopWidth: 1,
         borderTopColor: '#e0e0e0',
+        paddingVertical: 8,
+        paddingHorizontal: 8,
+    },
+    inputContainer: {
+        flexDirection: 'row',
+        alignItems: 'flex-end',
+        backgroundColor: '#f0f2f5',
+        borderRadius: 24,
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+    },
+    inputContainerDisabled: {
+        backgroundColor: '#f5f5f5',
+        borderColor: '#e0e0e0',
+        borderWidth: 1,
+    },
+    attachButton: {
+        padding: 8,
+    },
+    textInputContainer: {
+        flex: 1,
+        marginHorizontal: 8,
+        justifyContent: 'center',
+    },
+    textInput: {
+        fontSize: 16,
+        color: '#333',
+        maxHeight: 100,
+    },
+    sendButton: {
+        width: 40,
+        height: 40,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    sendButtonGradient: {
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        justifyContent: 'center',
+        alignItems: 'center',
     },
     attachmentPreview: {
-        paddingHorizontal: 15,
-        paddingTop: 10,
-        paddingBottom: 5,
         backgroundColor: '#f8f9fa',
-        borderBottomWidth: 1,
-        borderBottomColor: '#e0e0e0',
+        borderRadius: 12,
+        marginBottom: 8,
+        padding: 8,
     },
     attachmentItem: {
         flexDirection: 'row',
         alignItems: 'center',
         backgroundColor: '#fff',
-        padding: 10,
         borderRadius: 8,
+        padding: 8,
         borderWidth: 1,
         borderColor: '#e0e0e0',
     },
@@ -429,38 +492,38 @@ const styles = StyleSheet.create({
         width: 40,
         height: 40,
         borderRadius: 20,
-        backgroundColor: 'rgba(102, 126, 234, 0.1)',
+        backgroundColor: '#f0f2f5',
         justifyContent: 'center',
         alignItems: 'center',
-        marginRight: 10,
     },
     attachmentInfo: {
         flex: 1,
+        marginLeft: 10,
     },
     attachmentName: {
         fontSize: 14,
         fontWeight: '500',
         color: '#333',
-        marginBottom: 2,
     },
     attachmentSize: {
         fontSize: 12,
         color: '#666',
+        marginTop: 2,
     },
-    removeAttachment: {
+    removeButton: {
         padding: 5,
     },
     attachmentOptions: {
         flexDirection: 'row',
         justifyContent: 'space-around',
-        paddingVertical: 15,
-        paddingHorizontal: 20,
         backgroundColor: '#f8f9fa',
-        borderBottomWidth: 1,
-        borderBottomColor: '#e0e0e0',
+        borderRadius: 12,
+        padding: 12,
+        marginTop: 8,
     },
     attachmentOption: {
         alignItems: 'center',
+        width: screenWidth / 4,
     },
     attachmentOptionIcon: {
         width: 50,
@@ -468,122 +531,26 @@ const styles = StyleSheet.create({
         borderRadius: 25,
         justifyContent: 'center',
         alignItems: 'center',
-        marginBottom: 8,
+        marginBottom: 5,
     },
     attachmentOptionText: {
         fontSize: 12,
-        color: '#666',
-        fontWeight: '500',
-    },
-    inputContainer: {
-        flexDirection: 'row',
-        alignItems: 'flex-end',
-        paddingHorizontal: 15,
-        paddingVertical: 10,
-        backgroundColor: '#fff',
-    },
-    inputWrapper: {
-        flex: 1,
-        flexDirection: 'row',
-        alignItems: 'flex-end',
-        backgroundColor: '#f8f9fa',
-        borderRadius: 25,
-        borderWidth: 1,
-        borderColor: '#e0e0e0',
-        paddingHorizontal: 5,
-        paddingVertical: 5,
-        marginRight: 10,
-        minHeight: 44,
-    },
-    attachmentButton: {
-        width: 36,
-        height: 36,
-        borderRadius: 18,
-        justifyContent: 'center',
-        alignItems: 'center',
-        marginRight: 5,
-    },
-    textInput: {
-        flex: 1,
-        fontSize: 16,
         color: '#333',
-        paddingVertical: 8,
-        paddingHorizontal: 5,
-        maxHeight: 100,
-        textAlignVertical: 'center',
-    },
-    expandedInput: {
-        maxHeight: 120,
-    },
-    disabledInput: {
-        color: '#999',
-        backgroundColor: '#f5f5f5',
-    },
-    emojiButton: {
-        width: 36,
-        height: 36,
-        borderRadius: 18,
-        justifyContent: 'center',
-        alignItems: 'center',
-        marginLeft: 5,
-    },
-    actionButtons: {
-        justifyContent: 'flex-end',
-    },
-    sendButton: {
-        width: 44,
-        height: 44,
-        borderRadius: 22,
-        overflow: 'hidden',
-    },
-    sendButtonGradient: {
-        width: '100%',
-        height: '100%',
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    voiceButton: {
-        width: 44,
-        height: 44,
-        borderRadius: 22,
-        backgroundColor: '#667eea',
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    recordingButton: {
-        backgroundColor: '#F44336',
-    },
-    sendingIcon: {
-        // Animation can be added here
-    },
-    recordingIndicator: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: '#F44336',
-        paddingHorizontal: 15,
-        paddingVertical: 8,
-    },
-    recordingDot: {
-        width: 8,
-        height: 8,
-        borderRadius: 4,
-        backgroundColor: '#fff',
-        marginRight: 8,
-    },
-    recordingText: {
-        flex: 1,
-        color: '#fff',
-        fontSize: 14,
         fontWeight: '500',
     },
-    cancelRecording: {
-        paddingHorizontal: 10,
-        paddingVertical: 5,
+    connectionWarning: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#ffebee',
+        paddingVertical: 6,
+        paddingHorizontal: 12,
+        borderRadius: 16,
+        marginTop: 8,
     },
-    cancelRecordingText: {
-        color: '#fff',
-        fontSize: 14,
-        fontWeight: '600',
+    connectionWarningText: {
+        fontSize: 12,
+        color: '#d32f2f',
+        marginLeft: 6,
     },
 });
 

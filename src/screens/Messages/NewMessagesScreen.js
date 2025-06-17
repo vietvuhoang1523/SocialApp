@@ -23,10 +23,12 @@ import { LinearGradient } from 'expo-linear-gradient';
 import messagesService from '../../services/messagesService';
 import webSocketService from '../../services/WebSocketService';
 import FriendService from '../../services/FriendService';
+import webSocketReconnectionManager from '../../services/WebSocketReconnectionManager';
 
 // Components
 import LoadingSpinner from '../../components/LoadingSpinner';
 import UserSearchItem from '../../components/UserSearchItem';
+import ConnectionMonitor from '../../components/chat/ConnectionMonitor';
 
 const { width: screenWidth } = Dimensions.get('window');
 
@@ -198,438 +200,113 @@ const NewMessagesScreen = ({ navigation, route }) => {
                 setLoading(true);
             }
 
-            // 🆘 TEMPORARY: Add mock data when backend is not running
-            try {
-                const response = await messagesService.getConversations();
-                console.log('🔍 Raw conversations response:', response);
-                
-                // Handle different response formats from backend
-                let conversationsData = [];
-                
-                if (response && response.conversations && Array.isArray(response.conversations)) {
-                    // Backend returns: { conversations: [...], count: X, status: "success" }
-                    conversationsData = response.conversations;
-                    console.log(`📊 Found ${response.count || conversationsData.length} conversations in response`);
-                } else if (Array.isArray(response)) {
-                    // Backend returns: [conversation1, conversation2, ...]
-                    conversationsData = response;
-                    console.log(`📊 Found ${conversationsData.length} conversations as array`);
-                } else if (response && response.data && Array.isArray(response.data)) {
-                    // Another possible format
-                    conversationsData = response.data;
-                    console.log(`📊 Found ${conversationsData.length} conversations in data field`);
-            } else {
-                    console.log('⚠️ Unexpected response format:', typeof response, response);
-                    conversationsData = [];
-                }
-                
-                // Transform backend format to UI format
-                const normalizedConversations = conversationsData.map((conv, index) => {
-                    // Backend format: { id, partner: { id, fullName, avatarUrl, email }, lastMessage: {...}, unreadCount, lastActivity }
-                    if (conv.partner) {
-                        return {
-                            id: conv.id || `conv_${index}`,
-                            otherUser: {
-                                id: conv.partner.id,
-                                fullName: conv.partner.fullName || conv.partner.email || 'Người dùng',
-                                username: conv.partner.email,
-                                avatar: conv.partner.avatarUrl
-                            },
-                            lastMessage: conv.lastMessage ? {
-                                id: conv.lastMessage.id,
-                                content: conv.lastMessage.content,
-                                senderId: conv.lastMessage.senderId,
-                                receiverId: conv.lastMessage.receiverId,
-                                timestamp: conv.lastMessage.timestamp,
-                                read: conv.lastMessage.read
-                            } : null,
-                            unreadCount: conv.unreadCount || 0,
-                            updatedAt: conv.lastActivity || conv.lastMessage?.timestamp || new Date().toISOString()
-                        };
-                    }
-                    
-                    // Fallback for other formats
-                    return {
-                        id: conv.id || `conv_${index}`,
-                        otherUser: conv.otherUser || conv.user || {
-                            id: conv.userId || index,
-                            fullName: conv.fullName || conv.name || 'Người dùng',
-                            username: conv.username || conv.email,
-                            avatar: conv.avatar || conv.avatarUrl
-                        },
-                        lastMessage: conv.lastMessage,
-                        unreadCount: conv.unreadCount || 0,
-                        updatedAt: conv.updatedAt || conv.lastActivity || new Date().toISOString()
-                    };
-                });
-                
-                // ✅ Sắp xếp theo thời gian cập nhật mới nhất
-                const sortedConversations = normalizedConversations.sort((a, b) => {
-                    const timeA = new Date(a.updatedAt || 0).getTime();
-                    const timeB = new Date(b.updatedAt || 0).getTime();
-                    return timeB - timeA; // Mới nhất trước
-                });
-                
-                setConversations(sortedConversations);
-                console.log(`✅ Successfully loaded ${sortedConversations.length} conversations`);
-                
-                // ✅ Nếu có cuộc trò chuyện, chuyển sang tab conversations
-                if (sortedConversations.length > 0 && activeTab !== 'conversations') {
-                    console.log('📱 Auto-switching to conversations tab');
-                    setActiveTab('conversations');
-                }
-                
-            } catch (apiError) {
-                console.warn('⚠️ Backend not available, showing mock conversations for testing:', apiError.message);
-                
-                // 🆘 MOCK DATA: Create sample conversations when backend is down
-                const mockConversations = [
-                    {
-                        id: 'conv_mock_1',
-                otherUser: {
-                    id: 2,
-                    fullName: 'Nguyễn Văn A',
-                            username: 'nguyenvana@email.com',
-                            avatar: 'https://i.pravatar.cc/150?img=1'
-                },
-                lastMessage: {
-                    id: 'msg_1',
-                    content: 'Chào bạn! Bạn có khỏe không?',
-                    senderId: 2,
-                            receiverId: currentUser.id,
-                            timestamp: new Date(Date.now() - 3600000).toISOString(), // 1 hour ago
-                            read: false
-                        },
-                        unreadCount: 2,
-                        updatedAt: new Date(Date.now() - 3600000).toISOString()
-                    },
-                    {
-                        id: 'conv_mock_2',
-                otherUser: {
-                    id: 3,
-                    fullName: 'Trần Thị B',
-                            username: 'tranthib@email.com',
-                            avatar: 'https://i.pravatar.cc/150?img=2'
-                },
-                lastMessage: {
-                    id: 'msg_2',
-                            content: 'Hẹn gặp lại nhé!',
-                            senderId: currentUser.id,
-                    receiverId: 3,
-                            timestamp: new Date(Date.now() - 7200000).toISOString(), // 2 hours ago
-                            read: true
-                },
-                        unreadCount: 0,
-                        updatedAt: new Date(Date.now() - 7200000).toISOString()
-            },
-            {
-                        id: 'conv_mock_3',
-                otherUser: {
-                    id: 4,
-                    fullName: 'Lê Văn C',
-                            username: 'levanc@email.com',
-                            avatar: 'https://i.pravatar.cc/150?img=3'
-                },
-                lastMessage: {
-                    id: 'msg_3',
-                    content: 'Cảm ơn bạn nhiều!',
-                    senderId: 4,
-                            receiverId: currentUser.id,
-                            timestamp: new Date(Date.now() - 86400000).toISOString(), // 1 day ago
-                            read: true
-                        },
-                        unreadCount: 0,
-                        updatedAt: new Date(Date.now() - 86400000).toISOString()
-                    }
-                ];
-                
-                setConversations(mockConversations);
-                console.log('🆘 Showing mock conversations for testing');
-                
-                // Auto-switch to conversations tab
-                if (activeTab !== 'conversations') {
-                    setActiveTab('conversations');
-                }
-            }
+            // Fetch conversations from service
+            const result = await messagesService.getConversations();
+            console.log(`📥 Received ${result?.length || 0} conversations`);
             
+            if (result && Array.isArray(result)) {
+                setConversations(result);
+                
+                // Fetch unread counts for each conversation
+                result.forEach(async (conv) => {
+                    try {
+                        if (conv.id) {
+                            const count = await messagesService.getUnreadCount(conv.id);
+                            setUnreadCounts(prev => {
+                                const newMap = new Map(prev);
+                                newMap.set(conv.id, count);
+                                return newMap;
+                            });
+                        }
+                    } catch (error) {
+                        console.error('❌ Error fetching unread count:', error);
+                    }
+                });
+            }
         } catch (error) {
             console.error('❌ Error loading conversations:', error);
-            setError(error.message || 'Không thể tải cuộc trò chuyện');
-            
-            // ✅ Fallback: vẫn hiển thị empty state thay vì crash
-            setConversations([]);
-        }
-    }, [currentUser?.id, conversations.length, activeTab]);
-
-    // 👥 Load friends list - Cải thiện logic
-    const loadFriends = useCallback(async (isRefresh = false) => {
-        if (!currentUser?.id) {
-            console.log('⚠️ No current user ID for friends');
-            return;
-        }
-
-        try {
-            console.log('👥 Loading friends for user:', currentUser.id);
-            
-            // ✅ Hiển thị loading chỉ khi cần thiết
-            if (!isRefresh && friends.length === 0) {
-                setLoading(true);
-            }
-
-            // 🔄 Gọi API lấy danh sách bạn bè
-            const response = await FriendService.getFriends();
-            console.log('🔍 Raw friends response:', JSON.stringify(response, null, 2));
-            
-            let friendsData = [];
-            
-            // ✅ Xử lý các format response khác nhau từ backend
-            if (response && Array.isArray(response.data)) {
-                // Format: { data: [...], message: "success", status: 200 }
-                friendsData = response.data;
-                console.log(`✅ Loaded ${friendsData.length} friends from data field`);
-            } else if (Array.isArray(response)) {
-                // Format: [friend1, friend2, ...]
-                friendsData = response;
-                console.log(`✅ Loaded ${friendsData.length} friends as direct array`);
-            } else if (response && Array.isArray(response.friends)) {
-                // Format: { friends: [...], count: X }
-                friendsData = response.friends;
-                console.log(`✅ Loaded ${friendsData.length} friends from friends field`);
-            } else if (response && Array.isArray(response.connections)) {
-                // Format: { connections: [...] }
-                friendsData = response.connections;
-                console.log(`✅ Loaded ${friendsData.length} friends from connections field`);
-            } else {
-                console.log('⚠️ Unexpected friends response format:', typeof response);
-                console.log('Response structure:', Object.keys(response || {}));
-                
-                // 🔍 Log response để debug
-                if (response) {
-                    console.log('Response sample:', JSON.stringify(response).substring(0, 500));
-                }
-                
-                friendsData = [];
-            }
-            
-            // ✅ Normalize và filter chỉ những friendship đã được chấp nhận
-            console.log('🔍 Raw friendsData before processing:', JSON.stringify(friendsData, null, 2));
-            
-            const normalizedFriends = friendsData
-                .map((friendship, index) => {
-                    console.log(`Processing friendship ${index}:`, JSON.stringify(friendship, null, 2));
-                    console.log(`Friendship status: "${friendship.status}"`);
-                    
-                    // Backend format có thể là:
-                    // { id, sender: {...}, receiver: {...}, status: "ACCEPTED", createdAt }
-                    return {
-                        id: friendship.id || `friend_${index}`,
-                        sender: friendship.sender || friendship.user1,
-                        receiver: friendship.receiver || friendship.user2,
-                        status: friendship.status,
-                        createdAt: friendship.createdAt || friendship.timestamp || new Date().toISOString(),
-                        // Add raw data for debugging
-                        _raw: friendship
-                    };
-                })
-                .filter(friendship => {
-                    // ✅ Relaxed filtering - show more types of accepted friendships
-                    const validStatuses = [
-                        'ACCEPTED', 'accepted', 'ACTIVE', 'active', 
-                        'CONFIRMED', 'confirmed', 'ESTABLISHED', 'established'
-                    ];
-                    
-                    const hasValidStatus = validStatuses.includes(friendship.status);
-                    console.log(`Friendship ${friendship.id} status "${friendship.status}" - Valid: ${hasValidStatus}`);
-                    
-                    // ✅ TEMPORARY: Show all friends for debugging
-                    if (!hasValidStatus) {
-                        console.log(`⚠️ Showing friendship with status "${friendship.status}" for debugging`);
-                        return true; // Temporarily show all
-                    }
-                    
-                    return hasValidStatus;
-                });
-            
-            console.log(`🎯 Processed ${normalizedFriends.length} friendships (including debug ones)`);
-            
-            // ✅ Debug each normalized friend
-            normalizedFriends.forEach((friend, index) => {
-                console.log(`Friend ${index}:`, {
-                    id: friend.id,
-                    status: friend.status,
-                    senderName: friend.sender?.fullName || friend.sender?.name,
-                    receiverName: friend.receiver?.fullName || friend.receiver?.name
-                });
-            });
-            
-            // ✅ Sort theo thời gian tạo mới nhất
-            const sortedFriends = normalizedFriends.sort((a, b) => {
-                const timeA = new Date(a.createdAt || 0).getTime();
-                const timeB = new Date(b.createdAt || 0).getTime();
-                return timeB - timeA; // Mới nhất trước
-            });
-            
-            setFriends(sortedFriends);
-            console.log(`✅ Successfully loaded ${sortedFriends.length} friends`);
-            
-            // ✅ Log sample friend để debug
-            if (sortedFriends.length > 0) {
-                console.log('Sample friend data:', JSON.stringify(sortedFriends[0], null, 2));
-            }
-            
-        } catch (error) {
-            console.error('❌ Error loading friends:', error);
-            console.error('❌ Error details:', error.response?.data || error.message);
-            
-            // ✅ Hiển thị error message cụ thể
-            if (error.response?.status === 401) {
-                setError('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
-            } else if (error.response?.status === 404) {
-                setError('Không tìm thấy danh sách bạn bè.');
-            } else if (error.response?.status >= 500) {
-                setError('Lỗi server. Vui lòng thử lại sau.');
-            } else if (error.message.includes('Network Error')) {
-                setError('Lỗi kết nối mạng. Kiểm tra internet và thử lại.');
-            } else {
-                setError(error.message || 'Không thể tải danh sách bạn bè');
-            }
-            
-            // 🆘 MOCK DATA cho testing khi API lỗi
-            console.log('🆘 Backend error, using mock friends for testing');
-            const mockFriends = [
-                {
-                    id: 'friend_mock_1',
-                    sender: {
-                        id: currentUser.id,
-                        fullName: currentUser.fullName,
-                        email: currentUser.email
-                    },
-                    receiver: {
-                        id: 'mock_friend_1',
-                        fullName: 'Nguyễn Văn Mock Friend',
-                        email: 'mockfriend1@email.com',
-                        profilePictureUrl: 'https://i.pravatar.cc/150?img=10',
-                        avatarUrl: 'https://i.pravatar.cc/150?img=10'
-                    },
-                    status: 'ACCEPTED',
-                    createdAt: new Date(Date.now() - 86400000).toISOString() // 1 day ago
-                },
-                {
-                    id: 'friend_mock_2',
-                    sender: {
-                        id: 'mock_friend_2',
-                        fullName: 'Trần Thị Mock Friend',
-                        email: 'mockfriend2@email.com',
-                        profilePictureUrl: 'https://i.pravatar.cc/150?img=11',
-                        avatarUrl: 'https://i.pravatar.cc/150?img=11'
-                    },
-                    receiver: {
-                        id: currentUser.id,
-                        fullName: currentUser.fullName,
-                        email: currentUser.email
-                    },
-                    status: 'ACCEPTED',
-                    createdAt: new Date(Date.now() - 172800000).toISOString() // 2 days ago
-                },
-                {
-                    id: 'friend_mock_3',
-                    sender: {
-                        id: currentUser.id,
-                        fullName: currentUser.fullName,
-                        email: currentUser.email
-                    },
-                    receiver: {
-                        id: 'mock_friend_3',
-                        fullName: 'Lê Hoàng Mock Friend',
-                        email: 'mockfriend3@email.com',
-                        profilePictureUrl: 'https://i.pravatar.cc/150?img=12',
-                        avatarUrl: 'https://i.pravatar.cc/150?img=12'
-                    },
-                    status: 'ACCEPTED',
-                    createdAt: new Date(Date.now() - 259200000).toISOString() // 3 days ago
-                }
-            ];
-            
-            setFriends(mockFriends);
-            console.log('🆘 Using mock friends data for testing');
-        }
-    }, [currentUser?.id, friends.length]);
-
-    // 🔄 Load data based on active tab - Ưu tiên conversations
-    const loadData = useCallback(async (isRefresh = false) => {
-        if (isRefresh) {
-            setRefreshing(true);
-        } else if ((activeTab === 'conversations' && conversations.length === 0) || 
-                   (activeTab === 'friends' && friends.length === 0)) {
-            setLoading(true);
-        }
-
-        try {
-            console.log('🔄 LoadData called for tab:', activeTab, 'isRefresh:', isRefresh);
-            
-            if (activeTab === 'conversations') {
-                console.log('📥 Loading conversations data...');
-                await loadConversations(isRefresh);
-            } else if (activeTab === 'friends') {
-                console.log('👥 Loading friends data...');
-                await loadFriends(isRefresh);
-            }
-            
-        } catch (error) {
-            console.error('❌ Error loading data:', error);
-            setError(error.message || 'Không thể tải dữ liệu');
+            setError('Không thể tải cuộc trò chuyện. Vui lòng thử lại.');
         } finally {
             setLoading(false);
             setRefreshing(false);
         }
+    }, [currentUser?.id, conversations.length]);
+
+    // 📥 Load friends
+    const loadFriends = useCallback(async (isRefresh = false) => {
+        if (!currentUser?.id) return;
+
+        try {
+            if (!isRefresh) {
+                setLoading(true);
+            }
+            
+            const result = await FriendService.getFriends(currentUser.id);
+            console.log(`📥 Received ${result?.length || 0} friends`);
+            
+            if (result && Array.isArray(result)) {
+                setFriends(result);
+            }
+        } catch (error) {
+            console.error('❌ Error loading friends:', error);
+            setError('Không thể tải danh sách bạn bè. Vui lòng thử lại.');
+        } finally {
+            setLoading(false);
+            setRefreshing(false);
+        }
+    }, [currentUser?.id]);
+
+    // 🔄 Handle refresh
+    const handleRefresh = useCallback(() => {
+        setRefreshing(true);
+        setError(null);
+        
+        if (activeTab === 'conversations') {
+            loadConversations(true);
+        } else {
+            loadFriends(true);
+        }
     }, [activeTab, loadConversations, loadFriends]);
 
-    // Initial setup - Tối ưu hóa việc khởi tạo
+    // 🔄 Handle WebSocket reconnect
+    const handleReconnect = useCallback(() => {
+        console.log('🔄 Manually reconnecting WebSocket...');
+        webSocketReconnectionManager.forceReconnect();
+        
+        // Also reload data
+        if (activeTab === 'conversations') {
+            loadConversations(true);
+        } else {
+            loadFriends(true);
+        }
+    }, [activeTab, loadConversations, loadFriends]);
+
+    // 🚀 Initial data loading
     useEffect(() => {
-        let isMounted = true;
-
         const initialize = async () => {
-            if (!currentUser?.id) {
-                console.log('⚠️ No current user ID for messages screen');
-                setLoading(false);
-                return;
-            }
-
-            console.log('🚀 Initializing NewMessagesScreen for user:', currentUser.id);
-            console.log('🔌 WebSocket status:', webSocketService.isConnected() ? 'Connected' : 'Disconnected');
-
             try {
-                // ✅ Luôn tải conversations trước (chức năng chính)
-                setLoading(true);
-                console.log('📥 Loading initial conversations...');
-                await loadConversations();
-                
-            } catch (error) {
-                console.error('❌ Initialization error:', error);
-                setError(error.message || 'Không thể khởi tạo màn hình');
-            } finally {
-                if (isMounted) {
-                    setLoading(false);
+                // Ensure WebSocket is connected
+                if (!webSocketService.isConnected()) {
+                    console.log('🔌 WebSocket not connected, connecting...');
+                    await webSocketService.connectWithStoredToken();
                 }
+                
+                // Load initial data
+                if (activeTab === 'conversations') {
+                    await loadConversations();
+                } else {
+                    await loadFriends();
+                }
+            } catch (error) {
+                console.error('❌ Error initializing:', error);
+                setError('Không thể kết nối đến máy chủ. Vui lòng thử lại sau.');
             }
         };
 
         initialize();
+    }, [activeTab, loadConversations, loadFriends]);
 
-        return () => {
-            isMounted = false;
-        };
-    }, [currentUser?.id, loadConversations]); // Chỉ phụ thuộc vào user ID
-
-    // ✅ Load friends immediately when switching to friends tab
-    useEffect(() => {
-        if (activeTab === 'friends') {
-            console.log('🔄 Switched to friends tab, loading friends...');
-            loadFriends();
-        }
-    }, [activeTab, loadFriends]);
-
-    // 📨 Update conversation with new message
+    // 📩 Update conversation with new message
     const updateConversationWithNewMessage = (message) => {
         setConversations(prev => {
             // ✅ FIX: Kiểm tra ID tin nhắn để tránh trùng lặp
@@ -693,34 +370,7 @@ const NewMessagesScreen = ({ navigation, route }) => {
         });
     };
 
-    // 🎯 Handle item selection
-    const handleSelectUser = useCallback((user) => {
-        console.log('🎯 User selected:', user);
-        
-        if (activeTab === 'conversations') {
-            // Navigate to chat with conversation data
-            navigation.navigate('NewChatScreen', {
-                user: user.otherUser,
-                currentUser: currentUser,
-                conversationId: user.id
-            });
-        } else {
-            // Navigate to chat with friend data
-            const friendData = user.sender?.id === currentUser?.id ? user.receiver : user.sender;
-            navigation.navigate('NewChatScreen', {
-                user: friendData,
-                currentUser: currentUser,
-                conversationId: null // New conversation
-            });
-        }
-    }, [navigation, currentUser, activeTab]);
-
-    // 🔄 Refresh handler
-    const onRefresh = useCallback(() => {
-        loadData(true);
-    }, [loadData]);
-
-    // 🎨 Enhanced Tab Animation
+    // 🎨 Animate tab switch
     const animateTabSwitch = (newTab) => {
         Animated.sequence([
             Animated.timing(scaleAnim, {
@@ -743,7 +393,7 @@ const NewMessagesScreen = ({ navigation, route }) => {
         setActiveTab(newTab);
     };
 
-    // 🎨 Render Enhanced Tab Buttons
+    // 🎨 Render tab buttons
     const renderTabButtons = () => (
         <Animated.View 
             style={[
@@ -816,7 +466,7 @@ const NewMessagesScreen = ({ navigation, route }) => {
         </Animated.View>
     );
 
-    // 🎨 Enhanced Conversation Item with Animation
+    // 🎨 Render conversation item
     const renderConversationItem = ({ item, index }) => {
         const unreadCount = unreadCounts.get(item.id) || item.unreadCount || 0;
         const isOnline = onlineUsers.has(item.otherUser.id);
@@ -901,7 +551,7 @@ const NewMessagesScreen = ({ navigation, route }) => {
         );
     };
 
-    // 🎨 Enhanced Friend Item with Animation
+    // 🎨 Render friend item
     const renderFriendItem = ({ item, index }) => {
         const friendData = item.sender?.id === currentUser?.id ? item.receiver : item.sender;
         const isOnline = onlineUsers.has(friendData?.id);
@@ -966,7 +616,7 @@ const NewMessagesScreen = ({ navigation, route }) => {
         );
     };
 
-    // 🎨 Enhanced Empty State
+    // 🎨 Empty state component
     const EmptyState = () => (
         <Animated.View 
             style={[
@@ -1017,7 +667,7 @@ const NewMessagesScreen = ({ navigation, route }) => {
                         
                         <TouchableOpacity 
                             style={styles.refreshButton}
-                            onPress={() => loadData(true)}
+                            onPress={() => handleRefresh()}
                             activeOpacity={0.8}
                         >
                             <LinearGradient
@@ -1047,7 +697,7 @@ const NewMessagesScreen = ({ navigation, route }) => {
                         
                         <TouchableOpacity 
                             style={styles.refreshButton}
-                            onPress={() => loadData(true)}
+                            onPress={() => handleRefresh()}
                             activeOpacity={0.8}
                         >
                 <LinearGradient
@@ -1066,294 +716,98 @@ const NewMessagesScreen = ({ navigation, route }) => {
 
     return (
         <SafeAreaView style={styles.container}>
-            <StatusBar barStyle="light-content" backgroundColor="#E91E63" />
+            <StatusBar barStyle="dark-content" backgroundColor="#fff" />
             
-            {/* Enhanced Header */}
-            <LinearGradient colors={['#E91E63', '#C2185B', '#AD1457']} style={styles.header}>
-                <Animated.View 
-                    style={[
-                        styles.headerContent,
-                        {
-                            opacity: fadeAnim,
-                            transform: [{ translateY: slideAnim }]
-                        }
-                    ]}
-                >
-                    <TouchableOpacity
-                        style={styles.backButton}
-                        onPress={() => navigation.goBack()}
-                        activeOpacity={0.7}
-                    >
-                        <View style={styles.backButtonContainer}>
-                            <Ionicons name="arrow-back" size={24} color="#fff" />
-                        </View>
-                    </TouchableOpacity>
-                    
-                    <Text style={styles.headerTitle}>
-                        {activeTab === 'conversations' ? '💬 Tin nhắn' : '👥 Bạn bè'}
-                    </Text>
-                    
+            {/* Connection Monitor */}
+            <ConnectionMonitor onReconnect={handleReconnect} />
+            
+            {/* Header */}
+            <View style={styles.header}>
+                <Text style={styles.headerTitle}>Tin nhắn</Text>
+                <View style={styles.headerRight}>
                     <TouchableOpacity 
                         style={styles.headerButton}
-                        onPress={() => navigation.navigate('FriendSearchScreen')}
-                        activeOpacity={0.7}
+                        onPress={() => {
+                            // Navigate to search screen or toggle search
+                            setSearchMode(!searchMode);
+                        }}
                     >
-                        <View style={styles.headerButtonContainer}>
-                            <Ionicons 
-                                name={activeTab === 'conversations' ? "create-outline" : "person-add-outline"} 
-                                size={24} 
-                                color="#fff" 
-                            />
-                        </View>
+                        <Ionicons name="search" size={24} color="#0084ff" />
                     </TouchableOpacity>
-                </Animated.View>
-
-                {/* Enhanced Search Bar */}
+                </View>
+            </View>
+            
+            {/* Search Bar */}
+            {searchMode && (
+                <View style={styles.searchContainer}>
+                    <View style={styles.searchInputContainer}>
+                        <Ionicons name="search" size={20} color="#666" style={styles.searchIcon} />
+                        <TextInput
+                            style={styles.searchInput}
+                            placeholder="Tìm kiếm..."
+                            value={searchText}
+                            onChangeText={setSearchText}
+                            autoFocus
+                        />
+                        {searchText.length > 0 && (
+                            <TouchableOpacity onPress={() => setSearchText('')}>
+                                <Ionicons name="close-circle" size={20} color="#666" />
+                            </TouchableOpacity>
+                        )}
+                    </View>
+                </View>
+            )}
+            
+            {/* Tab Buttons */}
+            {renderTabButtons()}
+            
+            {/* Content */}
+            {loading && filteredData.length === 0 ? (
+                <LoadingSpinner />
+            ) : (
                 <Animated.View 
                     style={[
-                        styles.searchContainer,
-                        {
+                        styles.contentContainer,
+                        { 
                             opacity: fadeAnim,
-                            transform: [{ translateY: slideAnim }]
+                            transform: [
+                                { translateY: slideAnim },
+                                { scale: scaleAnim }
+                            ]
                         }
                     ]}
                 >
-                    <View style={styles.searchInputContainer}>
-                        <Ionicons name="search" size={20} color="#E91E63" />
-                    <TextInput
-                        style={styles.searchInput}
-                            placeholder={`Tìm kiếm ${activeTab === 'conversations' ? 'cuộc trò chuyện' : 'bạn bè'}...`}
-                        value={searchText}
-                            onChangeText={setSearchText}
-                            placeholderTextColor="#999"
-                    />
-                    {searchText.length > 0 && (
-                            <TouchableOpacity onPress={() => setSearchText('')} activeOpacity={0.7}>
-                                <Ionicons name="close-circle" size={20} color="#E91E63" />
-                        </TouchableOpacity>
-                    )}
-                </View>
-                </Animated.View>
-
-                {/* Enhanced Tab Buttons */}
-                {renderTabButtons()}
-            </LinearGradient>
-
-            {/* Content */}
-            <Animated.View 
-                style={[
-                    styles.content,
-                    {
-                        opacity: fadeAnim,
-                        transform: [{ scale: scaleAnim }]
-                    }
-                ]}
-            >
-                {/* Backend Status Banner */}
-                {conversations.length > 0 && conversations[0]?.id?.includes('mock') && (
-                    <Animated.View 
-                        style={[
-                            styles.mockDataBanner,
-                            {
-                                opacity: fadeAnim,
-                                transform: [{ translateY: slideAnim }]
-                            }
-                        ]}
-                    >
-                        <LinearGradient
-                            colors={['#fff3cd', '#ffeaa7']}
-                            style={styles.mockDataGradient}
-                        >
-                            <Ionicons name="warning-outline" size={16} color="#ff9800" />
-                            <Text style={styles.mockDataText}>
-                                Backend không khả dụng - Hiển thị dữ liệu mẫu tin nhắn
-                    </Text>
-                        <TouchableOpacity
-                                style={styles.retryBackendButton}
-                                onPress={() => loadData(true)}
-                                activeOpacity={0.7}
-                            >
-                                <Ionicons name="refresh" size={14} color="#ff9800" />
-                            </TouchableOpacity>
-                        </LinearGradient>
-                    </Animated.View>
-                )}
-
-                {/* Friends Debug Banner */}
-                {friends.length > 0 && friends[0]?.id?.includes('mock') && (
-                    <Animated.View 
-                        style={[
-                            styles.mockDataBanner,
-                            {
-                                opacity: fadeAnim,
-                                transform: [{ translateY: slideAnim }]
-                            }
-                        ]}
-                    >
-                        <LinearGradient
-                            colors={['#e3f2fd', '#bbdefb']}
-                            style={styles.mockDataGradient}
-                        >
-                            <Ionicons name="information-circle-outline" size={16} color="#1976d2" />
-                            <Text style={[styles.mockDataText, { color: '#1565c0' }]}>
-                                Backend không khả dụng - Hiển thị dữ liệu mẫu bạn bè
-                            </Text>
-                            <TouchableOpacity 
-                                style={[styles.retryBackendButton, { backgroundColor: 'rgba(25, 118, 210, 0.15)' }]}
-                                onPress={() => loadData(true)}
-                                activeOpacity={0.7}
-                            >
-                                <Ionicons name="refresh" size={14} color="#1976d2" />
-                            </TouchableOpacity>
-                        </LinearGradient>
-                    </Animated.View>
-                )}
-
-                {/* Debug Info Banner for Friends */}
-                {activeTab === 'friends' && currentUser && (
-                    <Animated.View 
-                        style={[
-                            styles.debugBanner,
-                            {
-                                opacity: fadeAnim,
-                                transform: [{ translateY: slideAnim }]
-                            }
-                        ]}
-                    >
-                        <LinearGradient
-                            colors={['#f3e5f5', '#e1bee7']}
-                            style={styles.mockDataGradient}
-                        >
-                            <Ionicons name="bug-outline" size={16} color="#7b1fa2" />
-                            <Text style={[styles.mockDataText, { color: '#6a1b9a' }]}>
-                                Debug: User ID {currentUser.id} | Friends: {friends.length}
-                            </Text>
-                            <TouchableOpacity 
-                                style={[styles.retryBackendButton, { backgroundColor: 'rgba(123, 31, 162, 0.15)' }]}
-                                onPress={() => {
-                                    console.log('🔍 Manual friends refresh triggered');
-                                    console.log('Current user:', currentUser);
-                                    loadFriends(true);
-                                }}
-                                activeOpacity={0.7}
-                            >
-                                <Ionicons name="bug" size={14} color="#7b1fa2" />
-                        </TouchableOpacity>
-                        </LinearGradient>
-                    </Animated.View>
-                )}
-
-                {loading ? (
-                    <View style={styles.loadingContainer}>
-                        <ActivityIndicator size="large" color="#E91E63" />
-                        <Text style={styles.loadingText}>
-                            {activeTab === 'conversations' ? 'Đang tải tin nhắn...' : 'Đang tải danh sách bạn bè...'}
-                                        </Text>
-                                    </View>
-                ) : error ? (
-                    // 🚨 Error State
-                    <Animated.View 
-                        style={[
-                            styles.errorContainer,
-                            {
-                                opacity: fadeAnim,
-                                transform: [{ translateY: slideAnim }, { scale: scaleAnim }]
-                            }
-                        ]}
-                    >
-                        <LinearGradient
-                            colors={['rgba(244, 67, 54, 0.1)', 'rgba(244, 67, 54, 0.05)', 'transparent']}
-                            style={styles.errorGradient}
-                        >
-                            <View style={styles.errorIconContainer}>
-                                <Ionicons name="alert-circle-outline" size={64} color="#F44336" />
-                            </View>
-                            <Text style={styles.errorTitle}>Có lỗi xảy ra!</Text>
-                            <Text style={styles.errorMessage}>{error}</Text>
-                            
-                            <View style={styles.errorActions}>
-                                <TouchableOpacity 
-                                    style={styles.retryButton}
-                                    onPress={() => {
-                                        setError(null);
-                                        loadData(true);
-                                    }}
-                                    activeOpacity={0.8}
-                                >
-                                    <LinearGradient
-                                        colors={['#E91E63', '#C2185B']}
-                                        style={styles.retryButtonGradient}
-                                    >
-                                        <Ionicons name="refresh" size={20} color="#fff" />
-                                        <Text style={styles.retryButtonText}>Thử lại</Text>
-                                    </LinearGradient>
-                                </TouchableOpacity>
-                                
-                                {activeTab === 'friends' && (
-                                    <TouchableOpacity 
-                                        style={styles.switchToConversationsButton}
-                                        onPress={() => {
-                                            setError(null);
-                                            animateTabSwitch('conversations');
-                                        }}
-                                        activeOpacity={0.8}
-                                    >
-                                        <LinearGradient
-                                            colors={['rgba(233, 30, 99, 0.1)', 'rgba(233, 30, 99, 0.05)']}
-                                            style={styles.switchButtonGradient}
-                                        >
-                                            <Ionicons name="chatbubbles" size={20} color="#E91E63" />
-                                            <Text style={styles.switchButtonText}>Xem tin nhắn</Text>
-                                        </LinearGradient>
-                                    </TouchableOpacity>
-                        )}
-                    </View>
-                        </LinearGradient>
-                    </Animated.View>
-                ) : (
                     <FlatList
                         data={filteredData}
-                        keyExtractor={(item, index) => 
-                            activeTab === 'conversations' ? 
-                                (item.id || `conv_${index}`) : 
-                                (item.id || `friend_${index}`)
-                        }
                         renderItem={activeTab === 'conversations' ? renderConversationItem : renderFriendItem}
+                        keyExtractor={(item) => String(item.id)}
+                        contentContainerStyle={filteredData.length === 0 ? styles.emptyList : styles.list}
+                        showsVerticalScrollIndicator={false}
+                        ListEmptyComponent={<EmptyState />}
                         refreshControl={
                             <RefreshControl
                                 refreshing={refreshing}
-                                onRefresh={onRefresh}
-                                colors={['#E91E63']}
-                                tintColor="#E91E63"
+                                onRefresh={handleRefresh}
+                                colors={['#0084ff']}
+                                tintColor="#0084ff"
                             />
                         }
-                        ListEmptyComponent={EmptyState}
-                        showsVerticalScrollIndicator={false}
-                        contentContainerStyle={filteredData.length === 0 ? styles.emptyListContainer : styles.listContainer}
                     />
-                )}
-
-                {/* Enhanced Connection Status Indicator */}
-                {!webSocketService.isConnected() && (
-                    <Animated.View 
-                        style={[
-                            styles.connectionStatus,
-                            {
-                                opacity: fadeAnim,
-                                transform: [{ translateY: slideAnim }]
-                            }
-                        ]}
+                </Animated.View>
+            )}
+            
+            {/* Error Message */}
+            {error && (
+                <View style={styles.errorContainer}>
+                    <Text style={styles.errorText}>{error}</Text>
+                    <TouchableOpacity 
+                        style={styles.errorButton}
+                        onPress={handleRefresh}
                     >
-                        <LinearGradient
-                            colors={['rgba(233, 30, 99, 0.9)', 'rgba(194, 24, 91, 0.9)']}
-                            style={styles.connectionStatusGradient}
-                        >
-                            <ActivityIndicator size="small" color="#fff" />
-                            <Text style={styles.connectionStatusText}>Đang kết nối lại...</Text>
-                        </LinearGradient>
-                    </Animated.View>
-                )}
-            </Animated.View>
+                        <Text style={styles.errorButtonText}>Thử lại</Text>
+                    </TouchableOpacity>
+                </View>
+            )}
         </SafeAreaView>
     );
 };
@@ -1361,319 +815,191 @@ const NewMessagesScreen = ({ navigation, route }) => {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#f8f9fa',
+        backgroundColor: '#fff',
     },
     header: {
-        paddingTop: 20,
-        paddingBottom: 15,
-        paddingHorizontal: 20,
-        elevation: 8,
-        shadowColor: '#E91E63',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 8,
-    },
-    headerContent: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        marginBottom: 15,
-    },
-    backButton: {
-        padding: 5,
-    },
-    backButtonContainer: {
-        backgroundColor: 'rgba(255, 255, 255, 0.2)',
-        borderRadius: 25,
-        padding: 8,
+        paddingHorizontal: 16,
+        paddingVertical: 12,
+        borderBottomWidth: 1,
+        borderBottomColor: '#f0f2f5',
     },
     headerTitle: {
         fontSize: 24,
         fontWeight: 'bold',
-        color: '#fff',
-        flex: 1,
-        textAlign: 'center',
-        letterSpacing: 0.5,
+        color: '#000',
+    },
+    headerRight: {
+        flexDirection: 'row',
+        alignItems: 'center',
     },
     headerButton: {
-        padding: 5,
-    },
-    headerButtonContainer: {
-        backgroundColor: 'rgba(255, 255, 255, 0.2)',
-        borderRadius: 25,
-        padding: 8,
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        backgroundColor: '#f0f2f5',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginLeft: 8,
     },
     searchContainer: {
-        marginBottom: 10,
+        paddingHorizontal: 16,
+        paddingVertical: 8,
+        borderBottomWidth: 1,
+        borderBottomColor: '#f0f2f5',
     },
     searchInputContainer: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: '#fff',
-        borderRadius: 25,
-        paddingHorizontal: 15,
-        paddingVertical: 12,
-        marginHorizontal: 5,
-        elevation: 4,
-        shadowColor: '#E91E63',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.2,
-        shadowRadius: 4,
+        backgroundColor: '#f0f2f5',
+        borderRadius: 20,
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+    },
+    searchIcon: {
+        marginRight: 8,
     },
     searchInput: {
         flex: 1,
         fontSize: 16,
-        marginLeft: 10,
         color: '#333',
     },
     tabContainer: {
         flexDirection: 'row',
-        backgroundColor: 'rgba(255, 255, 255, 0.15)',
-        borderRadius: 25,
-        margin: 10,
-        padding: 4,
-        elevation: 4,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
+        borderBottomWidth: 1,
+        borderBottomColor: '#f0f2f5',
     },
-    tabButton: {
+    tab: {
         flex: 1,
-        borderRadius: 22,
-        overflow: 'hidden',
-    },
-    tabButtonGradient: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
         paddingVertical: 12,
-        paddingHorizontal: 15,
-        borderRadius: 22,
+        alignItems: 'center',
     },
-    activeTabGradient: {
-        elevation: 2,
-        shadowColor: '#E91E63',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.3,
-        shadowRadius: 4,
+    activeTab: {
+        borderBottomWidth: 2,
+        borderBottomColor: '#0084ff',
     },
     tabText: {
-        fontSize: 14,
-        fontWeight: '600',
-        color: 'rgba(255, 255, 255, 0.7)',
-        marginLeft: 5,
+        fontSize: 16,
+        color: '#666',
     },
     activeTabText: {
-        color: '#fff',
-        fontWeight: 'bold',
+        color: '#0084ff',
+        fontWeight: '600',
     },
-    tabBadge: {
-        backgroundColor: '#FF6B6B',
-        borderRadius: 12,
-        minWidth: 24,
-        height: 24,
-        justifyContent: 'center',
-        alignItems: 'center',
-        marginLeft: 8,
-        elevation: 2,
-    },
-    tabBadgeText: {
-        color: '#fff',
-        fontSize: 11,
-        fontWeight: 'bold',
-    },
-    content: {
+    contentContainer: {
         flex: 1,
     },
-    listContainer: {
-        paddingBottom: 20,
+    list: {
+        paddingTop: 8,
+    },
+    emptyList: {
+        flexGrow: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        paddingBottom: 50,
     },
     conversationItem: {
-        marginVertical: 3,
-        marginHorizontal: 15,
-        borderRadius: 16,
-        overflow: 'hidden',
-        elevation: 3,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
-    },
-    conversationItemGradient: {
         flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: 20,
-        paddingVertical: 16,
-    },
-    avatarContainer: {
-        marginRight: 15,
-    },
-    avatarRing: {
-        position: 'relative',
-        padding: 3,
-        borderRadius: 30,
-        backgroundColor: '#fff',
-        elevation: 4,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.15,
-        shadowRadius: 4,
-    },
-    unreadAvatarRing: {
-        backgroundColor: '#E91E63',
+        padding: 16,
+        borderBottomWidth: 1,
+        borderBottomColor: '#f0f2f5',
     },
     avatar: {
-        width: 50,
-        height: 50,
-        borderRadius: 25,
-        backgroundColor: '#f0f0f0',
+        width: 56,
+        height: 56,
+        borderRadius: 28,
+        backgroundColor: '#f0f2f5',
+        justifyContent: 'center',
+        alignItems: 'center',
     },
-    onlineIndicator: {
-        position: 'absolute',
-        bottom: 2,
-        right: 2,
-        width: 14,
-        height: 14,
-        backgroundColor: '#4CAF50',
-        borderRadius: 7,
-        borderWidth: 2,
-        borderColor: '#fff',
-        elevation: 2,
+    avatarText: {
+        fontSize: 20,
+        fontWeight: 'bold',
+        color: '#666',
+    },
+    avatarImage: {
+        width: 56,
+        height: 56,
+        borderRadius: 28,
     },
     conversationContent: {
         flex: 1,
+        marginLeft: 12,
+        justifyContent: 'center',
     },
     conversationHeader: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        marginBottom: 6,
+        marginBottom: 4,
     },
-    userName: {
-        fontSize: 17,
+    name: {
+        fontSize: 16,
         fontWeight: '600',
-        color: '#333',
+        color: '#000',
         flex: 1,
     },
-    unreadUserName: {
-        fontWeight: 'bold',
-        color: '#E91E63',
-    },
-    timestamp: {
+    time: {
         fontSize: 12,
-        color: '#999',
-        fontWeight: '500',
+        color: '#666',
     },
     messagePreview: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-    },
-    lastMessage: {
         fontSize: 14,
         color: '#666',
-        flex: 1,
-        lineHeight: 18,
+        marginRight: 24,
     },
     unreadMessage: {
         fontWeight: '600',
-        color: '#333',
+        color: '#000',
     },
     unreadBadge: {
-        borderRadius: 15,
-        minWidth: 28,
-        height: 28,
+        position: 'absolute',
+        right: 0,
+        bottom: 0,
+        backgroundColor: '#0084ff',
+        borderRadius: 10,
+        minWidth: 20,
+        height: 20,
         justifyContent: 'center',
         alignItems: 'center',
-        paddingHorizontal: 8,
-        elevation: 2,
     },
-    unreadBadgeText: {
+    unreadCount: {
         color: '#fff',
         fontSize: 12,
         fontWeight: 'bold',
     },
-    friendItem: {
-        marginVertical: 3,
-        marginHorizontal: 15,
-        borderRadius: 16,
-        overflow: 'hidden',
-        elevation: 3,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
-    },
-    friendItemGradient: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: 20,
-        paddingVertical: 16,
-    },
-    friendContent: {
-        flex: 1,
-        marginLeft: 15,
-    },
-    friendName: {
-        fontSize: 17,
-        fontWeight: '600',
-        color: '#333',
-        marginBottom: 4,
-    },
-    friendStatus: {
-        fontSize: 13,
-        color: '#999',
-        fontWeight: '500',
-    },
-    onlineFriendStatus: {
-        color: '#4CAF50',
-        fontWeight: '600',
-    },
-    messageButton: {
-        borderRadius: 20,
-        overflow: 'hidden',
-        elevation: 2,
-    },
-    messageButtonGradient: {
-        padding: 10,
-        borderRadius: 20,
-        width: 40,
-        height: 40,
-        justifyContent: 'center',
-        alignItems: 'center',
+    onlineIndicator: {
+        position: 'absolute',
+        bottom: 0,
+        right: 0,
+        width: 14,
+        height: 14,
+        borderRadius: 7,
+        backgroundColor: '#4CAF50',
+        borderWidth: 2,
+        borderColor: '#fff',
     },
     emptyContainer: {
-        flex: 1,
-        justifyContent: 'center',
         alignItems: 'center',
-        paddingHorizontal: 40,
+        paddingHorizontal: 32,
     },
-    emptyGradient: {
-        width: '100%',
-        alignItems: 'center',
-        paddingVertical: 40,
-        borderRadius: 20,
-    },
-    emptyIconContainer: {
-        backgroundColor: 'rgba(233, 30, 99, 0.1)',
-        borderRadius: 50,
-        padding: 20,
-        marginBottom: 20,
+    emptyIcon: {
+        marginBottom: 16,
     },
     emptyTitle: {
-        fontSize: 20,
+        fontSize: 18,
         fontWeight: 'bold',
-        color: '#E91E63',
-        marginBottom: 10,
+        color: '#333',
+        marginBottom: 8,
         textAlign: 'center',
     },
     emptySubtitle: {
-        fontSize: 15,
+        fontSize: 14,
         color: '#666',
         textAlign: 'center',
-        lineHeight: 22,
-        marginBottom: 30,
+        marginBottom: 24,
     },
     emptyActions: {
         flexDirection: 'row',
@@ -1721,150 +1047,32 @@ const styles = StyleSheet.create({
         fontWeight: '700',
         marginLeft: 8,
     },
-    emptyListContainer: {
-        flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    loadingContainer: {
-        flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    loadingText: {
-        marginTop: 15,
-        fontSize: 16,
-        color: '#E91E63',
-        fontWeight: '600',
-    },
-    connectionStatus: {
+    errorContainer: {
         position: 'absolute',
         bottom: 20,
         left: 20,
         right: 20,
-        borderRadius: 25,
-        overflow: 'hidden',
-        elevation: 4,
-    },
-    connectionStatusGradient: {
+        backgroundColor: 'rgba(244, 67, 54, 0.9)',
+        borderRadius: 8,
+        padding: 16,
         flexDirection: 'row',
         alignItems: 'center',
-        paddingHorizontal: 20,
-        paddingVertical: 12,
+        justifyContent: 'space-between',
     },
-    connectionStatusText: {
+    errorText: {
         color: '#fff',
-        fontSize: 14,
-        fontWeight: '600',
-        marginLeft: 10,
-    },
-    mockDataBanner: {
-        marginHorizontal: 15,
-        marginBottom: 10,
-        borderRadius: 12,
-        overflow: 'hidden',
-        elevation: 2,
-    },
-    mockDataGradient: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: 15,
-        paddingVertical: 12,
-    },
-    mockDataText: {
         flex: 1,
-        marginLeft: 8,
-        color: '#856404',
-        fontSize: 13,
+        marginRight: 16,
+    },
+    errorButton: {
+        backgroundColor: '#fff',
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 4,
+    },
+    errorButtonText: {
+        color: '#F44336',
         fontWeight: '600',
-    },
-    retryBackendButton: {
-        padding: 8,
-        borderRadius: 15,
-        backgroundColor: 'rgba(255, 152, 0, 0.15)',
-    },
-    errorContainer: {
-        flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
-        paddingHorizontal: 40,
-    },
-    errorGradient: {
-        width: '100%',
-        alignItems: 'center',
-        paddingVertical: 40,
-        borderRadius: 20,
-    },
-    errorIconContainer: {
-        backgroundColor: 'rgba(233, 30, 99, 0.1)',
-        borderRadius: 50,
-        padding: 20,
-        marginBottom: 20,
-    },
-    errorTitle: {
-        fontSize: 20,
-        fontWeight: 'bold',
-        color: '#E91E63',
-        marginBottom: 10,
-        textAlign: 'center',
-    },
-    errorMessage: {
-        fontSize: 15,
-        color: '#666',
-        textAlign: 'center',
-        lineHeight: 22,
-        marginBottom: 30,
-    },
-    errorActions: {
-        flexDirection: 'row',
-        justifyContent: 'center',
-        alignItems: 'center',
-        gap: 15,
-    },
-    retryButton: {
-        borderRadius: 25,
-        overflow: 'hidden',
-        elevation: 2,
-    },
-    retryButtonGradient: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        paddingHorizontal: 20,
-        paddingVertical: 12,
-        borderRadius: 25,
-    },
-    retryButtonText: {
-        color: '#fff',
-        fontSize: 14,
-        fontWeight: '700',
-        marginLeft: 8,
-    },
-    switchToConversationsButton: {
-        borderRadius: 25,
-        overflow: 'hidden',
-        elevation: 2,
-    },
-    switchButtonGradient: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        paddingHorizontal: 20,
-        paddingVertical: 12,
-        borderRadius: 25,
-    },
-    switchButtonText: {
-        color: '#E91E63',
-        fontSize: 14,
-        fontWeight: '700',
-        marginLeft: 8,
-    },
-    debugBanner: {
-        marginHorizontal: 15,
-        marginBottom: 10,
-        borderRadius: 12,
-        overflow: 'hidden',
-        elevation: 2,
     },
 });
 

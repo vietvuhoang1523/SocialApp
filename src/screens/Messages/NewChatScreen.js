@@ -32,10 +32,12 @@ import NewMessageInput from '../../components/chat/NewMessageInput';
 import NewMessageItem from '../../components/chat/NewMessageItem';
 import NewChatHeader from '../../components/chat/NewChatHeader';
 import LoadingSpinner from '../../components/LoadingSpinner';
+import ConnectionStatusIndicator from '../../components/chat/ConnectionStatusIndicator';
 
 // Services
 import messagesService from '../../services/messagesService';
 import videoCallService from '../../services/videoCallService';
+import webSocketReconnectionManager from '../../services/WebSocketReconnectionManager';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
@@ -78,7 +80,7 @@ const NewChatScreen = ({ route, navigation }) => {
         loadMessages
     } = useMessageManagement(currentUser, user);
 
-    // 🔌 WebSocket Connection Hook
+    // 🔌 WebSocket Connection Hook - Enhanced with reconnection manager
     const handleReconnect = useCallback(() => {
         console.log("🔄 Chat reconnected, fetching new messages");
         fetchNewMessages();
@@ -86,7 +88,10 @@ const NewChatScreen = ({ route, navigation }) => {
 
     const {
         connectionStatus,
-        reconnecting
+        reconnecting,
+        reconnectAttempt,
+        maxAttempts,
+        manualReconnect
     } = useConnection(currentUser, user, chatKey, handleReconnect);
 
     // 🌐 WebSocket Chat Hook
@@ -100,55 +105,6 @@ const NewChatScreen = ({ route, navigation }) => {
         clearError: reconnectWS,
         resetTyping
     } = useChatWebSocket(currentUser?.id, user?.id, handleNewWebSocketMessage);
-
-    // ✅ FIX: Enhanced WebSocket monitoring for better real-time updates
-    const [wsStatus, setWsStatus] = useState('connecting');
-    const [lastMessageTime, setLastMessageTime] = useState(null);
-    const reconnectAttempts = useRef(0);
-    const maxReconnectAttempts = 5;
-
-    // 📱 Enhanced WebSocket status monitoring
-    useEffect(() => {
-        const updateStatus = () => {
-            if (wsConnected) {
-                setWsStatus('connected');
-                reconnectAttempts.current = 0;
-                console.log('✅ WebSocket connected - real-time messaging enabled');
-            } else if (connectionError) {
-                setWsStatus('error');
-                console.log('❌ WebSocket error:', connectionError.message);
-                
-                // ✅ FIX: Auto-reconnect for better reliability
-                if (reconnectAttempts.current < maxReconnectAttempts) {
-                    reconnectAttempts.current++;
-                    console.log(`🔄 Auto-reconnecting... attempt ${reconnectAttempts.current}/${maxReconnectAttempts}`);
-                    setTimeout(() => {
-                        reconnectWS();
-                    }, Math.min(1000 * Math.pow(2, reconnectAttempts.current), 10000));
-                }
-            } else {
-                setWsStatus('connecting');
-            }
-        };
-
-        updateStatus();
-    }, [wsConnected, connectionError, reconnectWS]);
-
-    // ✅ FIX: Enhanced real-time message monitoring
-    useEffect(() => {
-        if (wsConnected && messages.length > 0) {
-            const latestMessage = messages[0];
-            if (latestMessage && latestMessage.timestamp !== lastMessageTime) {
-                setLastMessageTime(latestMessage.timestamp);
-                console.log('📨 Real-time message received:', {
-                    id: latestMessage.id,
-                    from: latestMessage.senderId,
-                    time: latestMessage.timestamp,
-                    method: 'websocket'
-                });
-            }
-        }
-    }, [wsConnected, messages, lastMessageTime]);
 
     // 📤 Message Handlers Hook
     const {
@@ -176,63 +132,12 @@ const NewChatScreen = ({ route, navigation }) => {
             try {
                 console.log('🚀 Setting up chat...');
                 
-                // ✅ FIX: Wait for WebSocket connection before proceeding
-                const waitForWebSocket = () => {
-                    let hasLogged = false;
-                    return new Promise((resolve) => {
-                        const checkConnection = () => {
-                            if (wsConnected) {
-                                console.log('✅ WebSocket ready for chat setup');
-                                resolve();
-                            } else {
-                                if (!hasLogged) {
-                                    console.log('⏳ Waiting for WebSocket connection...');
-                                    hasLogged = true;
-                                }
-                                setTimeout(checkConnection, 500);
-                            }
-                        };
-                        checkConnection();
-                        
-                        // Timeout after 10 seconds
-                        setTimeout(() => {
-                            console.log('⚠️ WebSocket timeout - proceeding anyway');
-                            resolve();
-                        }, 10000);
-                    });
-                };
-
-                // Wait for WebSocket or timeout
-                await waitForWebSocket();
+                // Load initial messages
+                await fetchMessages();
                 
-                // Load messages - use loadMessages instead of fetchMessages
-                await loadMessages();
-                
-                if (!isMounted) return;
-
-                // ✅ FIX: Enhanced message read handling with WebSocket sync
-                if (currentUser?.id && user?.id) {
-                    console.log('✅ Marking messages as read on chat setup...');
-                    try {
-                        await messagesService.markAllMessagesAsRead(currentUser.id, user.id);
-                        console.log('✅ Messages marked as read successfully');
-                        
-                        // ✅ FIX: Notify WebSocket about read status for real-time sync
-                        if (wsConnected && messages.length > 0) {
-                            const latestMessage = messages[0];
-                            if (latestMessage && latestMessage.senderId !== currentUser.id) {
-                                await markMessageAsRead(latestMessage.id);
-                                console.log('📨 Synced read status via WebSocket');
-                            }
-                        }
-                    } catch (error) {
-                        console.error('❌ Error marking messages as read:', error);
-                    }
-                }
-
                 console.log('✅ Chat setup complete');
             } catch (error) {
-                console.error('❌ Chat setup error:', error);
+                console.error('❌ Error setting up chat:', error);
             }
         };
 
@@ -242,370 +147,142 @@ const NewChatScreen = ({ route, navigation }) => {
             isMounted = false;
             resetTyping();
         };
-    }, [currentUser?.id, user?.id]); // ✅ Remove wsConnected dependency to prevent loops
-
-    // ✅ FIX: Enhanced periodic refresh with smarter timing
-    useEffect(() => {
-        let refreshInterval;
-        
-        if (!wsConnected) {
-            // More frequent refresh when disconnected
-            refreshInterval = setInterval(() => {
-                console.log('💓 WebSocket disconnected, refreshing messages...');
-                fetchNewMessages();
-            }, 8000); // Increased from 5s to 8s to reduce duplicate messages
-        } else {
-            // Less frequent refresh when connected (backup only)
-            refreshInterval = setInterval(() => {
-                console.log('🔄 Periodic message sync (WebSocket backup)...');
-                fetchNewMessages();
-            }, 45000); // Increased from 30s to 45s to reduce duplicate messages
-        }
-
-        return () => {
-            if (refreshInterval) {
-                clearInterval(refreshInterval);
-            }
-        };
-    }, [wsConnected, fetchNewMessages]);
-
-    // 💬 Send message action
-    const sendMessageAction = useCallback(() => {
-        if ((messageText.trim().length === 0 && !attachment) || sending) {
-            return;
-        }
-
-        // ✅ FIX: Prevent duplicate message sending
-        console.log('📤 Sending message via NewChatScreen:', {
-            hasWebSocket: wsConnected,
-            messageLength: messageText.length,
-            hasAttachment: !!attachment,
-            wsStatus: wsStatus
-        });
-
-        // ✅ FIX: Set sending flag to prevent multiple sends
-        sendMessageHandler(messageText, attachment);
-        
-        // ✅ FIX: Removed immediate refresh to prevent duplicate messages
-        if (!wsConnected) {
-            console.log('⚠️ WebSocket disconnected - message sent via API');
-            // Delayed refresh to allow API to process the message
-            setTimeout(() => {
-                fetchNewMessages();
-            }, 1500);
-        }
-    }, [messageText, attachment, sending, sendMessageHandler, wsConnected, wsStatus, fetchNewMessages]);
-
-    // ⌨️ Handle typing
-    const handleMessageTextChange = useCallback((text) => {
-        setMessageText(text);
-
-        if (wsConnected) {
-            if (text.trim().length > 0) {
-                sendTypingNotification(true);
-            } else {
-                sendTypingNotification(false);
-            }
-        }
-    }, [wsConnected, sendTypingNotification]);
-
-    // 📱 Scroll handling
-    const handleScroll = useCallback((event) => {
-        const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
-        scrollOffsetY.current = contentOffset.y;
-        
-        const isNearBottom = contentOffset.y < 100;
-        setIsAtBottom(isNearBottom);
-        
-        const shouldShowButton = contentOffset.y > 200;
-        if (shouldShowButton !== showScrollToBottom) {
-            setShowScrollToBottom(shouldShowButton);
-            
-            Animated.timing(fadeAnim, {
-                toValue: shouldShowButton ? 1 : 0,
-                duration: 200,
-                useNativeDriver: true,
-            }).start();
-        }
-    }, [showScrollToBottom, fadeAnim]);
-
-    // 📱 Scroll to bottom
-    const scrollToBottom = useCallback(() => {
-        flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
     }, []);
 
-    // 📱 Load more messages
-    const handleLoadMore = useCallback(() => {
-        if (hasMore && !loading) {
-            console.log('📄 Loading more messages...');
-            loadMoreMessages();
-        }
-    }, [hasMore, loading, loadMoreMessages]);
-
-    // 📱 Render message item
-    const renderMessageItem = useCallback(({ item, index }) => (
-        <NewMessageItem
-            message={item}
-            currentUser={currentUser}
-            chatPartner={user}
-            formatTime={formatTime}
-            resendMessage={resendMessage}
-            isLastMessage={index === 0}
-            onPress={() => {
-                if (item.isError) {
-                    Alert.alert(
-                        'Gửi lại tin nhắn?',
-                        'Tin nhắn này gửi không thành công. Bạn có muốn gửi lại không?',
-                        [
-                            { text: 'Hủy', style: 'cancel' },
-                            { text: 'Gửi lại', onPress: () => resendMessage(item) }
-                        ]
-                    );
-                }
-            }}
-        />
-    ), [currentUser, user, formatTime, resendMessage]);
-
-    // 🔑 Key extractor
-    const keyExtractor = useCallback((item, index) => 
-        `${item.id || 'unknown'}-${item.timestamp || Date.now()}-${index}`,
-        []
-    );
-
-    // 📱 Empty component
-    const ListEmptyComponent = useCallback(() => null, []);
-
-    // 📱 Footer component
-    const ListFooterComponent = useCallback(() => (
-        hasMore && !loading ? (
-            <View style={styles.footerLoading}>
-                <ActivityIndicator size="small" color="#667eea" />
-                <Text style={styles.loadingText}>Đang tải tin nhắn cũ...</Text>
-            </View>
-        ) : null
-    ), [hasMore, loading]);
-
-    // 📱 Header component
-    const ListHeaderComponent = useCallback(() => null, []);
-
-    // 🎥 Video Call Handlers
-    const handleVideoCallStart = useCallback(async (callResponse) => {
-        try {
-            console.log('🎥 Video call started:', callResponse);
-            setCallInProgress(true);
-            
-            // Navigate to video call screen with all needed data
-            navigation.navigate('VideoCallScreen', {
-                roomId: callResponse.roomId,
-                callType: 'VIDEO',
-                isOutgoing: true,
-                callee: user,
-                caller: currentUser,
-                callData: callResponse,
-                // Pass chat context for seamless integration
-                chatUser: user,
-                chatCurrentUser: currentUser,
-                conversationId: conversationId
-            });
-            
-        } catch (error) {
-            console.error('❌ Error handling video call start:', error);
-            setCallInProgress(false);
-            Alert.alert('Lỗi', 'Không thể khởi tạo cuộc gọi video');
-        }
-    }, [navigation, user, currentUser, conversationId]);
-
-    const handleAudioCallStart = useCallback(async (callResponse) => {
-        try {
-            console.log('📞 Audio call started:', callResponse);
-            setCallInProgress(true);
-            
-            // Navigate to audio call screen with all needed data
-            navigation.navigate('AudioCallScreen', {
-                roomId: callResponse.roomId,
-                callType: 'AUDIO',
-                isOutgoing: true,
-                callee: user,
-                caller: currentUser,
-                callData: callResponse,
-                // Pass chat context for seamless integration
-                chatUser: user,
-                chatCurrentUser: currentUser,
-                conversationId: conversationId
-            });
-            
-        } catch (error) {
-            console.error('❌ Error handling audio call start:', error);
-            setCallInProgress(false);
-            Alert.alert('Lỗi', 'Không thể khởi tạo cuộc gọi thoại');
-        }
-    }, [navigation, user, currentUser, conversationId]);
-
-    // Clean up call state when component unmounts or navigation changes
+    // Handle connection status changes
     useEffect(() => {
-        const unsubscribe = navigation.addListener('focus', () => {
-            // Reset call state when returning to chat
-            setCallInProgress(false);
-        });
+        console.log(`🔌 Connection status: ${connectionStatus}, reconnecting: ${reconnecting}`);
+    }, [connectionStatus, reconnecting]);
 
-        return unsubscribe;
-    }, [navigation]);
+    // Handle scroll events
+    const handleScroll = (event) => {
+        const offsetY = event.nativeEvent.contentOffset.y;
+        scrollOffsetY.current = offsetY;
+        
+        // Show/hide scroll to bottom button based on scroll position
+        const shouldShowButton = offsetY > 200;
+        if (shouldShowButton !== showScrollToBottom) {
+            setShowScrollToBottom(shouldShowButton);
+        }
+        
+        // Check if at bottom
+        const layoutHeight = event.nativeEvent.layoutMeasurement.height;
+        const contentHeight = event.nativeEvent.contentSize.height;
+        const isBottom = layoutHeight + offsetY >= contentHeight - 20;
+        setIsAtBottom(isBottom);
+    };
 
-    if (loading && messages.length === 0) {
-        return (
-            <SafeAreaView style={styles.container}>
-                <StatusBar barStyle="light-content" backgroundColor="#667eea" />
-                <NewChatHeader
-                    navigation={navigation}
-                    user={user}
-                    currentUser={currentUser}
-                    isTyping={isTyping}
-                    isConnected={wsConnected}
-                    connectionStatus={connectionStatus}
-                    onVideoCallStart={handleVideoCallStart}
-                    onAudioCallStart={handleAudioCallStart}
-                />
-                <LoadingSpinner />
-            </SafeAreaView>
-        );
-    }
+    // Scroll to bottom of chat
+    const scrollToBottom = () => {
+        if (flatListRef.current && messages.length > 0) {
+            flatListRef.current.scrollToOffset({ offset: 0, animated: true });
+        }
+    };
 
-    return (
-        <SafeAreaView style={styles.container}>
-            <StatusBar barStyle="light-content" backgroundColor="#667eea" />
-            
-            <KeyboardAvoidingView 
-                style={styles.container}
-                behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-                keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
-            >
-                {/* Header */}
-                <NewChatHeader
-                    navigation={navigation}
-                    user={user}
-                    currentUser={currentUser}
-                    isTyping={isTyping}
-                    isConnected={wsConnected}
-                    connectionStatus={connectionStatus}
-                    onReconnect={reconnectWS}
-                    onVideoCallStart={handleVideoCallStart}
-                    onAudioCallStart={handleAudioCallStart}
-                />
+    // Handle retry connection
+    const handleRetryConnection = () => {
+        console.log('🔄 Manually retrying connection...');
+        manualReconnect();
+    };
 
-                {/* Connection Status */}
-                {!wsConnected && (
-                    <View style={styles.connectionStatus}>
-                        <Ionicons name="warning-outline" size={16} color="#ff9800" />
-                        <Text style={styles.connectionStatusText}>
-                            {connectionError
-                                ? `Lỗi kết nối: ${connectionError.message || 'Unknown error'}`
-                                : reconnecting
-                                    ? 'Đang kết nối lại...'
-                                    : 'Mất kết nối. Tin nhắn có thể bị chậm.'
-                            }
-                        </Text>
-                        {connectionError && (
-                            <TouchableOpacity
-                                style={styles.retryButton}
-                                onPress={reconnectWS}
-                            >
-                                <Text style={styles.retryText}>Thử lại</Text>
-                            </TouchableOpacity>
-                        )}
-                    </View>
-                )}
-
-                {/* Call In Progress Indicator */}
-                {callInProgress && (
-                    <View style={styles.callInProgressBanner}>
-                        <Ionicons name="call" size={16} color="#4CAF50" />
-                        <Text style={styles.callInProgressText}>
-                            Cuộc gọi đang diễn ra...
-                        </Text>
+    // 🎨 Render functions
+    const renderHeader = () => {
+        if (loading && messages.length === 0) {
+            return <LoadingSpinner size="large" style={styles.loadingSpinner} />;
+        }
+        
+        if (hasMore) {
+            return (
+                <View style={styles.loadMoreContainer}>
+                    {refreshing ? (
+                        <ActivityIndicator size="small" color="#0084ff" />
+                    ) : (
                         <TouchableOpacity
-                            style={styles.returnToCallButton}
-                            onPress={() => {
-                                // Return to active call - implement based on your call screen logic
-                                console.log('Return to active call');
-                            }}
+                            style={styles.loadMoreButton}
+                            onPress={loadMoreMessages}
                         >
-                            <Text style={styles.returnToCallText}>Quay lại</Text>
+                            <Text style={styles.loadMoreText}>Xem tin nhắn cũ hơn</Text>
                         </TouchableOpacity>
-                    </View>
-                )}
-
-                {/* Messages List */}
-                <View style={styles.messagesContainer}>
-                    <FlatList
-                        ref={flatListRef}
-                        data={messages}
-                        renderItem={renderMessageItem}
-                        keyExtractor={keyExtractor}
-                        inverted
-                        showsVerticalScrollIndicator={false}
-                        onScroll={handleScroll}
-                        scrollEventThrottle={16}
-                        refreshControl={
-                            <RefreshControl
-                                refreshing={refreshing}
-                                onRefresh={onRefresh}
-                                colors={['#667eea']}
-                                tintColor="#667eea"
-                            />
-                        }
-                        ListEmptyComponent={ListEmptyComponent}
-                        ListFooterComponent={ListFooterComponent}
-                        ListHeaderComponent={ListHeaderComponent}
-                        contentContainerStyle={
-                            messages.length === 0 
-                                ? styles.emptyList 
-                                : styles.messagesList
-                        }
-                        onEndReached={handleLoadMore}
-                        onEndReachedThreshold={0.1}
-                    />
-
-                    {/* Scroll to Bottom Button */}
-                    {showScrollToBottom && (
-                        <Animated.View 
-                            style={[
-                                styles.scrollToBottomButton,
-                                { opacity: fadeAnim }
-                            ]}
-                        >
-                            <TouchableOpacity
-                                style={styles.scrollButton}
-                                onPress={scrollToBottom}
-                            >
-                                <Ionicons name="chevron-down" size={24} color="#fff" />
-                            </TouchableOpacity>
-                        </Animated.View>
                     )}
                 </View>
+            );
+        }
+        
+        return null;
+    };
 
-                {/* Message Input */}
-                <NewMessageInput
-                    messageText={messageText}
-                    onChangeText={handleMessageTextChange}
-                    onSend={sendMessageAction}
-                    attachment={attachment}
-                    setAttachment={setAttachment}
-                    sending={sending}
-                    disabled={!wsConnected && !connectionStatus}
+    // 🎨 Render message list
+    return (
+        <SafeAreaView style={styles.container}>
+            <StatusBar barStyle="dark-content" />
+            <NewChatHeader user={user} navigation={navigation} />
+            
+            {/* Connection Status Indicator */}
+            <ConnectionStatusIndicator 
+                status={connectionStatus} 
+                reconnecting={reconnecting} 
+                onRetry={handleRetryConnection}
+            />
+            
+            <KeyboardAvoidingView
+                behavior={Platform.OS === 'ios' ? 'padding' : null}
+                style={styles.keyboardAvoidingView}
+                keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+            >
+                <FlatList
+                    ref={flatListRef}
+                    data={messages}
+                    keyExtractor={(item) => item.id.toString()}
+                    renderItem={({ item }) => (
+                        <NewMessageItem
+                            message={item}
+                            currentUser={currentUser}
+                            chatPartner={user}
+                            formatTime={formatTime}
+                            onResend={resendMessage}
+                            markAsRead={markMessageAsRead}
+                        />
+                    )}
+                    inverted
+                    contentContainerStyle={styles.messageList}
+                    onScroll={handleScroll}
+                    scrollEventThrottle={16}
+                    ListHeaderComponent={renderHeader}
+                    refreshControl={
+                        <RefreshControl
+                            refreshing={refreshing}
+                            onRefresh={onRefresh}
+                            colors={['#0084ff']}
+                            tintColor="#0084ff"
+                        />
+                    }
                 />
 
-                {/* Error Message */}
-                {messageError && (
-                    <View style={styles.errorContainer}>
-                        <Text style={styles.errorText}>{messageError}</Text>
-                        <TouchableOpacity
-                            style={styles.errorRetryButton}
-                            onPress={fetchNewMessages}
-                        >
-                            <Text style={styles.errorRetryText}>Thử lại</Text>
-                        </TouchableOpacity>
+                {showScrollToBottom && (
+                    <TouchableOpacity
+                        style={styles.scrollToBottomButton}
+                        onPress={scrollToBottom}
+                    >
+                        <Ionicons name="chevron-down" size={24} color="#fff" />
+                    </TouchableOpacity>
+                )}
+
+                {isTyping && (
+                    <View style={styles.typingContainer}>
+                        <Text style={styles.typingText}>{user.fullName || user.username} đang nhập...</Text>
                     </View>
                 )}
+
+                <NewMessageInput
+                    text={messageText}
+                    setText={setMessageText}
+                    onSend={sendMessageHandler}
+                    sending={sending}
+                    attachment={attachment}
+                    setAttachment={setAttachment}
+                    onTyping={(isTyping) => sendTypingNotification(isTyping)}
+                    connectionStatus={connectionStatus}
+                />
             </KeyboardAvoidingView>
         </SafeAreaView>
     );
@@ -614,182 +291,56 @@ const NewChatScreen = ({ route, navigation }) => {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#f8f9fa',
+        backgroundColor: '#fff',
     },
-    messagesContainer: {
+    keyboardAvoidingView: {
         flex: 1,
-        position: 'relative',
     },
-    messagesList: {
-        paddingHorizontal: 15,
-        paddingVertical: 10,
+    messageList: {
+        paddingHorizontal: 16,
+        paddingBottom: 8,
     },
-    emptyList: {
-        flex: 1,
-        justifyContent: 'center',
+    loadingSpinner: {
+        marginVertical: 20,
     },
-    emptyContainer: {
-        flex: 1,
-        justifyContent: 'center',
+    loadMoreContainer: {
+        padding: 10,
         alignItems: 'center',
-        paddingHorizontal: 30,
     },
-    emptyContent: {
-        alignItems: 'center',
-        paddingVertical: 50,
+    loadMoreButton: {
+        padding: 8,
+        backgroundColor: '#f0f2f5',
+        borderRadius: 20,
     },
-    emptyTitle: {
-        fontSize: 20,
-        fontWeight: '600',
-        color: '#333',
-        marginTop: 20,
-        marginBottom: 10,
-        textAlign: 'center',
-    },
-    emptySubtitle: {
-        fontSize: 16,
-        color: '#666',
-        textAlign: 'center',
-        lineHeight: 22,
-    },
-    footerLoading: {
-        flexDirection: 'row',
-        justifyContent: 'center',
-        alignItems: 'center',
-        paddingVertical: 20,
-    },
-    loadingText: {
-        marginLeft: 10,
-        color: '#666',
-        fontSize: 14,
-    },
-    chatStart: {
-        alignItems: 'center',
-        paddingVertical: 30,
-        paddingHorizontal: 20,
-    },
-    chatStartAvatar: {
-        width: 80,
-        height: 80,
-        borderRadius: 40,
-        backgroundColor: '#667eea',
-        justifyContent: 'center',
-        alignItems: 'center',
-        marginBottom: 15,
-    },
-    chatStartAvatarText: {
-        color: '#fff',
-        fontSize: 32,
-        fontWeight: 'bold',
-    },
-    chatStartName: {
-        fontSize: 24,
-        fontWeight: 'bold',
-        color: '#333',
-        marginBottom: 10,
-    },
-    chatStartMessage: {
-        fontSize: 16,
-        color: '#666',
-        textAlign: 'center',
-        lineHeight: 22,
-    },
-    connectionStatus: {
-        backgroundColor: '#fff3cd',
-        paddingHorizontal: 15,
-        paddingVertical: 10,
-        flexDirection: 'row',
-        alignItems: 'center',
-        borderBottomWidth: 1,
-        borderBottomColor: '#ffeaa7',
-    },
-    connectionStatusText: {
-        flex: 1,
-        marginLeft: 8,
-        color: '#856404',
-        fontSize: 14,
-    },
-    retryButton: {
-        backgroundColor: '#ff9800',
-        paddingHorizontal: 12,
-        paddingVertical: 6,
-        borderRadius: 15,
-    },
-    retryText: {
-        color: '#fff',
-        fontSize: 12,
-        fontWeight: '600',
+    loadMoreText: {
+        color: '#0084ff',
+        fontWeight: '500',
     },
     scrollToBottomButton: {
         position: 'absolute',
-        bottom: 20,
-        right: 20,
-        zIndex: 1000,
-    },
-    scrollButton: {
-        width: 50,
-        height: 50,
-        borderRadius: 25,
-        backgroundColor: '#667eea',
+        right: 16,
+        bottom: 80,
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        backgroundColor: '#0084ff',
         justifyContent: 'center',
         alignItems: 'center',
         shadowColor: '#000',
-        shadowOffset: {
-            width: 0,
-            height: 2,
-        },
-        shadowOpacity: 0.25,
-        shadowRadius: 3.84,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.3,
+        shadowRadius: 3,
         elevation: 5,
     },
-    errorContainer: {
-        backgroundColor: '#ffebee',
-        padding: 12,
-        marginHorizontal: 10,
-        marginBottom: 10,
-        borderRadius: 8,
-        flexDirection: 'row',
-        alignItems: 'center',
-    },
-    errorText: {
-        flex: 1,
-        color: '#c62828',
-        fontSize: 14,
-    },
-    errorRetryButton: {
-        backgroundColor: '#c62828',
-        paddingHorizontal: 12,
+    typingContainer: {
+        paddingHorizontal: 16,
         paddingVertical: 6,
-        borderRadius: 5,
+        backgroundColor: '#f0f2f5',
     },
-    errorRetryText: {
-        color: '#fff',
+    typingText: {
+        color: '#65676b',
+        fontStyle: 'italic',
         fontSize: 12,
-        fontWeight: '600',
-    },
-    callInProgressBanner: {
-        backgroundColor: '#fff3cd',
-        padding: 10,
-        flexDirection: 'row',
-        alignItems: 'center',
-        borderBottomWidth: 1,
-        borderBottomColor: '#ffeaa7',
-    },
-    callInProgressText: {
-        flex: 1,
-        marginLeft: 10,
-        color: '#856404',
-        fontSize: 14,
-    },
-    returnToCallButton: {
-        backgroundColor: '#ff9800',
-        padding: 10,
-        borderRadius: 5,
-    },
-    returnToCallText: {
-        color: '#fff',
-        fontSize: 12,
-        fontWeight: '600',
     },
 });
 
