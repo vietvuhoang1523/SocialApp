@@ -4,6 +4,7 @@ import Ionicons from 'react-native-vector-icons/Ionicons';
 import EmptyListComponent from './EmptyListComponent';
 import { determineFriendData } from '../../utils/friendUtils';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getAvatarFromUser } from '../../utils/ImageUtils';
 
 const DEFAULT_PROFILE_IMAGE = 'https://cdn.pixabay.com/photo/2015/10/05/22/37/blank-profile-picture-973460_1280.png';
 
@@ -64,11 +65,16 @@ const FriendMessagingModal = ({ visible, friends, onClose, onFriendPress, curren
     const handleFriendSelect = (friend) => {
         const friendData = determineFriendData(friend, currentUserId);
 
+        // Get avatar URL using ImageUtils
+        const avatarUrl = getAvatarFromUser(friendData);
+
         // Prepare user object in the format expected by ChatScreen
         const friendForChat = {
             id: friendData.id,
             username: friendData.fullName || "Người dùng",
-            profilePicture: friendData.avatarUrl,
+            profilePicture: avatarUrl,
+            profilePictureUrl: friendData.profilePictureUrl,
+            avatarUrl: friendData.avatarUrl,
             email: friendData.email
         };
 
@@ -83,15 +89,38 @@ const FriendMessagingModal = ({ visible, friends, onClose, onFriendPress, curren
         const friendData = determineFriendData(item, currentUserId);
         if (!friendData) return null;
 
+        // Get avatar URL using ImageUtils
+        const avatarUrl = getAvatarFromUser(friendData);
+        
+        // Debug avatar data
+        console.log('🖼️ FriendMessagingModal avatar data:', {
+            friendId: friendData?.id,
+            friendName: friendData?.fullName,
+            profilePictureUrl: friendData?.profilePictureUrl,
+            avatarUrl: friendData?.avatarUrl,
+            finalAvatarUrl: avatarUrl
+        });
+
         return (
             <TouchableOpacity
                 style={styles.friendItem}
                 onPress={() => handleFriendSelect(item)}
             >
-                <Image
-                    source={{ uri: friendData.avatarUrl || DEFAULT_PROFILE_IMAGE }}
-                    style={styles.friendImage}
-                />
+                {avatarUrl ? (
+                    <Image
+                        source={{ uri: avatarUrl }}
+                        style={styles.friendImage}
+                        onError={(e) => {
+                            console.log('❌ Failed to load friend avatar in FriendMessagingModal:', friendData?.fullName, e.nativeEvent.error);
+                        }}
+                    />
+                ) : (
+                    <View style={[styles.friendImage, styles.avatarPlaceholder]}>
+                        <Text style={styles.avatarText}>
+                            {(friendData?.fullName || 'U').charAt(0).toUpperCase()}
+                        </Text>
+                    </View>
+                )}
                 <View style={styles.friendInfo}>
                     <Text style={styles.friendName}>
                         {friendData.fullName || "Người dùng"}
@@ -218,6 +247,16 @@ const styles = StyleSheet.create({
         width: 60,
         height: 60,
         borderRadius: 30,
+    },
+    avatarPlaceholder: {
+        backgroundColor: '#f0f2f5',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    avatarText: {
+        fontSize: 20,
+        fontWeight: 'bold',
+        color: '#666',
     },
     friendInfo: {
         marginLeft: 15,

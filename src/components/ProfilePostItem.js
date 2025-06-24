@@ -35,16 +35,61 @@ const createImageUrl = (path) => {
 };
 
 const ProfilePostItem = ({ item }) => {
-    // Debug toàn bộ item
+    // Debug toàn bộ item với chi tiết hơn
     useEffect(() => {
-        console.log('DEBUG - Profile Post Item:', JSON.stringify(item, null, 2));
+        console.log('=== PROFILE POST ITEM DEBUG ===');
+        console.log('📝 Full Item Structure:', JSON.stringify(item, null, 2));
+        console.log('🖼️ Image Properties Check:', {
+            id: item?.id,
+            hasImageUrl: !!item?.imageUrl,
+            imageUrl: item?.imageUrl,
+            hasImageUrls: !!item?.imageUrls,
+            imageUrls: item?.imageUrls,
+            hasImages: !!item?.images,
+            images: item?.images,
+            hasFullImageUrl: !!item?.fullImageUrl,
+            fullImageUrl: item?.fullImageUrl,
+            hasProcessedImageUrls: !!item?.processedImageUrls,
+            processedImageUrls: item?.processedImageUrls,
+            hasProcessedImages: !!item?.processedImages,
+            processedImages: item?.processedImages
+        });
+        console.log('=== END DEBUG ===');
     }, [item]);
 
     // ✨ Xử lý multiple images từ backend
     const processImages = () => {
+        // Priority 1: Kiểm tra processed images từ service (đã được xử lý URL)
+        if (item?.processedImages && Array.isArray(item.processedImages) && item.processedImages.length > 0) {
+            console.log('🖼️ DEBUG - ProcessedImages found:', item.processedImages);
+            return item.processedImages.map((img, index) => ({
+                url: img.fullUrl,
+                id: img.id || `processed_${index}`
+            }));
+        }
+        
+        // Priority 2: Kiểm tra processed imageUrls từ service
+        if (item?.processedImageUrls && Array.isArray(item.processedImageUrls) && item.processedImageUrls.length > 0) {
+            console.log('🖼️ DEBUG - ProcessedImageUrls found:', item.processedImageUrls);
+            return item.processedImageUrls.map((imgUrl, index) => ({
+                url: imgUrl,
+                id: `processed_multi_${index}`
+            }));
+        }
+        
+        // Priority 3: Kiểm tra fullImageUrl từ service
+        if (item?.fullImageUrl) {
+            console.log('🖼️ DEBUG - FullImageUrl found:', item.fullImageUrl);
+            return [{
+                url: item.fullImageUrl,
+                id: 'processed_single'
+            }];
+        }
+        
+        // Fallback: Kiểm tra raw data và tự xử lý URL
         // Kiểm tra nếu có multiple images từ backend (imageUrls array)
         if (item?.imageUrls && Array.isArray(item.imageUrls) && item.imageUrls.length > 0) {
-            console.log('🖼️ DEBUG - Multiple imageUrls found:', item.imageUrls);
+            console.log('🖼️ DEBUG - Raw Multiple imageUrls found:', item.imageUrls);
             return item.imageUrls.map((imgUrl, index) => ({
                 url: createImageUrl(imgUrl),
                 id: `multi_${index}`
@@ -53,7 +98,7 @@ const ProfilePostItem = ({ item }) => {
         
         // Kiểm tra nếu có PostImage entities (từ API response mới)
         if (item?.images && Array.isArray(item.images) && item.images.length > 0) {
-            console.log('🖼️ DEBUG - PostImage entities found:', item.images);
+            console.log('🖼️ DEBUG - Raw PostImage entities found:', item.images);
             return item.images
                 .sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0)) // Sort by displayOrder
                 .map(img => ({
@@ -64,7 +109,7 @@ const ProfilePostItem = ({ item }) => {
         
         // Kiểm tra single image (backward compatibility)
         if (item?.imageUrl) {
-            console.log('🖼️ DEBUG - Single imageUrl found:', item.imageUrl);
+            console.log('🖼️ DEBUG - Raw Single imageUrl found:', item.imageUrl);
             return [{
                 url: createImageUrl(item.imageUrl),
                 id: 'single'
@@ -72,6 +117,9 @@ const ProfilePostItem = ({ item }) => {
         }
         
         console.log('🖼️ DEBUG - No images found in item:', {
+            hasProcessedImages: !!item?.processedImages,
+            hasProcessedImageUrls: !!item?.processedImageUrls,
+            hasFullImageUrl: !!item?.fullImageUrl,
             hasImageUrls: !!item?.imageUrls,
             hasImages: !!item?.images, 
             hasImageUrl: !!item?.imageUrl
@@ -117,8 +165,11 @@ const ProfilePostItem = ({ item }) => {
                 enableDots={true}
             />
 
-            {/* ✨ Debug info (có thể tắt sau) */}
+            {/* ✨ Debug info với thông tin chi tiết hơn */}
             <View style={styles.debugInfo}>
+                <Text style={styles.debugText}>
+                    Post ID: {item?.id || 'Unknown'}
+                </Text>
                 <Text style={styles.debugText}>
                     Images found: {images.length}
                 </Text>
@@ -127,7 +178,17 @@ const ProfilePostItem = ({ item }) => {
                         Image sources: {images.map(img => img.id).join(', ')}
                     </Text>
                 )}
-                </View>
+                <Text style={styles.debugText}>
+                    Raw image fields: {JSON.stringify({
+                        imageUrl: !!item?.imageUrl,
+                        imageUrls: !!item?.imageUrls,
+                        images: !!item?.images,
+                        fullImageUrl: !!item?.fullImageUrl,
+                        processedImageUrls: !!item?.processedImageUrls,
+                        processedImages: !!item?.processedImages
+                    })}
+                </Text>
+            </View>
         </View>
     );
 };

@@ -1,6 +1,7 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import UserProfileService from '../services/UserProfileService';
+import sportsProfileService from '../services/sportsProfileService';
 
 // Tạo context cho profile
 const ProfileContext = createContext();
@@ -17,6 +18,7 @@ export const useProfileContext = () => {
 // Provider component
 export const ProfileProvider = ({ children }) => {
     const [userProfile, setUserProfile] = useState(null);
+    const [sportsProfile, setSportsProfile] = useState(null);
     const [loading, setLoading] = useState(true);
 
     // Directly use the exported instance
@@ -27,19 +29,39 @@ export const ProfileProvider = ({ children }) => {
         try {
             setLoading(true);
 
-            // Lấy userProfile từ AsyncStorage trước (để có data ngay lập tức)
+            // Load từ AsyncStorage trước (có data ngay lập tức)
             const userProfileString = await AsyncStorage.getItem('userProfile');
             if (userProfileString) {
                 const parsedProfile = JSON.parse(userProfileString);
                 setUserProfile(parsedProfile);
             }
 
-            // Sau đó fetch từ API để có data mới nhất
-            const userData = await userProfileService.getCurrentUserProfile();
-            if (userData) {
-                setUserProfile(userData);
-                // Lưu data mới vào AsyncStorage
-                await AsyncStorage.setItem('userProfile', JSON.stringify(userData));
+            const sportsProfileString = await AsyncStorage.getItem('sportsProfile');
+            if (sportsProfileString) {
+                const parsedSportsProfile = JSON.parse(sportsProfileString);
+                setSportsProfile(parsedSportsProfile);
+            }
+
+            // Fetch từ API để có data mới nhất
+            const [userDataResult, sportsDataResult] = await Promise.allSettled([
+                userProfileService.getCurrentUserProfile(),
+                sportsProfileService.getMyProfile()
+            ]);
+
+            // Process user profile
+            if (userDataResult.status === 'fulfilled' && userDataResult.value) {
+                setUserProfile(userDataResult.value);
+                await AsyncStorage.setItem('userProfile', JSON.stringify(userDataResult.value));
+            }
+
+            // Process sports profile
+            if (sportsDataResult.status === 'fulfilled' && sportsDataResult.value) {
+                setSportsProfile(sportsDataResult.value);
+                await AsyncStorage.setItem('sportsProfile', JSON.stringify(sportsDataResult.value));
+            } else if (sportsDataResult.status === 'rejected') {
+                console.log('🏃‍♂️ No sports profile found - user may not have created one yet');
+                setSportsProfile(null);
+                await AsyncStorage.removeItem('sportsProfile');
             }
 
         } catch (error) {
@@ -94,6 +116,7 @@ export const ProfileProvider = ({ children }) => {
     // Context value
     const value = {
         userProfile,
+        sportsProfile,
         loading,
         updateProfile,
         refreshProfile,

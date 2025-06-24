@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 
 // Import screens
 import HomeScreen from '../screens/HomeScreen';
+import InstagramHomeScreen from '../screens/InstagramHomeScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import ChatScreen from '../screens/ChatScreen';
 import NotificationScreen from '../screens/NotificationScreen';
@@ -12,6 +13,9 @@ import SettingsScreen from '../screens/SettingsScreen';
 import SportsVenueSearchScreen from '../screens/sports/SportsVenueSearchScreen';
 import SportsVenueDetailScreen from '../screens/sports/SportsVenueDetailScreen';
 import CreateSportsVenueScreen from '../screens/sports/CreateSportsVenueScreen';
+import ManageParticipantsScreen from '../screens/sports/ManageParticipantsScreen';
+import AllPendingRequestsScreen from '../screens/sports/AllPendingRequestsScreen';
+import SportsPostDetailScreen from '../screens/SportsPostDetailScreen';
 
 // Import the new screens
 import ReportScreen from '../screens/ReportScreen';
@@ -73,9 +77,13 @@ const MainNavigator = () => {
   return (
     <Stack.Navigator>
       <Stack.Screen name="Main" component={TabNavigator} options={{ headerShown: false }} />
+      <Stack.Screen name="InstagramHome" component={InstagramHomeScreen} options={{ headerShown: false }} />
       <Stack.Screen name="Settings" component={SettingsScreen} options={{ headerShown: false }} />
       <Stack.Screen name="Report" component={ReportScreen} options={{ headerShown: false }} />
       <Stack.Screen name="ReportManagement" component={ReportManagementScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="SportsPostDetail" component={SportsPostDetailScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="ManageParticipants" component={ManageParticipantsScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="AllPendingRequests" component={AllPendingRequestsScreen} options={{ headerShown: false }} />
     </Stack.Navigator>
   );
 };

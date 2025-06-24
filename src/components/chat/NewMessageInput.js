@@ -48,12 +48,21 @@ const NewMessageInput = memo(({
         textInputRef.current?.focus();
     }, []);
 
-    // 📱 Handle send message
+    // 📱 Handle send message với debounce protection
+    const lastSendTime = useRef(0);
+    const sendDebounceTime = 1000; // 1 giây
+
     const handleSend = useCallback(() => {
         // Check if sending is disabled
         const isDisabled = connectionStatus === 'error' || connectionStatus === 'disconnected';
         
-        // ⚡ Debounce protection - prevent double press
+        // ⚡ Debounce protection - prevent double press trong 1 giây
+        const now = Date.now();
+        if (now - lastSendTime.current < sendDebounceTime) {
+            console.log('⚠️ Send prevented by debounce protection');
+            return;
+        }
+        
         if (sending || isDisabled) {
             if (isDisabled) {
                 Alert.alert(
@@ -67,6 +76,8 @@ const NewMessageInput = memo(({
 
         if (text.trim().length > 0 || attachment) {
             console.log('📤 Triggering send message...');
+            lastSendTime.current = now; // Cập nhật thời gian gửi cuối
+            
             onSend(text, attachment);
             setIsExpanded(false);
             

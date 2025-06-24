@@ -13,7 +13,7 @@ import { useTheme } from '../../hook/ThemeContext';
 import { formatDistanceToNow } from 'date-fns';
 import { vi } from 'date-fns/locale';
 import { SportTypeIcons } from '../../constants/SportConstants';
-import { joinSportsPost } from '../../services/sportsService';
+import SportsPostParticipantService from '../../services/SportsPostParticipantService';
 
 const SportsAvailabilityCard = ({ availability, onPress, onJoinSuccess }) => {
   const { colors } = useTheme();
@@ -225,7 +225,7 @@ const SportsAvailabilityCard = ({ availability, onPress, onJoinSuccess }) => {
   const submitJoinRequest = async (joinMessage) => {
     try {
       setJoining(true);
-      const response = await joinSportsPost(id, joinMessage);
+      const response = await SportsPostParticipantService.joinSportsPost(id, joinMessage);
       setJoinStatus('PENDING');
       
       // Update parent component if needed

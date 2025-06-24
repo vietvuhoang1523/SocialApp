@@ -83,10 +83,10 @@ const ProfileScreen = ({ navigation }) => {
         navigation.navigate('FriendSearch');
     }, [navigation]);
 
-    // Navigate đến màn hình danh sách bạn bè
+    // Navigate đến màn hình danh sách bạn bè - PLACEHOLDER (real function is in ProfileScreenContent)
     const handleViewAllFriends = useCallback(() => {
-        navigation.navigate('Messages');
-    }, [navigation]);
+        console.warn('⚠️ This function should not be called - use the one in ProfileScreenContent instead');
+    }, []);
 
     // View profile intro/bio đầy đủ
     const handleViewIntro = useCallback(() => {
@@ -137,7 +137,7 @@ const ProfileScreenContent = ({
 
     // Navigate đến màn hình danh sách bạn bè với currentUser
     const handleViewAllFriends = useCallback(() => {
-        navigation.navigate('Messages', { currentUser: userProfile });
+        navigation.navigate('NewMessages', { currentUser: userProfile });
     }, [navigation, userProfile]);
 
     return (

@@ -13,7 +13,7 @@ class CommentService {
         console.log('API URL được sử dụng:', this.apiBaseUrl);
 
         this.api = axios.create({
-            baseURL: this.apiBaseUrl,
+            baseURL: `${this.apiBaseUrl}`,
             timeout: DEFAULT_TIMEOUT,
             headers: DEFAULT_HEADERS,
         });
@@ -68,6 +68,9 @@ class CommentService {
      */
     async getCommentsByPostId(postId, page = 0, size = 10, sortBy = 'createdAt', sortDir = 'desc') {
         try {
+            console.log(`💬 Fetching comments for post ${postId}`);
+            console.log(`📡 API URL: ${this.api.defaults.baseURL}/comments/post/${postId}?page=${page}&size=${size}&sortBy=${sortBy}&sortDir=${sortDir}`);
+            
             const response = await this.api.get(
                 `/comments/post/${postId}?page=${page}&size=${size}&sortBy=${sortBy}&sortDir=${sortDir}`
             );
@@ -91,9 +94,11 @@ class CommentService {
                 }));
             }
             
+            console.log('✅ Comments fetched successfully:', response.data);
             return response.data;
         } catch (error) {
-            console.error('Lỗi khi lấy bình luận của bài đăng:', error);
+            console.error('❌ Lỗi khi lấy bình luận của bài đăng:', error);
+            console.error('Error details:', error.response?.data || error.message);
             this.handleError(error);
         }
     }

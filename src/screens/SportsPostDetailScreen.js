@@ -17,10 +17,12 @@ import {
 } from 'react-native';
 import { MaterialIcons, Ionicons, FontAwesome5 } from '@expo/vector-icons';
 import SportsPostService from '../services/SportsPostService';
+import sportsService from '../services/sportsService';
 import MapView, { Marker } from 'react-native-maps';
 import moment from 'moment';
 import 'moment/locale/vi';
 import { LinearGradient } from 'expo-linear-gradient';
+import { createAvatarUrl, getAvatarFromUser } from '../utils/ImageUtils';
 
 const { width } = Dimensions.get('window');
 
@@ -71,11 +73,20 @@ const SportsPostDetailScreen = ({ route, navigation }) => {
             // Only fetch participants if we have a valid post
             if (response.id) {
                 try {
-            const participantsData = await SportsPostService.getParticipants(postId);
-            setParticipants(participantsData || []);
+                    const participantsData = await sportsService.getParticipants(postId);
+                    
+                    let participantsList = [];
+                    if (Array.isArray(participantsData)) {
+                        participantsList = participantsData;
+                    } else if (participantsData.content && Array.isArray(participantsData.content)) {
+                        participantsList = participantsData.content;
+                    }
+                    
+                    console.log(`👥 Fetched ${participantsList.length} participants for detail screen`);
+                    setParticipants(participantsList);
                 } catch (participantsError) {
                     console.error('Error fetching participants:', participantsError);
-                    // Continue with the post data even if participants can't be fetched
+                    setParticipants([]);
                 }
             }
         } catch (error) {
@@ -100,9 +111,17 @@ const SportsPostDetailScreen = ({ route, navigation }) => {
                 setParticipantCount(participantCount + 1);
             }
             
-            // Refresh participants list
-            const participantsData = await SportsPostService.getParticipants(postId);
-            setParticipants(participantsData || []);
+                                        // Refresh participants list
+            const participantsData = await sportsService.getParticipants(postId);
+            
+            let participantsList = [];
+            if (Array.isArray(participantsData)) {
+                participantsList = participantsData;
+            } else if (participantsData.content && Array.isArray(participantsData.content)) {
+                participantsList = participantsData.content;
+            }
+            
+            setParticipants(participantsList);
             
             Alert.alert(
                 'Thành công', 
@@ -178,10 +197,74 @@ const SportsPostDetailScreen = ({ route, navigation }) => {
     // Get main image URL
     const getMainImageUrl = () => {
         if (!post) return null;
-        if (post.fullImageUrl) return post.fullImageUrl;
-        if (post.processedImageUrls && post.processedImageUrls.length > 0) return post.processedImageUrls[0];
-        if (post.processedImages && post.processedImages.length > 0) return post.processedImages[0].fullUrl;
-        return 'https://via.placeholder.com/400x300/E91E63/FFFFFF?text=No+Image';
+        
+        console.log(`🖼️ Getting main image URL for detail post ${post.id}:`, {
+            hasImageUrls: !!post.imageUrls,
+            hasImages: !!post.images,
+            hasImagePaths: !!post.imagePaths,
+            hasPostImages: !!post.postImages,
+            hasFullImageUrl: !!post.fullImageUrl,
+            hasProcessedImageUrls: !!post.processedImageUrls,
+            hasProcessedImages: !!post.processedImages,
+            imageUrlsLength: post.imageUrls?.length || 0,
+            imagesLength: post.images?.length || 0
+        });
+
+        // Priority 1: Check for already processed image URLs
+        if (post.imageUrls && Array.isArray(post.imageUrls) && post.imageUrls.length > 0) {
+            console.log(`✅ Using imageUrls[0]: ${post.imageUrls[0]}`);
+            return post.imageUrls[0];
+        }
+        
+        // Priority 2: Check for images array
+        if (post.images && Array.isArray(post.images) && post.images.length > 0) {
+            console.log(`✅ Using images[0]: ${post.images[0]}`);
+            return post.images[0];
+        }
+        
+        // Priority 3: Check for imagePaths
+        if (post.imagePaths && Array.isArray(post.imagePaths) && post.imagePaths.length > 0) {
+            const processedUrl = sportsService.createImageUrl(post.imagePaths[0]);
+            console.log(`✅ Using imagePaths[0] processed: ${processedUrl}`);
+            return processedUrl;
+        }
+        
+        // Priority 4: Check for postImages
+        if (post.postImages && Array.isArray(post.postImages) && post.postImages.length > 0) {
+            const processedUrl = sportsService.createImageUrl(post.postImages[0]);
+            console.log(`✅ Using postImages[0] processed: ${processedUrl}`);
+            return processedUrl;
+        }
+        
+        // Priority 5: Legacy support for old formats
+        if (post.fullImageUrl) {
+            console.log(`✅ Using fullImageUrl: ${post.fullImageUrl}`);
+            return post.fullImageUrl;
+        }
+        
+        if (post.processedImageUrls && Array.isArray(post.processedImageUrls) && post.processedImageUrls.length > 0) {
+            console.log(`✅ Using processedImageUrls[0]: ${post.processedImageUrls[0]}`);
+            return post.processedImageUrls[0];
+        }
+        
+        if (post.processedImages && Array.isArray(post.processedImages) && post.processedImages.length > 0) {
+            console.log(`✅ Using processedImages[0].fullUrl: ${post.processedImages[0].fullUrl}`);
+            return post.processedImages[0].fullUrl;
+        }
+        
+        // Priority 6: Check for single imageUrl and process it
+        if (post.imageUrl) {
+            const processedUrl = sportsService.createImageUrl(post.imageUrl);
+            console.log(`✅ Using single imageUrl processed: ${processedUrl}`);
+            return processedUrl;
+        }
+        
+        console.log(`❌ No image found for detail post ${post.id}, using sport-specific placeholder`);
+        
+        // Create sport-specific placeholder
+        const sportType = post.sportType || 'SPORT';
+        const placeholderText = encodeURIComponent(sportType);
+        return `https://via.placeholder.com/400x300/E91E63/FFFFFF?text=${placeholderText}`;
     };
 
     if (loading) {
@@ -237,11 +320,16 @@ const SportsPostDetailScreen = ({ route, navigation }) => {
                     <Text style={styles.title}>{post.title}</Text>
                     <View style={styles.hostInfo}>
                         <Image 
-                            source={{ uri: post.userRes?.profilePictureUrl || 'https://randomuser.me/api/portraits/men/1.jpg' }} 
+                            source={{ 
+                                uri: getAvatarFromUser(post.creator || post.userRes || post.user) || 
+                                     'https://randomuser.me/api/portraits/men/1.jpg' 
+                            }} 
                             style={styles.hostAvatar} 
                         />
                         <View>
-                            <Text style={styles.hostName}>Người tổ chức: {post.userRes?.fullName || 'Unknown'}</Text>
+                            <Text style={styles.hostName}>
+                                Người tổ chức: {(post.creator || post.userRes || post.user)?.fullName || 'Unknown'}
+                            </Text>
                             <Text style={styles.postedTime}>Đăng lúc {moment(post.createdAt).fromNow()}</Text>
                         </View>
                     </View>

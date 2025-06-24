@@ -85,21 +85,23 @@ const useChatWebSocket = (currentUserId, receiverId, handleNewWebSocketMessage) 
             });
             
             if (isRelevantMessage) {
-                // ⚡ FIX: Pass ALL relevant messages to UI, both sent and received
-                // The useMessageHandlers will handle deduplication based on message ID
-                console.log('📨 Relevant message, passing to handleNewWebSocketMessage');
-                setLastMessage(message);
-                
-                // Clear typing indicator if message is from the other user
+                // ⚡ FIX: Chỉ pass tin nhắn từ NGƯỜI KHÁC để tránh duplicate
+                // Tin nhắn từ chính mình đã được xử lý bởi temporary message system
                 if (message.senderId === receiverId) {
+                    console.log('📨 Message from other user, passing to handleNewWebSocketMessage');
+                    setLastMessage(message);
                     setIsOtherUserTyping(false);
-                }
-                
-                // Pass to message management hook - it will handle deduplication
-                if (typeof handleNewWebSocketMessage === 'function') {
-                    handleNewWebSocketMessage(message);
+                    
+                    // Pass to message management hook
+                    if (typeof handleNewWebSocketMessage === 'function') {
+                        handleNewWebSocketMessage(message);
+                    } else {
+                        console.warn('⚠️ handleNewWebSocketMessage function not provided');
+                    }
                 } else {
-                    console.warn('⚠️ handleNewWebSocketMessage function not provided');
+                    console.log('📤 Message from current user, updating lastMessage but not passing to UI to avoid duplicate');
+                    // Vẫn cập nhật lastMessage để theo dõi trạng thái, nhưng không pass vào UI
+                    setLastMessage(message);
                 }
             } else {
                 console.log('📨 Message not relevant to current conversation, ignoring');

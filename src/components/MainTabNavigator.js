@@ -1,15 +1,11 @@
 // src/navigation/MainTabNavigator.js
-import React, { useEffect, useState } from "react";
+import React from "react";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
-<<<<<<< HEAD
 import { createStackNavigator } from '@react-navigation/stack';
 import { Ionicons } from '@expo/vector-icons';
-=======
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { View } from "react-native";
 import NotificationBadge from './common/NotificationBadge';
 import { useNotifications } from './NotificationContext';
->>>>>>> 470eddff2a288d1a4e85b18401fe95e7a18b1512
 
 // Import your screens with correct paths
 import InstagramHomeScreen from "../screens/InstagramHomeScreen";
@@ -17,7 +13,6 @@ import SearchScreen from "../screens/SearchScreen";
 import ProfileScreen from "../screens/profile/ProfileScreen";
 import NotificationsScreen from "../screens/NotificationsScreen";
 import CreatePostScreen from "../screens/CreatePostScreen";
-import ReelsScreen from "../screens/Login/ReelsScreen";
 import SportsAvailabilityScreen from "../screens/sports/SportsAvailabilityScreen";
 import CommentsScreen from '../screens/CommentsScreen';
 import CreateSportsPostScreen from '../screens/CreateSportsPostScreen';
@@ -33,8 +28,7 @@ import CreateWorkoutSessionScreen from '../screens/sports/CreateWorkoutSessionSc
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
 
-<<<<<<< HEAD
-// Renamed to SocialStack (formerly HomeStack)
+// Social Stack (formerly HomeStack)
 function SocialStack() {
     return (
         <Stack.Navigator>
@@ -57,7 +51,7 @@ function SocialStack() {
     );
 }
 
-// Find Players Stack (formerly SportsStack)
+// Find Players Stack
 function FindPlayersStack() {
     return (
         <Stack.Navigator>
@@ -148,105 +142,105 @@ function NotificationsStack() {
 }
 
 function MainTabNavigator() {
-=======
-export default function MainTabNavigator() {
     // Get notification count from context
     const { unreadCount } = useNotifications();
 
->>>>>>> 470eddff2a288d1a4e85b18401fe95e7a18b1512
     return (
         <Tab.Navigator
             screenOptions={({ route }) => ({
                 tabBarIcon: ({ focused, color, size }) => {
                     let iconName;
-<<<<<<< HEAD
 
-                    if (route.name === 'FindPlayers') {
-                        iconName = focused ? 'people' : 'people-outline';
-                    } else if (route.name === 'WorkoutTracker') {
-                        iconName = focused ? 'fitness' : 'fitness-outline';
-                    } else if (route.name === 'CreatePost') {
-                        iconName = focused ? 'add-circle' : 'add-circle-outline';
-                    } else if (route.name === 'Social') {
-                        iconName = focused ? 'globe' : 'globe-outline';
-                    } else if (route.name === 'Profile') {
-                        iconName = focused ? 'person' : 'person-outline';
-=======
                     switch (route.name) {
-                        case 'Home':
-                            iconName = focused ? 'home' : 'home-outline';
+                        case 'Social':
+                            iconName = focused ? 'globe' : 'globe-outline';
                             break;
-                        case 'Search':
-                            iconName = focused ? 'magnify' : 'magnify';
+                        case 'FindPlayers':
+                            iconName = focused ? 'people' : 'people-outline';
                             break;
                         case 'CreatePost':
-                            iconName = 'plus-box-outline';
+                            iconName = focused ? 'add-circle' : 'add-circle-outline';
+                            break;
+                        case 'WorkoutTracker':
+                            iconName = focused ? 'fitness' : 'fitness-outline';
                             break;
                         case 'Notifications':
-                            iconName = focused ? 'heart' : 'heart-outline';
-                            // Add notification badge
+                            iconName = focused ? 'notifications' : 'notifications-outline';
+                            // Add notification badge for notifications tab
                             return (
                                 <View>
-                                    <Icon name={iconName} size={size} color={color} />
-                                    {route.name === 'Notifications' && <NotificationBadge count={unreadCount} />}
+                                    <Ionicons name={iconName} size={size} color={color} />
+                                    {unreadCount > 0 && <NotificationBadge count={unreadCount} />}
                                 </View>
                             );
-                            break;
                         case 'Profile':
-                            iconName = focused ? 'account' : 'account-outline';
+                            iconName = focused ? 'person' : 'person-outline';
                             break;
-                        case 'Sports':
-                            iconName = focused ? 'basketball' : 'basketball-outline';
+                        default:
+                            iconName = 'help-outline';
                             break;
->>>>>>> 470eddff2a288d1a4e85b18401fe95e7a18b1512
                     }
 
                     return <Ionicons name={iconName} size={size} color={color} />;
                 },
-                tabBarActiveTintColor: '#4CAF50',
+                tabBarActiveTintColor: '#405DE6',
                 tabBarInactiveTintColor: 'gray',
-                tabBarLabelStyle: { fontSize: 12 },
-                tabBarStyle: { paddingBottom: 5, height: 60 },
+                tabBarLabelStyle: {
+                    fontSize: 12,
+                },
+                tabBarStyle: {
+                    height: 60,
+                    paddingBottom: 5,
+                    paddingTop: 5,
+                },
             })}
         >
+            <Tab.Screen 
+                name="Social" 
+                component={SocialStack} 
+                options={{ 
+                    headerShown: false, 
+                    title: 'Trang chủ'
+                }} 
+            />
             <Tab.Screen 
                 name="FindPlayers" 
                 component={FindPlayersStack} 
                 options={{ 
-                    headerShown: false,
-                    tabBarLabel: 'Tìm người chơi'
-                }} 
-            />
-            <Tab.Screen 
-                name="WorkoutTracker" 
-                component={WorkoutStack} 
-                options={{ 
-                    headerShown: false,
-                    tabBarLabel: 'Buổi tập'
+                    headerShown: false, 
+                    title: 'Tìm người chơi'
                 }} 
             />
             <Tab.Screen 
                 name="CreatePost" 
                 component={CreatePostStack} 
                 options={{ 
-                    headerShown: false,
-                    tabBarLabel: 'Đăng bài'
+                    headerShown: false, 
+                    title: 'Tạo bài đăng'
                 }} 
             />
             <Tab.Screen 
-                name="Social" 
-                component={SocialStack} 
+                name="WorkoutTracker" 
+                component={WorkoutStack} 
                 options={{ 
-                    headerShown: false,
-                    tabBarLabel: 'Cộng đồng'
+                    headerShown: false, 
+                    title: 'Luyện tập'
+                }} 
+            />
+            <Tab.Screen 
+                name="Notifications" 
+                component={NotificationsStack} 
+                options={{ 
+                    headerShown: false, 
+                    title: 'Thông báo'
                 }} 
             />
             <Tab.Screen 
                 name="Profile" 
                 component={ProfileStack} 
                 options={{ 
-                    headerShown: false,
-                    tabBarLabel: 'Hồ sơ'
+                    headerShown: false, 
+                    title: 'Hồ sơ'
                 }} 
             />
         </Tab.Navigator>

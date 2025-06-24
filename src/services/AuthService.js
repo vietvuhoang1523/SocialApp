@@ -180,11 +180,10 @@ class AuthService {
      */
     async verifyAccount(email, verificationCode) {
         try {
-            console.log('Đang gọi API xác minh tài khoản:', email);
+            console.log('Đang gọi API xác minh tài khoản:', email, 'với mã:', verificationCode);
 
             const response = await this.api.post('/verify', {
-                email,
-                verificationCode
+                code: verificationCode  // Backend chỉ expect field "code"
             });
 
             console.log('Phản hồi từ API xác minh:', response.data);
@@ -248,13 +247,12 @@ class AuthService {
     /**
      * Đặt lại mật khẩu với mã xác nhận
      */
-    async resetPassword(email, resetToken, newPassword) {
+    async resetPassword(resetToken, newPassword) {
         try {
-            console.log('Đang gọi API đặt lại mật khẩu cho:', email);
+            console.log('Đang gọi API đặt lại mật khẩu với token:', resetToken);
 
             const response = await this.api.post('/reset-password', {
-                email,
-                resetToken,
+                token: resetToken,  // Backend expect "token", không phải "resetToken"
                 newPassword
             });
 

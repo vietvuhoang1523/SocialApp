@@ -12,6 +12,9 @@ class MessagesService {
         
         // Setup WebSocket listeners
         this._setupWebSocketListeners();
+
+        // ✅ Enhanced caching system with persistence
+        this._setupMessageCache();
     }
 
     _setupWebSocketListeners() {
@@ -56,6 +59,11 @@ class MessagesService {
         // Listen for conversations
         webSocketService.on('conversations', (conversations) => {
             console.log('📨 Received conversations from WebSocket:', conversations);
+            console.log('📊 Conversations type:', typeof conversations);
+            console.log('📊 Conversations is array:', Array.isArray(conversations));
+            console.log('📊 Conversations length:', conversations?.length);
+            console.log('📊 First conversation structure:', conversations?.[0]);
+            console.log('📊 Raw conversations:', JSON.stringify(conversations, null, 2));
             this._notifyCallbacks('conversations', conversations);
         });
 
@@ -217,51 +225,68 @@ class MessagesService {
     async getConversations() {
         try {
             console.log('📥 Loading conversations');
+            console.log('🔍 Connection status check:', webSocketService.getConnectionStatus());
 
-            // ✅ Only use WebSocket - backend only supports WebSocket for conversations
-            if (webSocketService.isConnected()) {
+            // ✅ FIX: Allow connections in "connecting" state and retry if needed
+            const connectionStatus = webSocketService.getConnectionStatus();
+            
+            if (connectionStatus === 'disconnected') {
+                console.log('🔄 WebSocket disconnected, attempting to connect...');
                 try {
-                    console.log('🔌 Using WebSocket for conversations...');
-                    await webSocketService.getConversations();
-                    return new Promise((resolve, reject) => {
-                        const timeout = setTimeout(() => {
-                            console.error('⚠️ WebSocket timeout for conversations');
-                            reject(new Error('WebSocket timeout - conversations not received'));
-                        }, this.wsTimeout);
-
-                        const handleResponse = (response) => {
-                            clearTimeout(timeout);
-                            webSocketService.off('conversations', handleResponse);
-                            console.log('🔍 Raw conversations response:', response);
-                            let conversationsData = [];
-                            // Handle different response formats from backend
-                            if (response && response.conversations && Array.isArray(response.conversations)) {
-                                // Backend returns: { conversations: [...], count: X, status: "success" }
-                                conversationsData = response.conversations;
-                                console.log(`📊 Found ${response.count || conversationsData.length} conversations in response`);
-                            } else if (Array.isArray(response)) {
-                                // Backend returns: [conversation1, conversation2, ...]
-                                conversationsData = response;
-                                console.log(`📊 Found ${conversationsData.length} conversations as array`);
-                            } else if (response && response.data && Array.isArray(response.data)) {
-                                // Another possible format
-                                conversationsData = response.data;
-                                console.log(`📊 Found ${conversationsData.length} conversations in data field`);
-                            } else {
-                                console.log('⚠️ Unexpected response format:', typeof response, response);
-                                conversationsData = [];
-                            }
-                            resolve(conversationsData);
-                        };
-                        webSocketService.on('conversations', handleResponse);
-                    });
-                } catch (wsError) {
-                    console.error('❌ WebSocket request failed for conversations:', wsError.message);
-                    throw wsError;
+                    await webSocketService.connectWithStoredToken();
+                    await new Promise(resolve => setTimeout(resolve, 3000)); // Wait for connection to stabilize
+                } catch (connectError) {
+                    console.error('❌ Failed to connect WebSocket:', connectError);
+                    throw new Error('WebSocket not connected. Backend only supports WebSocket for conversations.');
                 }
-            } else {
-                throw new Error('WebSocket not connected. Backend only supports WebSocket for conversations.');
             }
+
+            // ✅ Try to get conversations regardless of exact connection state
+            try {
+                console.log('📤 Requesting conversations from service...');
+                await webSocketService.getConversations();
+                
+                return new Promise((resolve, reject) => {
+                    const timeout = setTimeout(() => {
+                        console.error('⚠️ WebSocket timeout for conversations');
+                        reject(new Error('WebSocket timeout - conversations not received'));
+                    }, this.wsTimeout);
+
+                    const handleResponse = (response) => {
+                        clearTimeout(timeout);
+                        webSocketService.off('conversations', handleResponse);
+                        console.log('🔍 Raw conversations response:', response);
+                        let conversationsData = [];
+                        
+                        // Handle different response formats from backend
+                        if (response && response.conversations && Array.isArray(response.conversations)) {
+                            // Backend returns: { conversations: [...], count: X, status: "success" }
+                            conversationsData = response.conversations;
+                            console.log(`📊 Found ${response.count || conversationsData.length} conversations in response`);
+                        } else if (Array.isArray(response)) {
+                            // Backend returns: [conversation1, conversation2, ...]
+                            conversationsData = response;
+                            console.log(`📊 Found ${conversationsData.length} conversations as array`);
+                        } else if (response && response.data && Array.isArray(response.data)) {
+                            // Another possible format
+                            conversationsData = response.data;
+                            console.log(`📊 Found ${conversationsData.length} conversations in data field`);
+                        } else {
+                            console.log('⚠️ Unexpected response format:', typeof response, response);
+                            conversationsData = [];
+                        }
+                        
+                        resolve(conversationsData);
+                    };
+                    
+                    webSocketService.on('conversations', handleResponse);
+                });
+                
+            } catch (wsError) {
+                console.error('❌ WebSocket request failed for conversations:', wsError.message);
+                throw wsError;
+            }
+            
         } catch (error) {
             console.error('❌ Error getting conversations:', error);
             throw new Error('Failed to load conversations');
@@ -364,11 +389,103 @@ class MessagesService {
         };
     }
 
-    // Cache message
+    // ✅ Enhanced caching system with persistence
+    _setupMessageCache() {
+        // Memory cache for recent messages
+        this.messageCache = new Map();
+        this.conversationCache = new Map();
+        
+        // LocalStorage persistence key
+        this.CACHE_KEY_PREFIX = 'socialapp_messages_';
+        this.CONVERSATION_CACHE_KEY = 'socialapp_conversations';
+        
+        // Cache expiry time (30 minutes)
+        this.CACHE_EXPIRY = 30 * 60 * 1000;
+    }
+
     _cacheMessage(message) {
-        if (message && message.id) {
-            this.cache.set(message.id, message);
+        if (!message || !message.id) return;
+        
+        const normalizedMessage = this.normalizeMessage(message);
+        this.messageCache.set(message.id, {
+            message: normalizedMessage,
+            timestamp: Date.now()
+        });
+        
+        // Also persist to AsyncStorage for reload persistence
+        this._persistMessageToLocalStorage(normalizedMessage).catch(err => {
+            console.warn('⚠️ Failed to persist message:', err);
+        });
+    }
+
+    _getCachedMessage(messageId) {
+        const cached = this.messageCache.get(messageId);
+        if (cached && (Date.now() - cached.timestamp) < this.CACHE_EXPIRY) {
+            return cached.message;
         }
+        return null;
+    }
+
+    async _persistMessageToLocalStorage(message) {
+        try {
+            // Create conversation key based on participants
+            const conversationKey = this._getConversationKey(message.senderId, message.receiverId);
+            const cacheKey = `${this.CACHE_KEY_PREFIX}${conversationKey}`;
+            
+            // Get existing messages from AsyncStorage
+            let existingMessages = [];
+            const cached = await AsyncStorage.getItem(cacheKey);
+            if (cached) {
+                const parsedCache = JSON.parse(cached);
+                if (parsedCache.timestamp && (Date.now() - parsedCache.timestamp) < this.CACHE_EXPIRY) {
+                    existingMessages = parsedCache.messages || [];
+                }
+            }
+            
+            // Add new message if not already exists
+            const messageExists = existingMessages.some(msg => msg.id === message.id);
+            if (!messageExists) {
+                existingMessages.unshift(message); // Add to beginning (newest first)
+                
+                // Keep only last 100 messages per conversation
+                if (existingMessages.length > 100) {
+                    existingMessages = existingMessages.slice(0, 100);
+                }
+                
+                // Save to AsyncStorage
+                await AsyncStorage.setItem(cacheKey, JSON.stringify({
+                    messages: existingMessages,
+                    timestamp: Date.now()
+                }));
+            }
+        } catch (error) {
+            console.warn('⚠️ Failed to persist message to AsyncStorage:', error);
+        }
+    }
+
+    _getConversationKey(user1Id, user2Id) {
+        // Create consistent key regardless of order
+        const ids = [parseInt(user1Id), parseInt(user2Id)].sort((a, b) => a - b);
+        return `${ids[0]}_${ids[1]}`;
+    }
+
+    async _loadMessagesFromLocalStorage(user1Id, user2Id) {
+        try {
+            const conversationKey = this._getConversationKey(user1Id, user2Id);
+            const cacheKey = `${this.CACHE_KEY_PREFIX}${conversationKey}`;
+            
+            const cached = await AsyncStorage.getItem(cacheKey);
+            if (cached) {
+                const parsedCache = JSON.parse(cached);
+                if (parsedCache.timestamp && (Date.now() - parsedCache.timestamp) < this.CACHE_EXPIRY) {
+                    console.log(`✅ Loaded ${parsedCache.messages.length} messages from AsyncStorage cache`);
+                    return parsedCache.messages || [];
+                }
+            }
+        } catch (error) {
+            console.warn('⚠️ Failed to load messages from AsyncStorage:', error);
+        }
+        return [];
     }
 
     // Subscribe to events
@@ -429,7 +546,7 @@ class MessagesService {
         webSocketService.disconnect();
     }
 
-    // ✅ Get messages with pagination support - WebSocket only
+    // ✅ Get messages with pagination support - WebSocket with localStorage fallback
     async getMessagesBetweenUsersPaginated(user1Id, user2Id, options = {}) {
         try {
             const {
@@ -442,77 +559,153 @@ class MessagesService {
             console.log(`📥 Loading paginated messages between ${user1Id} and ${user2Id}`, {
                 page, size, sortBy, order
             });
-            
-            // ✅ Only use WebSocket - backend only supports WebSocket for messages
-            if (webSocketService.isConnected()) {
-                try {
-                    console.log('🔌 Using WebSocket for paginated message history...');
+
+            // ✅ FIX: Try localStorage first for immediate response on page 0
+            if (page === 0) {
+                const cachedMessages = this._loadMessagesFromLocalStorage(user1Id, user2Id);
+                if (cachedMessages.length > 0) {
+                    console.log(`💾 Using cached messages (${cachedMessages.length}) while fetching latest from server`);
                     
-                    // ✅ Send WebSocket request with pagination options
-                    await webSocketService.getMessagesBetweenUsers(user1Id, user2Id, {
-                        enablePagination: true,
-                        page,
-                        size,
-                        sortBy,
-                        order
+                    // Return cached messages immediately
+                    const paginatedCached = cachedMessages.slice(0, size);
+                    
+                    // Fetch fresh data in background
+                    this._fetchFreshMessages(user1Id, user2Id, options).catch(err => {
+                        console.warn('⚠️ Background fetch failed:', err);
                     });
                     
-                    // Wait for WebSocket response
-                    return new Promise((resolve, reject) => {
-                        const timeout = setTimeout(() => {
-                            console.error('⚠️ WebSocket timeout for paginated messages');
-                            reject(new Error('WebSocket timeout - paginated messages not received'));
-                        }, this.wsTimeout);
-
-                        // Listen for WebSocket response
-                        const handleResponse = (data) => {
-                            clearTimeout(timeout);
-                            webSocketService.off('messageHistory', handleResponse);
-                            
-                            // Handle paginated response
-                            if (data && data.messages && data.pagination) {
-                                const normalizedMessages = data.messages.map(msg => this.normalizeMessage(msg));
-                                resolve({
-                                    messages: normalizedMessages,
-                                    pagination: data.pagination,
-                                    method: 'websocket'
-                                });
-                            } else if (Array.isArray(data)) {
-                                // Fallback for non-paginated response
-                                const normalizedMessages = data.map(msg => this.normalizeMessage(msg));
-                                resolve({
-                                    messages: normalizedMessages,
-                                    pagination: {
-                                        currentPage: 0,
-                                        totalPages: 1,
-                                        totalElements: normalizedMessages.length,
-                                        size: normalizedMessages.length,
-                                        hasNext: false,
-                                        hasPrevious: false,
-                                        first: true,
-                                        last: true
-                                    },
-                                    method: 'websocket'
-                                });
-                            } else {
-                                reject(new Error('Unexpected WebSocket response format'));
-                            }
-                        };
-
-                        webSocketService.on('messageHistory', handleResponse);
-                    });
-
-                } catch (wsError) {
-                    console.error('❌ WebSocket request failed for paginated messages:', wsError.message);
-                    throw wsError;
+                    return {
+                        messages: paginatedCached,
+                        pagination: {
+                            currentPage: 0,
+                            totalPages: Math.ceil(cachedMessages.length / size),
+                            totalElements: cachedMessages.length,
+                            size: paginatedCached.length,
+                            hasNext: cachedMessages.length > size,
+                            hasPrevious: false,
+                            first: true,
+                            last: cachedMessages.length <= size
+                        },
+                        method: 'cache',
+                        cached: true
+                    };
                 }
-            } else {
-                throw new Error('WebSocket not connected. Backend only supports WebSocket for messages.');
             }
+            
+            // ✅ Use WebSocket for fresh data
+            return await this._fetchFreshMessages(user1Id, user2Id, options);
 
         } catch (error) {
             console.error('❌ Error getting paginated messages:', error);
+            
+            // ✅ Final fallback to localStorage if everything fails
+            const fallbackMessages = this._loadMessagesFromLocalStorage(user1Id, user2Id);
+            if (fallbackMessages.length > 0) {
+                console.log('🆘 Using localStorage fallback due to error');
+                const paginatedFallback = fallbackMessages.slice(page * size, (page + 1) * size);
+                
+                return {
+                    messages: paginatedFallback,
+                    pagination: {
+                        currentPage: page,
+                        totalPages: Math.ceil(fallbackMessages.length / size),
+                        totalElements: fallbackMessages.length,
+                        size: paginatedFallback.length,
+                        hasNext: (page + 1) * size < fallbackMessages.length,
+                        hasPrevious: page > 0,
+                        first: page === 0,
+                        last: (page + 1) * size >= fallbackMessages.length
+                    },
+                    method: 'fallback',
+                    cached: true
+                };
+            }
+            
             throw new Error('Failed to load paginated messages');
+        }
+    }
+
+    // ✅ Helper method to fetch fresh messages from WebSocket
+    async _fetchFreshMessages(user1Id, user2Id, options = {}) {
+        const {
+            page = 0,
+            size = 20,
+            sortBy = 'timestamp',
+            order = 'desc'
+        } = options;
+
+        if (webSocketService.isConnected()) {
+            try {
+                console.log('🔌 Using WebSocket for paginated message history...');
+                
+                // ✅ Send WebSocket request with pagination options
+                await webSocketService.getMessagesBetweenUsers(user1Id, user2Id, {
+                    enablePagination: true,
+                    page,
+                    size,
+                    sortBy,
+                    order
+                });
+                
+                // Wait for WebSocket response
+                return new Promise((resolve, reject) => {
+                    const timeout = setTimeout(() => {
+                        console.error('⚠️ WebSocket timeout for paginated messages');
+                        reject(new Error('WebSocket timeout - paginated messages not received'));
+                    }, this.wsTimeout);
+
+                    // Listen for WebSocket response
+                    const handleResponse = (data) => {
+                        clearTimeout(timeout);
+                        webSocketService.off('messageHistory', handleResponse);
+                        
+                        // Handle paginated response
+                        if (data && data.messages && data.pagination) {
+                            const normalizedMessages = data.messages.map(msg => this.normalizeMessage(msg));
+                            
+                            // ✅ Cache the fresh messages
+                            normalizedMessages.forEach(msg => this._cacheMessage(msg));
+                            
+                            resolve({
+                                messages: normalizedMessages,
+                                pagination: data.pagination,
+                                method: 'websocket'
+                            });
+                        } else if (Array.isArray(data)) {
+                            // Fallback for non-paginated response
+                            const normalizedMessages = data.map(msg => this.normalizeMessage(msg));
+                            
+                            // ✅ Cache the fresh messages
+                            normalizedMessages.forEach(msg => this._cacheMessage(msg));
+                            
+                            resolve({
+                                messages: normalizedMessages,
+                                pagination: {
+                                    currentPage: 0,
+                                    totalPages: 1,
+                                    totalElements: normalizedMessages.length,
+                                    size: normalizedMessages.length,
+                                    hasNext: false,
+                                    hasPrevious: false,
+                                    first: true,
+                                    last: true
+                                },
+                                method: 'websocket'
+                            });
+                        } else {
+                            reject(new Error('Unexpected WebSocket response format'));
+                        }
+                    };
+
+                    webSocketService.on('messageHistory', handleResponse);
+                });
+
+            } catch (wsError) {
+                console.error('❌ WebSocket request failed for paginated messages:', wsError.message);
+                throw wsError;
+            }
+        } else {
+            throw new Error('WebSocket not connected. Backend only supports WebSocket for messages.');
         }
     }
 

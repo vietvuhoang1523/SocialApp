@@ -1,25 +1,47 @@
+import api from './api';
 import axios from 'axios';
-import { API_BASE_URL } from '../config/apiConfig';
-import { getAuthToken } from '../utils/authStorage';
+import { BASE_URL } from './api';
 
-// Base API configuration
-const api = axios.create({
-  baseURL: `${API_BASE_URL}/api/venues`,
+// Create a specific API instance for venues
+const venuesApi = axios.create({
+  baseURL: `${BASE_URL}/venues`,
+  timeout: 15000,
   headers: {
     'Content-Type': 'application/json',
-  },
+    'Accept': 'application/json',
+  }
 });
 
-// Request interceptor to add auth token
-api.interceptors.request.use(
+// Copy interceptors from main api instance
+venuesApi.interceptors.request.use(
   async (config) => {
-    const token = await getAuthToken();
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
+    try {
+      const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+      const token = await AsyncStorage.getItem('accessToken');
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+      }
+    } catch (error) {
+      console.warn('Failed to get token:', error);
     }
     return config;
   },
   (error) => Promise.reject(error)
+);
+
+venuesApi.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    if (error.response?.status === 401) {
+      try {
+        const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+        await AsyncStorage.multiRemove(['accessToken', 'refreshToken', 'userData']);
+      } catch (storageError) {
+        console.error('Error clearing storage:', storageError);
+      }
+    }
+    return Promise.reject(error);
+  }
 );
 
 /**
@@ -35,7 +57,7 @@ api.interceptors.request.use(
  */
 export const searchVenues = async (name, sportType, venueType, priceRange, verified = true, page = 0, size = 20) => {
   try {
-    const response = await api.get('/search', {
+    const response = await venuesApi.get('/search', {
       params: {
         name,
         sportType,
@@ -66,7 +88,7 @@ export const searchVenues = async (name, sportType, venueType, priceRange, verif
  */
 export const getNearbyVenues = async (latitude, longitude, radius = 10, sportType, venueType, priceRange, verified = true) => {
   try {
-    const response = await api.get('/nearby', {
+    const response = await venuesApi.get('/nearby', {
       params: {
         latitude,
         longitude,
@@ -91,7 +113,7 @@ export const getNearbyVenues = async (latitude, longitude, radius = 10, sportTyp
  */
 export const getVenueById = async (id) => {
   try {
-    const response = await api.get(`/${id}`);
+    const response = await venuesApi.get(`/${id}`);
     return response.data;
   } catch (error) {
     console.error(`Error getting venue ${id}:`, error);
@@ -106,7 +128,7 @@ export const getVenueById = async (id) => {
  */
 export const getPopularVenues = async (limit = 10) => {
   try {
-    const response = await api.get('/popular', {
+    const response = await venuesApi.get('/popular', {
       params: { limit }
     });
     return response.data || [];
@@ -125,7 +147,7 @@ export const getPopularVenues = async (limit = 10) => {
  */
 export const getVenuesBySportType = async (sportType, page = 0, size = 20) => {
   try {
-    const response = await api.get('/by-sport', {
+    const response = await venuesApi.get('/by-sport', {
       params: {
         sportType,
         page,
@@ -146,7 +168,7 @@ export const getVenuesBySportType = async (sportType, page = 0, size = 20) => {
  */
 export const createVenue = async (venueData) => {
   try {
-    const response = await api.post('/', venueData);
+    const response = await venuesApi.post('/', venueData);
     return response.data;
   } catch (error) {
     console.error('Error creating venue:', error);
@@ -162,7 +184,7 @@ export const createVenue = async (venueData) => {
  */
 export const updateVenue = async (id, venueData) => {
   try {
-    const response = await api.put(`/${id}`, venueData);
+    const response = await venuesApi.put(`/${id}`, venueData);
     return response.data;
   } catch (error) {
     console.error(`Error updating venue ${id}:`, error);
@@ -177,7 +199,7 @@ export const updateVenue = async (id, venueData) => {
  */
 export const deleteVenue = async (id) => {
   try {
-    const response = await api.delete(`/${id}`);
+    const response = await venuesApi.delete(`/${id}`);
     return response.data;
   } catch (error) {
     console.error(`Error deleting venue ${id}:`, error);
@@ -193,7 +215,7 @@ export const deleteVenue = async (id) => {
  */
 export const uploadVenueImages = async (id, formData) => {
   try {
-    const response = await api.post(`/${id}/images`, formData, {
+    const response = await venuesApi.post(`/${id}/images`, formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
@@ -211,7 +233,7 @@ export const uploadVenueImages = async (id, formData) => {
  */
 export const getUserVenues = async () => {
   try {
-    const response = await api.get('/my-venues');
+    const response = await venuesApi.get('/my-venues');
     return response.data || [];
   } catch (error) {
     console.error('Error getting user venues:', error);
@@ -225,7 +247,7 @@ export const getUserVenues = async () => {
  */
 export const getAvailableSportTypes = async () => {
   try {
-    const response = await api.get('/sport-types');
+    const response = await venuesApi.get('/sport-types');
     return response.data || [];
   } catch (error) {
     console.error('Error getting sport types:', error);
@@ -239,7 +261,7 @@ export const getAvailableSportTypes = async () => {
  */
 export const getAvailableVenueTypes = async () => {
   try {
-    const response = await api.get('/venue-types');
+    const response = await venuesApi.get('/venue-types');
     return response.data || [];
   } catch (error) {
     console.error('Error getting venue types:', error);
@@ -253,7 +275,7 @@ export const getAvailableVenueTypes = async () => {
  */
 export const getAvailablePriceRanges = async () => {
   try {
-    const response = await api.get('/price-ranges');
+    const response = await venuesApi.get('/price-ranges');
     return response.data || [];
   } catch (error) {
     console.error('Error getting price ranges:', error);

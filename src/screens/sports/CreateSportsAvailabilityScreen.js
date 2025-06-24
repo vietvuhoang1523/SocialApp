@@ -18,7 +18,7 @@ import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../hook/ThemeContext';
 import sportsAvailabilityService from '../../services/SportsAvailabilityService';
-import DateTimePicker from '@react-native-community/datetimepicker';
+import CustomDatePicker from '../../components/CustomDatePicker';
 import { Picker } from '@react-native-picker/picker';
 import { SportTypeNames, SkillLevelNames } from '../../constants/SportConstants';
 

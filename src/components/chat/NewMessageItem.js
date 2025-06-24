@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { getAvatarFromUser } from '../../utils/ImageUtils';
 
 const { width: screenWidth } = Dimensions.get('window');
 const maxBubbleWidth = screenWidth * 0.75;
@@ -166,11 +167,27 @@ const NewMessageItem = memo(({
             {/* Avatar for other messages */}
             {!isMyMessage && (
                 <View style={styles.avatarContainer}>
-                    <View style={styles.avatar}>
-                        <Text style={styles.avatarText}>
-                            {chatPartner?.fullName?.charAt(0)?.toUpperCase() || '?'}
-                        </Text>
-                    </View>
+                    {(() => {
+                        const avatarUrl = getAvatarFromUser(chatPartner);
+                        console.log('🔍 Message Avatar URL:', avatarUrl, 'from chatPartner:', chatPartner);
+                        
+                        return avatarUrl ? (
+                            <Image
+                                source={{ uri: avatarUrl }}
+                                style={styles.avatarImage}
+                                defaultSource={{ uri: 'https://via.placeholder.com/32' }}
+                                onError={() => {
+                                    console.log('❌ Message avatar image failed to load:', avatarUrl);
+                                }}
+                            />
+                        ) : (
+                            <View style={styles.avatar}>
+                                <Text style={styles.avatarText}>
+                                    {chatPartner?.fullName?.charAt(0)?.toUpperCase() || '?'}
+                                </Text>
+                            </View>
+                        );
+                    })()}
                 </View>
             )}
 
@@ -260,6 +277,11 @@ const styles = StyleSheet.create({
         backgroundColor: '#667eea',
         justifyContent: 'center',
         alignItems: 'center',
+    },
+    avatarImage: {
+        width: 32,
+        height: 32,
+        borderRadius: 16,
     },
     avatarText: {
         color: '#fff',

@@ -19,7 +19,7 @@ import MapView, { Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import { LineChart } from 'react-native-chart-kit';
 import { formatDuration } from '../../utils/timeUtils';
 import { calculateCaloriesBurned } from '../../utils/fitnessUtils';
-import { useUserProfile } from '../../hook/UserProfileContext';
+import { useUserProfile } from '../../components/ProfileContext';
 
 // Enum for workout status
 const WorkoutStatus = {

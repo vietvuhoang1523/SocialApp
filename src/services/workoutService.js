@@ -1,25 +1,47 @@
+import api from './api';
 import axios from 'axios';
-import { API_BASE_URL } from '../config/apiConfig';
-import { getAuthToken } from '../utils/authStorage';
+import { BASE_URL } from './api';
 
-// Base API configuration
-const api = axios.create({
-  baseURL: `${API_BASE_URL}/api/workouts`,
+// Create a specific API instance for workouts
+const workoutsApi = axios.create({
+  baseURL: `${BASE_URL}/workouts`,
+  timeout: 15000,
   headers: {
     'Content-Type': 'application/json',
-  },
+    'Accept': 'application/json',
+  }
 });
 
-// Request interceptor to add auth token
-api.interceptors.request.use(
+// Copy interceptors from main api instance
+workoutsApi.interceptors.request.use(
   async (config) => {
-    const token = await getAuthToken();
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
+    try {
+      const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+      const token = await AsyncStorage.getItem('accessToken');
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+      }
+    } catch (error) {
+      console.warn('Failed to get token:', error);
     }
     return config;
   },
   (error) => Promise.reject(error)
+);
+
+workoutsApi.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    if (error.response?.status === 401) {
+      try {
+        const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+        await AsyncStorage.multiRemove(['accessToken', 'refreshToken', 'userData']);
+      } catch (storageError) {
+        console.error('Error clearing storage:', storageError);
+      }
+    }
+    return Promise.reject(error);
+  }
 );
 
 /**
@@ -29,7 +51,7 @@ api.interceptors.request.use(
  */
 export const createWorkoutSession = async (workoutData) => {
   try {
-    const response = await api.post('/', workoutData);
+    const response = await workoutsApi.post('/', workoutData);
     return response.data;
   } catch (error) {
     console.error('Error creating workout session:', error);
@@ -44,7 +66,7 @@ export const createWorkoutSession = async (workoutData) => {
  */
 export const getWorkoutById = async (workoutId) => {
   try {
-    const response = await api.get(`/${workoutId}`);
+    const response = await workoutsApi.get(`/${workoutId}`);
     return response.data;
   } catch (error) {
     console.error('Error getting workout details:', error);
@@ -60,7 +82,7 @@ export const getWorkoutById = async (workoutId) => {
  */
 export const getUserWorkouts = async (page = 0, size = 10) => {
   try {
-    const response = await api.get('/my-workouts', {
+    const response = await workoutsApi.get('/my-workouts', {
       params: { page, size }
     });
     return response.data;
@@ -78,7 +100,7 @@ export const getUserWorkouts = async (page = 0, size = 10) => {
  */
 export const getWorkoutsByDateRange = async (startDate, endDate) => {
   try {
-    const response = await api.get('/date-range', {
+    const response = await workoutsApi.get('/date-range', {
       params: { startDate, endDate }
     });
     return response.data;
@@ -95,7 +117,7 @@ export const getWorkoutsByDateRange = async (startDate, endDate) => {
  */
 export const getWorkoutsBySport = async (sportType) => {
   try {
-    const response = await api.get('/by-sport', {
+    const response = await workoutsApi.get('/by-sport', {
       params: { sportType }
     });
     return response.data;
@@ -113,7 +135,7 @@ export const getWorkoutsBySport = async (sportType) => {
  */
 export const updateWorkoutSession = async (workoutId, workoutData) => {
   try {
-    const response = await api.put(`/${workoutId}`, workoutData);
+    const response = await workoutsApi.put(`/${workoutId}`, workoutData);
     return response.data;
   } catch (error) {
     console.error('Error updating workout session:', error);
@@ -128,7 +150,7 @@ export const updateWorkoutSession = async (workoutId, workoutData) => {
  */
 export const deleteWorkoutSession = async (workoutId) => {
   try {
-    await api.delete(`/${workoutId}`);
+    await workoutsApi.delete(`/${workoutId}`);
     return true;
   } catch (error) {
     console.error('Error deleting workout session:', error);
@@ -144,7 +166,7 @@ export const deleteWorkoutSession = async (workoutId) => {
  */
 export const getUserStatistics = async (startDate, endDate) => {
   try {
-    const response = await api.get('/statistics', {
+    const response = await workoutsApi.get('/statistics', {
       params: { startDate, endDate }
     });
     return response.data;
@@ -161,7 +183,7 @@ export const getUserStatistics = async (startDate, endDate) => {
  */
 export const getTotalWorkouts = async (since) => {
   try {
-    const response = await api.get('/total', {
+    const response = await workoutsApi.get('/total', {
       params: { since }
     });
     return response.data;
@@ -178,7 +200,7 @@ export const getTotalWorkouts = async (since) => {
  */
 export const getTotalCaloriesBurned = async (since) => {
   try {
-    const response = await api.get('/calories', {
+    const response = await workoutsApi.get('/calories', {
       params: { since }
     });
     return response.data;
@@ -195,7 +217,7 @@ export const getTotalCaloriesBurned = async (since) => {
  */
 export const getTotalDistance = async (since) => {
   try {
-    const response = await api.get('/distance', {
+    const response = await workoutsApi.get('/distance', {
       params: { since }
     });
     return response.data;
@@ -212,7 +234,7 @@ export const getTotalDistance = async (since) => {
  */
 export const getTotalDuration = async (since) => {
   try {
-    const response = await api.get('/duration', {
+    const response = await workoutsApi.get('/duration', {
       params: { since }
     });
     return response.data;
@@ -228,7 +250,7 @@ export const getTotalDuration = async (since) => {
  */
 export const getPersonalRecords = async () => {
   try {
-    const response = await api.get('/personal-records');
+    const response = await workoutsApi.get('/personal-records');
     return response.data;
   } catch (error) {
     console.error('Error getting personal records:', error);
@@ -243,7 +265,7 @@ export const getPersonalRecords = async () => {
  */
 export const getSportDistribution = async (since) => {
   try {
-    const response = await api.get('/sport-distribution', {
+    const response = await workoutsApi.get('/sport-distribution', {
       params: { since }
     });
     return response.data;
@@ -259,7 +281,7 @@ export const getSportDistribution = async (since) => {
  */
 export const getWeeklyProgress = async () => {
   try {
-    const response = await api.get('/weekly-progress');
+    const response = await workoutsApi.get('/weekly-progress');
     return response.data;
   } catch (error) {
     console.error('Error getting weekly progress:', error);
@@ -273,7 +295,7 @@ export const getWeeklyProgress = async () => {
  */
 export const getMonthlyProgress = async () => {
   try {
-    const response = await api.get('/monthly-progress');
+    const response = await workoutsApi.get('/monthly-progress');
     return response.data;
   } catch (error) {
     console.error('Error getting monthly progress:', error);
@@ -289,7 +311,7 @@ export const getMonthlyProgress = async () => {
  */
 export const getPublicWorkouts = async (page = 0, size = 10) => {
   try {
-    const response = await api.get('/public', {
+    const response = await workoutsApi.get('/public', {
       params: { page, size }
     });
     return response.data;
@@ -307,7 +329,7 @@ export const getPublicWorkouts = async (page = 0, size = 10) => {
  */
 export const addParticipant = async (workoutId, userId) => {
   try {
-    const response = await api.post(`/${workoutId}/participants/${userId}`);
+    const response = await workoutsApi.post(`/${workoutId}/participants/${userId}`);
     return response.data;
   } catch (error) {
     console.error('Error adding participant:', error);
@@ -323,7 +345,7 @@ export const addParticipant = async (workoutId, userId) => {
  */
 export const removeParticipant = async (workoutId, userId) => {
   try {
-    const response = await api.delete(`/${workoutId}/participants/${userId}`);
+    const response = await workoutsApi.delete(`/${workoutId}/participants/${userId}`);
     return response.data;
   } catch (error) {
     console.error('Error removing participant:', error);
@@ -340,7 +362,7 @@ export const removeParticipant = async (workoutId, userId) => {
  */
 export const checkGoalAchievement = async (goalType, targetValue, period) => {
   try {
-    const response = await api.get('/check-goal', {
+    const response = await workoutsApi.get('/check-goal', {
       params: { goalType, targetValue, period }
     });
     return response.data;
@@ -356,7 +378,7 @@ export const checkGoalAchievement = async (goalType, targetValue, period) => {
  */
 export const getAchievements = async () => {
   try {
-    const response = await api.get('/achievements');
+    const response = await workoutsApi.get('/achievements');
     return response.data;
   } catch (error) {
     console.error('Error getting achievements:', error);
@@ -370,7 +392,7 @@ export const getAchievements = async () => {
  */
 export const getRecommendedWorkouts = async () => {
   try {
-    const response = await api.get('/recommendations');
+    const response = await workoutsApi.get('/recommendations');
     return response.data;
   } catch (error) {
     console.error('Error getting recommended workouts:', error);
@@ -384,7 +406,7 @@ export const getRecommendedWorkouts = async () => {
  */
 export const getWorkoutPartnerSuggestions = async () => {
   try {
-    const response = await api.get('/partner-suggestions');
+    const response = await workoutsApi.get('/partner-suggestions');
     return response.data;
   } catch (error) {
     console.error('Error getting workout partner suggestions:', error);

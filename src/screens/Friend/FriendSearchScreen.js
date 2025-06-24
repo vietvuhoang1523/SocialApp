@@ -21,6 +21,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import UserProfileService from '../../services/UserProfileService';
 import FriendService from '../../services/FriendService';
 
+// Utils
+import { getAvatarFromUser } from '../../utils/ImageUtils';
+
 const FriendSearchScreen = ({ navigation, route }) => {
     // 📱 State Management
     const [searchText, setSearchText] = useState('');
@@ -274,19 +277,39 @@ const FriendSearchScreen = ({ navigation, route }) => {
     };
 
     // 🎨 Render user item
-    const renderUserItem = ({ item }) => (
-        <TouchableOpacity
-            style={styles.userItem}
-            onPress={() => navigation.navigate('UserProfileScreen', { userId: item.id })}
-            activeOpacity={0.7}
-        >
-            <View style={styles.avatarContainer}>
-                <Image
-                    source={{ uri: item.profilePictureUrl || 'https://via.placeholder.com/60' }}
-                    style={styles.avatar}
-                    defaultSource={{ uri: 'https://via.placeholder.com/60' }}
-                />
-            </View>
+    const renderUserItem = ({ item }) => {
+        // Debug avatar data
+        console.log('🖼️ Friend search user avatar data:', {
+            userName: item?.fullName,
+            userId: item?.id,
+            profilePictureUrl: item?.profilePictureUrl,
+            avatarUrl: item?.avatarUrl,
+            finalAvatarUrl: getAvatarFromUser(item)
+        });
+
+        return (
+            <TouchableOpacity
+                style={styles.userItem}
+                onPress={() => navigation.navigate('UserProfileScreen', { userId: item.id })}
+                activeOpacity={0.7}
+            >
+                <View style={styles.avatarContainer}>
+                    {getAvatarFromUser(item) ? (
+                        <Image
+                            source={{ uri: getAvatarFromUser(item) }}
+                            style={styles.avatar}
+                            onError={(e) => {
+                                console.log('❌ Failed to load avatar for user:', item?.fullName, e.nativeEvent.error);
+                            }}
+                        />
+                    ) : (
+                        <View style={[styles.avatar, styles.avatarPlaceholder]}>
+                            <Text style={styles.avatarText}>
+                                {(item?.fullName || item?.username || 'U').charAt(0).toUpperCase()}
+                            </Text>
+                        </View>
+                    )}
+                </View>
 
             <View style={styles.userContent}>
                 <Text style={styles.userName}>{item.fullName}</Text>
@@ -300,7 +323,8 @@ const FriendSearchScreen = ({ navigation, route }) => {
 
             {getFriendshipButton(item)}
         </TouchableOpacity>
-    );
+        );
+    };
 
     // 🎨 Empty state
     const EmptyState = () => {
@@ -496,7 +520,16 @@ const styles = StyleSheet.create({
         width: 60,
         height: 60,
         borderRadius: 30,
-        backgroundColor: '#007AFF',
+    },
+    avatarPlaceholder: {
+        backgroundColor: '#f0f2f5',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    avatarText: {
+        fontSize: 18,
+        fontWeight: 'bold',
+        color: '#666',
     },
     userContent: {
         flex: 1,

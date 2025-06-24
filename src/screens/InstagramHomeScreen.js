@@ -309,9 +309,17 @@ const InstagramHomeScreen = ({ navigation }) => {
             {/* Simple Header */}
             <View style={styles.header}>
                 <View style={styles.headerContent}>
-                    <TouchableOpacity onPress={() => setShowSearch(!showSearch)}>
-                        <Ionicons name="search" size={26} color="#333" />
-                    </TouchableOpacity>
+                    <View style={styles.headerLeft}>
+                        <TouchableOpacity onPress={() => setShowSearch(!showSearch)}>
+                            <Ionicons name="search" size={26} color="#333" />
+                        </TouchableOpacity>
+                        <TouchableOpacity 
+                            style={{marginLeft: 15}}
+                            onPress={() => navigation.navigate('AutoApproveDebug')}
+                        >
+                            <MaterialIcons name="bug-report" size={24} color="#e74c3c" />
+                        </TouchableOpacity>
+                    </View>
                     
                 <Text style={styles.headerTitle}>Social Matching</Text>
                     
@@ -327,7 +335,7 @@ const InstagramHomeScreen = ({ navigation }) => {
                         </TouchableOpacity>
                         <TouchableOpacity 
                             style={[styles.headerButton, {marginLeft: 15}]}
-                            onPress={() => navigation.navigate('Messages', { currentUser })}
+                            onPress={() => navigation.navigate('NewMessages', { currentUser })}
                         >
                             <Ionicons name="chatbubble-outline" size={26} color="#333" />
                         </TouchableOpacity>
@@ -391,7 +399,7 @@ const InstagramHomeScreen = ({ navigation }) => {
                                 onPress={() => setActiveTab('all')}
                             >
                                 <Text style={[styles.tabText, activeTab === 'all' && styles.activeTabText]}>
-                                    Tất cả
+                                    Bài Viết
                                 </Text>
                             </TouchableOpacity>
                             <TouchableOpacity 
@@ -561,19 +569,19 @@ const InstagramHomeScreen = ({ navigation }) => {
                     </View>
                 </TouchableOpacity>
                 
-                <View style={styles.navItem}>
-                    <View style={styles.navPlaceholder} />
-                </View>
-                
                 <TouchableOpacity 
                     style={styles.navItem}
-                    onPress={() => navigation.navigate('Notifications')}
+                    onPress={() => navigation.navigate('SportsAvailabilityScreen')}
                 >
-                    <View>
-                        <Ionicons name="notifications-outline" size={26} color="#666" />
-                        {unreadCount > 0 && <NotificationBadge count={unreadCount} size="small" />}
-                    </View>
+                    <MaterialIcons name="sports-soccer" size={26} color="#666" />
                 </TouchableOpacity>
+                
+                {/* <TouchableOpacity 
+                    style={styles.navItem}
+                    onPress={() => navigation.navigate('NewMessages', { currentUser })}
+                >
+                    <Ionicons name="chatbubble-outline" size={26} color="#666" />
+                </TouchableOpacity> */}
                 
                 <TouchableOpacity 
                     style={styles.navItem}
@@ -675,6 +683,10 @@ const styles = StyleSheet.create({
     },
     headerButton: {
         padding: 4,
+    },
+    headerLeft: {
+        flexDirection: 'row',
+        alignItems: 'center',
     },
     headerActions: {
         flexDirection: 'row',
@@ -805,10 +817,6 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         position: 'relative',
         padding: 8,
-    },
-    navPlaceholder: {
-        width: 26,
-        height: 26,
     },
     activeIndicator: {
         position: 'absolute',

@@ -1,25 +1,47 @@
+import api from './api';
 import axios from 'axios';
-import { API_BASE_URL } from '../config/apiConfig';
-import { getAuthToken } from '../utils/authStorage';
+import { BASE_URL } from './api';
 
-// Base API configuration
-const api = axios.create({
-  baseURL: `${API_BASE_URL}/api/reports`,
+// Create a specific API instance for reports
+const reportsApi = axios.create({
+  baseURL: `${BASE_URL}/reports`,
+  timeout: 15000,
   headers: {
     'Content-Type': 'application/json',
-  },
+    'Accept': 'application/json',
+  }
 });
 
-// Request interceptor to add auth token
-api.interceptors.request.use(
+// Copy interceptors from main api instance
+reportsApi.interceptors.request.use(
   async (config) => {
-    const token = await getAuthToken();
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
+    try {
+      const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+      const token = await AsyncStorage.getItem('accessToken');
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+      }
+    } catch (error) {
+      console.warn('Failed to get token:', error);
     }
     return config;
   },
   (error) => Promise.reject(error)
+);
+
+reportsApi.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    if (error.response?.status === 401) {
+      try {
+        const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+        await AsyncStorage.multiRemove(['accessToken', 'refreshToken', 'userData']);
+      } catch (storageError) {
+        console.error('Error clearing storage:', storageError);
+      }
+    }
+    return Promise.reject(error);
+  }
 );
 
 /**
@@ -33,7 +55,7 @@ api.interceptors.request.use(
  */
 export const createReport = async (reportData) => {
   try {
-    const response = await api.post('/', reportData);
+    const response = await reportsApi.post('/', reportData);
     return response.data;
   } catch (error) {
     console.error('Error creating report:', error);
@@ -49,7 +71,7 @@ export const createReport = async (reportData) => {
  */
 export const getMyReports = async (page = 0, size = 10) => {
   try {
-    const response = await api.get('/my-reports', {
+    const response = await reportsApi.get('/my-reports', {
       params: { page, size }
     });
     return response.data;
@@ -67,7 +89,7 @@ export const getMyReports = async (page = 0, size = 10) => {
  */
 export const hasUserReported = async (reportType, targetId) => {
   try {
-    const response = await api.get('/check', {
+    const response = await reportsApi.get('/check', {
       params: { reportType, targetId }
     });
     return response.data;
@@ -84,7 +106,7 @@ export const hasUserReported = async (reportType, targetId) => {
  */
 export const getReportDetails = async (reportId) => {
   try {
-    const response = await api.get(`/${reportId}`);
+    const response = await reportsApi.get(`/${reportId}`);
     return response.data;
   } catch (error) {
     console.error('Error getting report details:', error);
@@ -102,7 +124,7 @@ export const getReportDetails = async (reportId) => {
  */
 export const getAllReports = async (page = 0, size = 10, status = null, reportType = null) => {
   try {
-    const response = await api.get('/admin/all', {
+    const response = await reportsApi.get('/admin/all', {
       params: { page, size, status, reportType }
     });
     return response.data;
@@ -120,7 +142,7 @@ export const getAllReports = async (page = 0, size = 10, status = null, reportTy
  */
 export const getPendingReports = async (page = 0, size = 10) => {
   try {
-    const response = await api.get('/admin/pending', {
+    const response = await reportsApi.get('/admin/pending', {
       params: { page, size }
     });
     return response.data;
@@ -139,7 +161,7 @@ export const getPendingReports = async (page = 0, size = 10) => {
  */
 export const resolveReport = async (reportId, action, note) => {
   try {
-    const response = await api.put(`/admin/resolve/${reportId}`, { action, note });
+    const response = await reportsApi.put(`/admin/resolve/${reportId}`, { action, note });
     return response.data;
   } catch (error) {
     console.error('Error resolving report:', error);
@@ -155,7 +177,7 @@ export const resolveReport = async (reportId, action, note) => {
  */
 export const rejectReport = async (reportId, note) => {
   try {
-    const response = await api.put(`/admin/reject/${reportId}`, { note });
+    const response = await reportsApi.put(`/admin/reject/${reportId}`, { note });
     return response.data;
   } catch (error) {
     console.error('Error rejecting report:', error);
@@ -169,7 +191,7 @@ export const rejectReport = async (reportId, note) => {
  */
 export const getReportStats = async () => {
   try {
-    const response = await api.get('/admin/stats');
+    const response = await reportsApi.get('/admin/stats');
     return response.data;
   } catch (error) {
     console.error('Error getting report stats:', error);
@@ -184,7 +206,7 @@ export const getReportStats = async () => {
  */
 export const getMostReportedPosts = async (limit = 5) => {
   try {
-    const response = await api.get('/admin/most-reported-posts', {
+    const response = await reportsApi.get('/admin/most-reported-posts', {
       params: { limit }
     });
     return response.data;
@@ -202,7 +224,7 @@ export const getMostReportedPosts = async (limit = 5) => {
  */
 export const getReportStatsByDateRange = async (startDate, endDate) => {
   try {
-    const response = await api.get('/admin/stats/date-range', {
+    const response = await reportsApi.get('/admin/stats/date-range', {
       params: { startDate, endDate }
     });
     return response.data;

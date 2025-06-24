@@ -17,10 +17,17 @@ import { useNotifications } from '../components/NotificationContext';
 import moment from 'moment';
 import 'moment/locale/vi';
 
+// Utils
+import { getAvatarFromUser, createAvatarUrl } from '../utils/ImageUtils';
+
+// Services
+import UserProfileService from '../services/UserProfileService';
+
 moment.locale('vi'); // Set locale to Vietnamese
 
 const NotificationsScreen = ({ navigation }) => {
     const [activeTab, setActiveTab] = useState('all'); // 'all' or 'you'
+    const [userAvatarCache, setUserAvatarCache] = useState(new Map());
 
     // Use the notification context
     const { 
@@ -39,6 +46,32 @@ const NotificationsScreen = ({ navigation }) => {
     useEffect(() => {
         fetchNotifications(true);
     }, []);
+
+    // Fetch user avatar by ID
+    const fetchUserAvatar = async (userId) => {
+        if (!userId) return null;
+        
+        // Check cache first
+        if (userAvatarCache.has(userId)) {
+            return userAvatarCache.get(userId);
+        }
+        
+        try {
+            const userProfile = await UserProfileService.getUserProfile(userId);
+            const avatarUrl = getAvatarFromUser(userProfile);
+            
+            // Cache the result
+            setUserAvatarCache(prev => new Map(prev).set(userId, avatarUrl));
+            
+            return avatarUrl;
+        } catch (error) {
+            console.log('⚠️ Failed to fetch avatar for user:', userId, error.message);
+            
+            // Cache null result to avoid repeated failed requests
+            setUserAvatarCache(prev => new Map(prev).set(userId, null));
+            return null;
+        }
+    };
 
     // Handle mark all as read
     const handleMarkAllAsRead = async () => {
@@ -111,16 +144,34 @@ const NotificationsScreen = ({ navigation }) => {
     
     // Convert API notification to UI format
     const formatNotification = (notification) => {
-        const { id, type, actorName, actorAvatar, content, createdAt, read } = notification;
+        const { id, type, actorName, actorAvatar, content, createdAt, read, actor } = notification;
+        
+        console.log('🔍 Raw notification data:', JSON.stringify(notification, null, 2));
+        
+        // Create comprehensive user object for avatar detection
+        const userObject = {
+            id: notification.actorId,
+            username: actorName,
+            fullName: actorName,
+            // Try all possible avatar field names
+            profilePictureUrl: actorAvatar || actor?.profilePictureUrl || actor?.avatarUrl,
+            avatarUrl: actor?.avatarUrl || actorAvatar,
+            avatar: actorAvatar || actor?.avatar,
+            profileImage: actor?.profileImage,
+            userAvatar: actor?.userAvatar,
+            picture: actor?.picture
+        };
+        
+        console.log('👤 Formatted user object:', userObject);
+        
+        // Test avatar URL generation
+        const testAvatarUrl = getAvatarFromUser(userObject);
+        console.log('🔗 Generated avatar URL:', testAvatarUrl);
         
         return {
             id,
             type,
-            user: {
-                id: notification.actorId,
-                username: actorName,
-                profilePicture: actorAvatar || 'https://randomuser.me/api/portraits/men/1.jpg'
-            },
+            user: userObject,
             content: content || getDefaultContent(type),
             postImage: notification.imageUrl,
             time: moment(createdAt).fromNow(),
@@ -164,6 +215,74 @@ const NotificationsScreen = ({ navigation }) => {
         refreshNotifications();
     };
     
+    // Smart Avatar Component with fallback fetching
+    const SmartAvatar = ({ user, actorId }) => {
+        const [avatarUrl, setAvatarUrl] = useState(null);
+        const [imageError, setImageError] = useState(false);
+        const [loading, setLoading] = useState(false);
+        
+        useEffect(() => {
+            const loadAvatar = async () => {
+                console.log('🔍 SmartAvatar loading for:', { user, actorId });
+                
+                // Reset states
+                setImageError(false);
+                setLoading(true);
+                
+                // Try to get avatar from user object first
+                let avatar = getAvatarFromUser(user);
+                console.log('👤 Avatar from user object:', avatar);
+                
+                // If no avatar found and we have actorId, try fetching from API
+                if (!avatar && actorId && !userAvatarCache.has(actorId)) {
+                    console.log('🔄 Fetching avatar from API for actorId:', actorId);
+                    avatar = await fetchUserAvatar(actorId);
+                }
+                
+                // Check cache if still no avatar
+                if (!avatar && actorId && userAvatarCache.has(actorId)) {
+                    avatar = userAvatarCache.get(actorId);
+                    console.log('💾 Avatar from cache:', avatar);
+                }
+                
+                console.log('🖼️ Final avatar URL:', avatar);
+                setAvatarUrl(avatar);
+                setLoading(false);
+            };
+            
+            loadAvatar();
+        }, [user, actorId]);
+        
+        // Generate fallback avatar
+        const fallbackAvatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.username || user?.fullName || 'User')}&background=E91E63&color=fff&size=44`;
+        
+        if (!imageError && (avatarUrl || loading)) {
+            return (
+                <Image 
+                    source={{ uri: avatarUrl || fallbackAvatar }} 
+                    style={styles.userImage}
+                    onError={(e) => {
+                        console.log('❌ Avatar load failed for notification user:', user?.username, 'URL:', avatarUrl);
+                        console.log('Error details:', e.nativeEvent.error);
+                        setImageError(true);
+                    }}
+                    onLoad={() => {
+                        console.log('✅ Avatar loaded successfully for:', user?.username);
+                    }}
+                />
+            );
+        }
+        
+        // Fallback to text avatar
+        return (
+            <View style={[styles.userImage, styles.userImagePlaceholder]}>
+                <Text style={styles.userImageText}>
+                    {(user?.username || user?.fullName || 'U').charAt(0).toUpperCase()}
+                </Text>
+            </View>
+        );
+    };
+
     // Render a notification item
     const renderNotification = ({ item }) => {
         const formattedItem = item.user ? item : formatNotification(item);
@@ -174,7 +293,10 @@ const NotificationsScreen = ({ navigation }) => {
                 onPress={() => handleNotificationPress(item)}
                 onLongPress={() => handleNotificationDelete(item.id)}
             >
-                <Image source={{ uri: formattedItem.user.profilePicture }} style={styles.userImage} />
+                <SmartAvatar 
+                    user={formattedItem.user} 
+                    actorId={formattedItem.actorId || item.actorId}
+                />
 
                 <View style={styles.notificationContent}>
                     <Text style={styles.notificationText}>
@@ -373,6 +495,16 @@ const styles = StyleSheet.create({
         width: 44,
         height: 44,
         borderRadius: 22,
+    },
+    userImagePlaceholder: {
+        backgroundColor: '#f0f2f5',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    userImageText: {
+        fontSize: 16,
+        fontWeight: 'bold',
+        color: '#666',
     },
     notificationContent: {
         flex: 1,

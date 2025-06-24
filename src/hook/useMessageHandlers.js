@@ -72,6 +72,15 @@ const useMessageHandlers = (
 
         const messageContent = messageText?.trim() || '';
         
+        // ✅ CRITICAL FIX: Check for required user data
+        if (!currentUser?.id || !user?.id) {
+            console.error('❌ Cannot send message: missing user IDs', {
+                currentUserId: currentUser?.id,
+                userId: user?.id
+            });
+            return;
+        }
+
         // ✅ FIX: Tạo message fingerprint để kiểm tra trùng lặp
         const messageFingerprint = `${currentUser.id}_${user.id}_${messageContent}_${Date.now()}`;
         
@@ -218,30 +227,20 @@ const useMessageHandlers = (
                     });
                     console.log('✅ Message sent successfully with ID:', realMessage.id);
                 } else {
-                    // ⚡ FIX: Keep temporary message visible instead of removing it
-                    // Mark as sent but keep visible until real message arrives via WebSocket
-                    console.log('✅ Message sent successfully, keeping temp message visible until real message arrives');
+                    // ⚡ FIX: Mark temp message as sent but keep it as permanent message
+                    console.log('✅ Message sent successfully, converting temp to permanent');
                     setMessages(prev => prev.map(msg => 
                         msg.id === tempId 
-                            ? { ...msg, isSending: false, isError: false, isSent: true }
+                            ? { 
+                                ...msg, 
+                                id: `sent_${Date.now()}_${Math.random()}`, // Tạo ID mới cho tin nhắn đã gửi
+                                isSending: false, 
+                                isError: false, 
+                                isSent: true,
+                                isPermanent: true // Đánh dấu là tin nhắn vĩnh viễn
+                            }
                             : msg
                     ));
-                    
-                    // ⚡ FIX: Add fallback to fetch new messages after delay if WebSocket doesn't deliver
-                    setTimeout(() => {
-                        console.log('🔄 Fetching new messages as fallback in case WebSocket didn\'t deliver');
-                        fetchNewMessages?.();
-                        
-                        // ✅ FIX: Xóa tin nhắn tạm nếu đã quá thời gian chờ
-                        setMessages(prev => {
-                            const tempMessageExists = prev.some(msg => msg.id === tempId);
-                            if (tempMessageExists) {
-                                console.log('⚠️ Temp message still exists after timeout, removing');
-                                return prev.filter(msg => msg.id !== tempId);
-                            }
-                            return prev;
-                        });
-                    }, 5000); // Tăng thời gian chờ lên 5 giây
                 }
             } else {
                 // Mark as error

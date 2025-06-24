@@ -462,8 +462,8 @@ const UserLocationController = ({ navigation }) => {
   );
   
   // Chuyển đến màn hình nhập vị trí thủ công
-  const goToManualLocationScreen = () => {
-    navigation.navigate('ManualLocationScreen', {
+      const goToManualLocationScreen = () => {
+        navigation.navigate('ManualLocation', {
       location: currentLocation ? { coords: currentLocation } : null
     });
   };

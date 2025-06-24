@@ -7,13 +7,16 @@ import {
     StyleSheet,
     StatusBar,
     Animated,
-    Alert
+    Alert,
+    Image
 } from 'react-native';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 
 // Import video call service
 import videoCallService from '../../services/videoCallService';
+// Import image utils
+import { getAvatarFromUser } from '../../utils/ImageUtils';
 
 const NewChatHeader = memo(({
     navigation,
@@ -184,11 +187,27 @@ const NewChatHeader = memo(({
                 <View style={styles.userInfo}>
                     {/* Avatar */}
                     <View style={styles.avatarContainer}>
-                        <View style={styles.avatar}>
-                            <Text style={styles.avatarText}>
-                                {user?.fullName?.charAt(0)?.toUpperCase() || '?'}
-                            </Text>
-                        </View>
+                        {(() => {
+                            const avatarUrl = getAvatarFromUser(user);
+                            console.log('🔍 Header Avatar URL:', avatarUrl, 'from user:', user);
+                            
+                            return avatarUrl ? (
+                                <Image
+                                    source={{ uri: avatarUrl }}
+                                    style={styles.avatarImage}
+                                    defaultSource={{ uri: 'https://via.placeholder.com/40' }}
+                                    onError={() => {
+                                        console.log('❌ Avatar image failed to load:', avatarUrl);
+                                    }}
+                                />
+                            ) : (
+                                <View style={styles.avatar}>
+                                    <Text style={styles.avatarText}>
+                                        {user?.fullName?.charAt(0)?.toUpperCase() || '?'}
+                                    </Text>
+                                </View>
+                            );
+                        })()}
                         
                         {/* Online indicator */}
                         <View
@@ -414,6 +433,13 @@ const styles = StyleSheet.create({
         backgroundColor: 'rgba(255, 255, 255, 0.3)',
         justifyContent: 'center',
         alignItems: 'center',
+        borderWidth: 2,
+        borderColor: 'rgba(255, 255, 255, 0.5)',
+    },
+    avatarImage: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
         borderWidth: 2,
         borderColor: 'rgba(255, 255, 255, 0.5)',
     },

@@ -2,6 +2,7 @@
 import React from 'react';
 import { View, Text, Image, TouchableOpacity, StyleSheet } from 'react-native';
 import { determineFriendData } from '../../utils/friendUtils';
+import { getAvatarFromUser } from '../../utils/ImageUtils';
 
 const DEFAULT_PROFILE_IMAGE = 'https://cdn.pixabay.com/photo/2015/10/05/22/37/blank-profile-picture-973460_1280.png';
 
@@ -28,16 +29,39 @@ const FriendCard = ({ friend, onPress, currentUserId }) => {
         friendData = friend.receiver; // Fallback
     }
 
+    // Get avatar URL using ImageUtils
+    const avatarUrl = getAvatarFromUser(friendData);
+    
+    // Debug avatar data
+    console.log('🖼️ FriendCard avatar data:', {
+        friendId: friendData?.id,
+        friendName: friendData?.fullName,
+        profilePictureUrl: friendData?.profilePictureUrl,
+        avatarUrl: friendData?.avatarUrl,
+        finalAvatarUrl: avatarUrl
+    });
+
     return (
         <TouchableOpacity
             style={styles.friendCardContainer}
             onPress={() => onPress(friend)}
         >
             <View style={styles.friendImageContainer}>
-                <Image
-                    source={{ uri: friendData.avatarUrl || DEFAULT_PROFILE_IMAGE }}
-                    style={styles.friendImage}
-                />
+                {avatarUrl ? (
+                    <Image
+                        source={{ uri: avatarUrl }}
+                        style={styles.friendImage}
+                        onError={(e) => {
+                            console.log('❌ Failed to load friend avatar:', friendData?.fullName, e.nativeEvent.error);
+                        }}
+                    />
+                ) : (
+                    <View style={[styles.friendImage, styles.avatarPlaceholder]}>
+                        <Text style={styles.avatarText}>
+                            {(friendData?.fullName || 'U').charAt(0).toUpperCase()}
+                        </Text>
+                    </View>
+                )}
                 {friendData.online && <View style={styles.onlineIndicator} />}
             </View>
             <Text style={styles.friendName} numberOfLines={2}>
@@ -61,6 +85,16 @@ const styles = StyleSheet.create({
         width: 80,
         height: 80,
         borderRadius: 40,
+    },
+    avatarPlaceholder: {
+        backgroundColor: '#f0f2f5',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    avatarText: {
+        fontSize: 24,
+        fontWeight: 'bold',
+        color: '#666',
     },
     onlineIndicator: {
         position: 'absolute',

@@ -30,10 +30,45 @@ import LoadingSpinner from '../../components/LoadingSpinner';
 import UserSearchItem from '../../components/UserSearchItem';
 import ConnectionMonitor from '../../components/chat/ConnectionMonitor';
 
+// Utils
+import { getAvatarFromUser } from '../../utils/ImageUtils';
+
 const { width: screenWidth } = Dimensions.get('window');
 
 const NewMessagesScreen = ({ navigation, route }) => {
     const currentUser = route.params?.currentUser;
+    
+    // Debug current user and route params
+    console.log('🔍 NewMessagesScreen initialized with:', {
+        currentUser,
+        routeParams: route.params,
+        hasCurrentUser: !!currentUser,
+        currentUserId: currentUser?.id
+    });
+
+    // ✅ CRITICAL FIX: Add validation and error handling for missing currentUser
+    if (!currentUser) {
+        console.error('❌ CRITICAL: NewMessagesScreen received undefined currentUser');
+        
+        // Show error screen
+        return (
+            <SafeAreaView style={styles.container}>
+                <StatusBar barStyle="dark-content" />
+                <View style={styles.errorContainer}>
+                    <Text style={styles.errorTitle}>Lỗi tải dữ liệu</Text>
+                    <Text style={styles.errorText}>
+                        Không thể tải thông tin người dùng. Vui lòng thử lại.
+                    </Text>
+                    <TouchableOpacity 
+                        style={styles.retryButton}
+                        onPress={() => navigation.goBack()}
+                    >
+                        <Text style={styles.retryButtonText}>Quay lại</Text>
+                    </TouchableOpacity>
+                </View>
+            </SafeAreaView>
+        );
+    }
 
     // 🎨 Animation refs
     const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -53,6 +88,10 @@ const NewMessagesScreen = ({ navigation, route }) => {
     const [unreadCounts, setUnreadCounts] = useState(new Map());
     const [onlineUsers, setOnlineUsers] = useState(new Set());
     const [error, setError] = useState(null);
+    
+    // ✅ FIX: Thêm ref để track message processing
+    const messageProcessingRef = useRef(new Set());
+    const messageTimeoutRef = useRef(null);
 
     // ✨ Entrance animation
     useEffect(() => {
@@ -77,25 +116,128 @@ const NewMessagesScreen = ({ navigation, route }) => {
         ]).start();
     }, []);
 
-    // 🔍 Filtered data based on active tab
-    const filteredData = useMemo(() => {
-        if (!searchText.trim()) {
-            return activeTab === 'conversations' ? conversations : friends;
+    // Handle select user
+    const handleSelectUser = (item) => {
+        console.log('🔄 Selected user/conversation:', item);
+        console.log('🔄 Active tab:', activeTab);
+        console.log('🔄 Current user:', currentUser);
+        
+        // ✅ Add validation to prevent crashes
+        if (!item) {
+            console.warn('⚠️ No item selected');
+            return;
         }
         
         if (activeTab === 'conversations') {
-        return conversations.filter(conv => {
-            const partner = conv.otherUser;
-            return partner?.fullName?.toLowerCase().includes(searchText.toLowerCase()) ||
-                   partner?.username?.toLowerCase().includes(searchText.toLowerCase()) ||
-                   conv.lastMessage?.content?.toLowerCase().includes(searchText.toLowerCase());
-        });
+            // ✅ FIX: Hỗ trợ cả 'otherUser' và 'partner' format từ backend
+            const otherUser = item.otherUser || item.partner;
+            
+            if (!otherUser) {
+                console.warn('⚠️ Invalid conversation - no otherUser or partner');
+                return;
+            }
+            
+            // Navigate to chat screen with conversation data
+            console.log('🚀 Navigating to NewChatScreen with conversation data:', {
+                conversation: item,
+                user: otherUser,
+                currentUser: currentUser
+            });
+            navigation.navigate('NewChatScreen', {
+                conversation: item,
+                user: otherUser,
+                currentUser: currentUser
+            });
         } else {
-            return friends.filter(friend => {
+            // Navigate to chat screen with friend data
+            const friendData = item.sender?.id === currentUser?.id ? item.receiver : item.sender;
+            
+            if (!friendData) {
+                console.warn('⚠️ Invalid friend - no valid user data');
+                return;
+            }
+            
+            console.log('🚀 Navigating to NewChatScreen with friend data:', {
+                user: friendData,
+                currentUser: currentUser
+            });
+            navigation.navigate('NewChatScreen', {
+                user: friendData,
+                currentUser: currentUser
+            });
+        }
+    };
+
+    // 🔍 Filtered data based on active tab
+    const filteredData = useMemo(() => {
+        console.log('🔍 Computing filteredData:', {
+            activeTab,
+            conversationsLength: conversations.length,
+            friendsLength: friends.length,
+            searchText: searchText.trim()
+        });
+        
+        if (!searchText.trim()) {
+            const rawResult = activeTab === 'conversations' ? conversations : friends;
+            // ✅ Filter out invalid items
+            const result = rawResult.filter((item, index) => {
+                if (activeTab === 'conversations') {
+                    // ✅ FIX: Backend trả về 'partner' không phải 'otherUser'
+                    const isValid = item && (item.otherUser || item.partner) && item.id;
+                    if (!isValid) {
+                        console.log(`🔍 Invalid conversation ${index}:`, {
+                            hasItem: !!item,
+                            hasOtherUser: !!item?.otherUser,
+                            hasPartner: !!item?.partner,
+                            hasId: !!item?.id,
+                            item: item
+                        });
+                    }
+                    return isValid;
+                } else {
+                    const isValid = item && (item.sender || item.receiver) && item.id;
+                    if (!isValid) {
+                        console.log(`🔍 Invalid friend ${index}:`, {
+                            hasItem: !!item,
+                            hasSender: !!item?.sender,
+                            hasReceiver: !!item?.receiver,
+                            hasId: !!item?.id,
+                            item: item
+                        });
+                    }
+                    return isValid;
+                }
+            });
+            console.log('📊 Returning unfiltered data:', result.length, 'valid items out of', rawResult.length);
+            return result;
+        }
+        
+        if (activeTab === 'conversations') {
+            const filtered = conversations.filter(conv => {
+                // ✅ Ensure conversation is valid first
+                if (!conv || (!conv.otherUser && !conv.partner) || !conv.id) return false;
+                
+                // ✅ FIX: Hỗ trợ cả otherUser và partner format
+                const partner = conv.otherUser || conv.partner;
+                return partner?.fullName?.toLowerCase().includes(searchText.toLowerCase()) ||
+                       partner?.username?.toLowerCase().includes(searchText.toLowerCase()) ||
+                       conv.lastMessage?.content?.toLowerCase().includes(searchText.toLowerCase());
+            });
+            console.log('📊 Filtered conversations:', filtered.length, 'items');
+            return filtered;
+        } else {
+            const filtered = friends.filter(friend => {
+                // ✅ Ensure friend is valid first
+                if (!friend || (!friend.sender && !friend.receiver) || !friend.id) return false;
+                
                 const friendData = friend.sender?.id === currentUser?.id ? friend.receiver : friend.sender;
+                if (!friendData) return false;
+                
                 return friendData?.fullName?.toLowerCase().includes(searchText.toLowerCase()) ||
                        friendData?.email?.toLowerCase().includes(searchText.toLowerCase());
             });
+            console.log('📊 Filtered friends:', filtered.length, 'items');
+            return filtered;
         }
     }, [conversations, friends, searchText, activeTab, currentUser?.id]);
 
@@ -115,33 +257,65 @@ const NewMessagesScreen = ({ navigation, route }) => {
                     }
                 });
 
-                // Listen for conversation updates
-                messagesService.on('conversationUpdate', (updatedConv) => {
-                    console.log('📨 Conversation updated:', updatedConv);
-                    setConversations(prev => 
-                        prev.map(conv => 
-                            conv.id === updatedConv.id ? updatedConv : conv
-                        )
-                    );
-                });
+                        // Listen for conversation updates
+        messagesService.on('conversationUpdate', (updatedConv) => {
+            console.log('📨 Conversation updated:', updatedConv);
+            setConversations(prev => {
+                const updatedList = prev.map(conv => 
+                    conv.id === updatedConv.id ? { ...conv, ...updatedConv } : conv
+                );
+                console.log('📊 Updated conversations list:', updatedList.length);
+                return updatedList;
+            });
+        });
 
-                // Listen for new messages
-                messagesService.on('newMessage', (message) => {
-                    console.log('📩 New message received for conversation list:', message);
-                    
-                    // ✅ FIX: Thêm kiểm tra để đảm bảo message hợp lệ
-                    if (!message || !message.id) {
-                        console.log('⚠️ Received invalid message object');
-                        return;
-                    }
-                    
-                    // ✅ FIX: Đảm bảo message có timestamp
-                    if (!message.timestamp) {
-                        message.timestamp = new Date().toISOString();
-                    }
-                    
-                    updateConversationWithNewMessage(message);
-                });
+                        // Listen for new messages
+        messagesService.on('newMessage', (message) => {
+            console.log('📩 New message received for conversation list:', message);
+            
+            // ✅ FIX: Thêm kiểm tra và chuẩn hóa message
+            if (!message) {
+                console.log('⚠️ Received null/undefined message');
+                return;
+            }
+            
+            // ✅ FIX: Tạo ID unique nếu thiếu
+            if (!message.id) {
+                message.id = `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+                console.log('⚠️ Message missing ID, generated:', message.id);
+            }
+            
+            // ✅ FIX: Đảm bảo message có timestamp
+            if (!message.timestamp) {
+                message.timestamp = new Date().toISOString();
+                console.log('⚠️ Message missing timestamp, added:', message.timestamp);
+            }
+            
+            // ✅ FIX: Đảm bảo có senderId và receiverId
+            if (!message.senderId || !message.receiverId) {
+                console.log('⚠️ Message missing senderId or receiverId:', message);
+                return;
+            }
+            
+            // ✅ FIX: Debounce message processing
+            const messageKey = `${message.id}_${message.timestamp}`;
+            if (messageProcessingRef.current.has(messageKey)) {
+                console.log('🔍 Message already being processed, skipping:', messageKey);
+                return;
+            }
+            
+            messageProcessingRef.current.add(messageKey);
+            
+            // Clear old entries after 5 seconds
+            if (messageTimeoutRef.current) {
+                clearTimeout(messageTimeoutRef.current);
+            }
+            messageTimeoutRef.current = setTimeout(() => {
+                messageProcessingRef.current.clear();
+            }, 5000);
+            
+            updateConversationWithNewMessage(message);
+        });
 
                 // Listen for unread counts
                 messagesService.on('unreadCount', (data) => {
@@ -185,7 +359,7 @@ const NewMessagesScreen = ({ navigation, route }) => {
         };
     }, [currentUser?.id]);
 
-    // 📥 Load conversations - Cải thiện logic tải dữ liệu
+    // 📥 Load conversations - Enhanced with better debugging
     const loadConversations = useCallback(async (isRefresh = false) => {
         if (!currentUser?.id) {
             console.log('⚠️ No current user ID');
@@ -194,34 +368,73 @@ const NewMessagesScreen = ({ navigation, route }) => {
 
         try {
             console.log('📥 Loading conversations for user:', currentUser.id);
+            console.log('🔍 WebSocket connection status:', messagesService.getConnectionStatus());
             
             // ✅ Hiển thị loading nếu chưa có dữ liệu
             if (!isRefresh && conversations.length === 0) {
                 setLoading(true);
             }
 
+            // Check WebSocket connection first
+            if (!webSocketService.isConnected()) {
+                console.log('🔌 WebSocket not connected, attempting to connect...');
+                try {
+                    await webSocketService.connectWithStoredToken();
+                    // Wait a bit for connection to stabilize
+                    await new Promise(resolve => setTimeout(resolve, 2000));
+                } catch (connectError) {
+                    console.error('❌ Failed to connect WebSocket:', connectError);
+                    setError('Không thể kết nối đến máy chủ. Vui lòng kiểm tra kết nối internet.');
+                    return;
+                }
+            }
+
+            console.log('📤 Requesting conversations from service...');
             // Fetch conversations from service
             const result = await messagesService.getConversations();
+            console.log('📥 Raw conversations result:', result);
             console.log(`📥 Received ${result?.length || 0} conversations`);
             
             if (result && Array.isArray(result)) {
-                setConversations(result);
+                console.log('✅ Setting conversations:', result);
+                console.log('🔍 Sample conversation structure:', result[0]);
                 
-                // Fetch unread counts for each conversation
-                result.forEach(async (conv) => {
-                    try {
-                        if (conv.id) {
-                            const count = await messagesService.getUnreadCount(conv.id);
-                            setUnreadCounts(prev => {
-                                const newMap = new Map(prev);
-                                newMap.set(conv.id, count);
-                                return newMap;
-                            });
-                        }
-                    } catch (error) {
-                        console.error('❌ Error fetching unread count:', error);
+                // ✅ FIX: Merge với conversations hiện tại để tránh mất tin nhắn mới
+                setConversations(prev => {
+                    if (isRefresh || prev.length === 0) {
+                        console.log('📊 Replacing conversations completely');
+                        return result;
+                    } else {
+                        console.log('📊 Merging with existing conversations');
+                        // Merge logic: keep newer lastMessage
+                        const merged = [...result];
+                        prev.forEach(existingConv => {
+                            const foundIndex = merged.findIndex(newConv => newConv.id === existingConv.id);
+                            if (foundIndex !== -1) {
+                                const existingTime = new Date(existingConv.lastMessage?.timestamp || 0).getTime();
+                                const newTime = new Date(merged[foundIndex].lastMessage?.timestamp || 0).getTime();
+                                if (existingTime > newTime) {
+                                    merged[foundIndex] = existingConv;
+                                }
+                            }
+                        });
+                        return merged;
                     }
                 });
+                
+                // ✅ Use unread count from conversation data directly
+                result.forEach((conv) => {
+                    if (conv.id && conv.unreadCount !== undefined) {
+                        setUnreadCounts(prev => {
+                            const newMap = new Map(prev);
+                            newMap.set(conv.id, conv.unreadCount || 0);
+                            return newMap;
+                        });
+                    }
+                });
+            } else {
+                console.log('⚠️ No valid conversations data received');
+                setConversations([]);
             }
         } catch (error) {
             console.error('❌ Error loading conversations:', error);
@@ -232,20 +445,31 @@ const NewMessagesScreen = ({ navigation, route }) => {
         }
     }, [currentUser?.id, conversations.length]);
 
-    // 📥 Load friends
+    // 📥 Load friends - Enhanced with better debugging
     const loadFriends = useCallback(async (isRefresh = false) => {
-        if (!currentUser?.id) return;
+        if (!currentUser?.id) {
+            console.log('⚠️ No current user ID for friends');
+            return;
+        }
 
         try {
-            if (!isRefresh) {
+            console.log('👥 Loading friends for user:', currentUser.id);
+            
+            if (!isRefresh && friends.length === 0) {
                 setLoading(true);
             }
             
+            console.log('📤 Requesting friends from FriendService...');
             const result = await FriendService.getFriends(currentUser.id);
+            console.log('👥 Raw friends result:', result);
             console.log(`📥 Received ${result?.length || 0} friends`);
             
             if (result && Array.isArray(result)) {
+                console.log('✅ Setting friends:', result);
                 setFriends(result);
+            } else {
+                console.log('⚠️ No valid friends data received');
+                setFriends([]);
             }
         } catch (error) {
             console.error('❌ Error loading friends:', error);
@@ -254,7 +478,7 @@ const NewMessagesScreen = ({ navigation, route }) => {
             setLoading(false);
             setRefreshing(false);
         }
-    }, [currentUser?.id]);
+    }, [currentUser?.id, friends.length]);
 
     // 🔄 Handle refresh
     const handleRefresh = useCallback(() => {
@@ -285,33 +509,50 @@ const NewMessagesScreen = ({ navigation, route }) => {
     useEffect(() => {
         const initialize = async () => {
             try {
+                console.log('🚀 Initializing NewMessagesScreen with activeTab:', activeTab);
+                console.log('🔍 Current user valid?', !!currentUser?.id);
+                
                 // Ensure WebSocket is connected
                 if (!webSocketService.isConnected()) {
                     console.log('🔌 WebSocket not connected, connecting...');
                     await webSocketService.connectWithStoredToken();
                 }
                 
-                // Load initial data
+                // Load initial data based on active tab
+                console.log('📊 Loading data for tab:', activeTab);
                 if (activeTab === 'conversations') {
+                    console.log('📨 Loading conversations...');
                     await loadConversations();
                 } else {
+                    console.log('👥 Loading friends...');
                     await loadFriends();
                 }
+                console.log('✅ Initialization complete');
             } catch (error) {
                 console.error('❌ Error initializing:', error);
                 setError('Không thể kết nối đến máy chủ. Vui lòng thử lại sau.');
             }
         };
 
-        initialize();
-    }, [activeTab, loadConversations, loadFriends]);
+        if (currentUser?.id) {
+            initialize();
+        } else {
+            console.log('⚠️ No currentUser.id, skipping initialization');
+        }
+    }, [activeTab, loadConversations, loadFriends, currentUser?.id]);
 
     // 📩 Update conversation with new message
     const updateConversationWithNewMessage = (message) => {
+        console.log('📩 Processing new message:', message);
+        
         setConversations(prev => {
-            // ✅ FIX: Kiểm tra ID tin nhắn để tránh trùng lặp
+            // ✅ FIX: Cải thiện logic kiểm tra duplicate
             const messageAlreadyProcessed = prev.some(conv => 
-                conv.lastMessage && conv.lastMessage.id === message.id
+                conv.lastMessage && 
+                (conv.lastMessage.id === message.id || 
+                 (conv.lastMessage.content === message.content && 
+                  conv.lastMessage.timestamp === message.timestamp &&
+                  conv.lastMessage.senderId === message.senderId))
             );
             
             if (messageAlreadyProcessed) {
@@ -319,10 +560,12 @@ const NewMessagesScreen = ({ navigation, route }) => {
                 return prev;
             }
             
-            const conversationIndex = prev.findIndex(conv => 
-                (conv.otherUser.id === message.senderId && message.receiverId === currentUser?.id) ||
-                (conv.otherUser.id === message.receiverId && message.senderId === currentUser?.id)
-            );
+            const conversationIndex = prev.findIndex(conv => {
+                // ✅ FIX: Hỗ trợ cả otherUser và partner format
+                const partner = conv.otherUser || conv.partner;
+                return (partner.id === message.senderId && message.receiverId === currentUser?.id) ||
+                       (partner.id === message.receiverId && message.senderId === currentUser?.id);
+            });
 
             if (conversationIndex !== -1) {
                 // ✅ FIX: Kiểm tra timestamp để đảm bảo chỉ cập nhật tin nhắn mới hơn
@@ -355,15 +598,16 @@ const NewMessagesScreen = ({ navigation, route }) => {
             // Create new conversation if doesn't exist
             const newConversation = {
                 id: `conv_${message.senderId}_${message.receiverId}`,
-                otherUser: {
+                // ✅ FIX: Sử dụng partner format để tương thích với backend
+                partner: {
                     id: message.senderId === currentUser?.id ? message.receiverId : message.senderId,
                     fullName: 'Người dùng mới',
                     username: 'newuser',
-                    avatar: null
+                    avatarUrl: null
                 },
                 lastMessage: message,
                 unreadCount: message.senderId !== currentUser?.id ? 1 : 0,
-                updatedAt: message.timestamp
+                lastActivity: message.timestamp
             };
 
             return [newConversation, ...prev];
@@ -372,6 +616,8 @@ const NewMessagesScreen = ({ navigation, route }) => {
 
     // 🎨 Animate tab switch
     const animateTabSwitch = (newTab) => {
+        console.log('🔄 Switching to tab:', newTab);
+        
         Animated.sequence([
             Animated.timing(scaleAnim, {
                 toValue: 0.95,
@@ -468,8 +714,26 @@ const NewMessagesScreen = ({ navigation, route }) => {
 
     // 🎨 Render conversation item
     const renderConversationItem = ({ item, index }) => {
+        // ✅ FIX: Hỗ trợ cả otherUser và partner format từ backend
+        const partner = item.otherUser || item.partner;
+        
+        if (!item || !partner) {
+            console.warn('⚠️ Invalid conversation item:', item);
+            return null;
+        }
+
+        // Debug avatar data
+        console.log('🖼️ Conversation partner avatar data:', {
+            partnerName: partner?.fullName,
+            partnerId: partner?.id,
+            profilePictureUrl: partner?.profilePictureUrl,
+            avatarUrl: partner?.avatarUrl,
+            avatar: partner?.avatar,
+            finalAvatarUrl: getAvatarFromUser(partner)
+        });
+
         const unreadCount = unreadCounts.get(item.id) || item.unreadCount || 0;
-        const isOnline = onlineUsers.has(item.otherUser.id);
+        const isOnline = onlineUsers.has(partner?.id);
         const lastMessageTime = item.lastMessage?.timestamp ? 
             new Date(item.lastMessage.timestamp).toLocaleTimeString('vi-VN', {
                 hour: '2-digit',
@@ -507,11 +771,21 @@ const NewMessagesScreen = ({ navigation, route }) => {
                     >
                 <View style={styles.avatarContainer}>
                             <View style={[styles.avatarRing, unreadCount > 0 && styles.unreadAvatarRing]}>
-                                <Image
-                                    source={{ uri: item.otherUser.avatar || 'https://via.placeholder.com/50' }}
-                                    style={styles.avatar}
-                                    defaultSource={{ uri: 'https://via.placeholder.com/50' }}
-                                />
+                                {getAvatarFromUser(partner) ? (
+                                    <Image
+                                        source={{ uri: getAvatarFromUser(partner) }}
+                                        style={styles.avatar}
+                                        onError={(e) => {
+                                            console.log('❌ Failed to load avatar for partner:', partner?.fullName, e.nativeEvent.error);
+                                        }}
+                                    />
+                                ) : (
+                                    <View style={[styles.avatar, styles.avatarPlaceholder]}>
+                                        <Text style={styles.avatarText}>
+                                            {(partner?.fullName || partner?.username || 'U').charAt(0).toUpperCase()}
+                                        </Text>
+                                    </View>
+                                )}
                     {isOnline && <View style={styles.onlineIndicator} />}
                             </View>
                 </View>
@@ -519,7 +793,7 @@ const NewMessagesScreen = ({ navigation, route }) => {
                 <View style={styles.conversationContent}>
                     <View style={styles.conversationHeader}>
                                 <Text style={[styles.userName, unreadCount > 0 && styles.unreadUserName]}>
-                                    {item.otherUser.fullName}
+                                    {partner.fullName}
                         </Text>
                                 <Text style={styles.timestamp}>{lastMessageTime}</Text>
                     </View>
@@ -553,7 +827,30 @@ const NewMessagesScreen = ({ navigation, route }) => {
 
     // 🎨 Render friend item
     const renderFriendItem = ({ item, index }) => {
+        // ✅ Add null checks to prevent crashes
+        if (!item || (!item.sender && !item.receiver)) {
+            console.warn('⚠️ Invalid friend item:', item);
+            return null;
+        }
+
         const friendData = item.sender?.id === currentUser?.id ? item.receiver : item.sender;
+        
+        // ✅ Additional check for friendData
+        if (!friendData) {
+            console.warn('⚠️ No valid friend data found in item:', item);
+            return null;
+        }
+
+        // Debug avatar data
+        console.log('🖼️ Friend avatar data:', {
+            friendName: friendData?.fullName,
+            friendId: friendData?.id,
+            profilePictureUrl: friendData?.profilePictureUrl,
+            avatarUrl: friendData?.avatarUrl,
+            avatar: friendData?.avatar,
+            finalAvatarUrl: getAvatarFromUser(friendData)
+        });
+
         const isOnline = onlineUsers.has(friendData?.id);
 
         return (
@@ -584,11 +881,21 @@ const NewMessagesScreen = ({ navigation, route }) => {
                     >
                         <View style={styles.avatarContainer}>
                             <View style={styles.avatarRing}>
-                                <Image
-                                    source={{ uri: friendData?.profilePictureUrl || friendData?.avatarUrl || 'https://via.placeholder.com/50' }}
-                                    style={styles.avatar}
-                                    defaultSource={{ uri: 'https://via.placeholder.com/50' }}
-                                />
+                                {getAvatarFromUser(friendData) ? (
+                                    <Image
+                                        source={{ uri: getAvatarFromUser(friendData) }}
+                                        style={styles.avatar}
+                                        onError={(e) => {
+                                            console.log('❌ Failed to load avatar for friend:', friendData?.fullName, e.nativeEvent.error);
+                                        }}
+                                    />
+                                ) : (
+                                    <View style={[styles.avatar, styles.avatarPlaceholder]}>
+                                        <Text style={styles.avatarText}>
+                                            {(friendData?.fullName || friendData?.username || 'U').charAt(0).toUpperCase()}
+                                        </Text>
+                                    </View>
+                                )}
                                 {isOnline && <View style={styles.onlineIndicator} />}
                             </View>
                         </View>
@@ -780,7 +1087,7 @@ const NewMessagesScreen = ({ navigation, route }) => {
                     <FlatList
                         data={filteredData}
                         renderItem={activeTab === 'conversations' ? renderConversationItem : renderFriendItem}
-                        keyExtractor={(item) => String(item.id)}
+                        keyExtractor={(item, index) => item?.id ? String(item.id) : `item-${index}`}
                         contentContainerStyle={filteredData.length === 0 ? styles.emptyList : styles.list}
                         showsVerticalScrollIndicator={false}
                         ListEmptyComponent={<EmptyState />}
@@ -868,8 +1175,63 @@ const styles = StyleSheet.create({
     },
     tabContainer: {
         flexDirection: 'row',
-        borderBottomWidth: 1,
-        borderBottomColor: '#f0f2f5',
+        paddingHorizontal: 16,
+        backgroundColor: '#fff',
+        elevation: 2,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+    },
+    tabButton: {
+        flex: 1,
+        paddingVertical: 16,
+        paddingHorizontal: 20,
+        borderRadius: 25,
+        margin: 8,
+        overflow: 'hidden',
+    },
+    tabButtonGradient: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 12,
+        paddingHorizontal: 16,
+        borderRadius: 25,
+    },
+    activeTab: {
+        elevation: 3,
+        shadowColor: '#E91E63',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.3,
+        shadowRadius: 4,
+    },
+    activeTabGradient: {
+        borderRadius: 25,
+    },
+    tabText: {
+        fontSize: 14,
+        fontWeight: '600',
+        marginLeft: 8,
+        color: 'rgba(255,255,255,0.7)',
+    },
+    activeTabText: {
+        color: '#fff',
+        fontWeight: '700',
+    },
+    tabBadge: {
+        backgroundColor: 'rgba(255,255,255,0.3)',
+        borderRadius: 10,
+        paddingHorizontal: 6,
+        paddingVertical: 2,
+        marginLeft: 8,
+        minWidth: 20,
+        alignItems: 'center',
+    },
+    tabBadgeText: {
+        color: '#fff',
+        fontSize: 11,
+        fontWeight: 'bold',
     },
     tab: {
         flex: 1,
@@ -901,15 +1263,60 @@ const styles = StyleSheet.create({
         paddingBottom: 50,
     },
     conversationItem: {
+        marginHorizontal: 16,
+        marginVertical: 4,
+        borderRadius: 16,
+        overflow: 'hidden',
+        elevation: 2,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.1,
+        shadowRadius: 3,
+    },
+    conversationItemGradient: {
         flexDirection: 'row',
         padding: 16,
-        borderBottomWidth: 1,
-        borderBottomColor: '#f0f2f5',
+        alignItems: 'center',
+    },
+    friendItem: {
+        marginHorizontal: 16,
+        marginVertical: 4,
+        borderRadius: 16,
+        overflow: 'hidden',
+        elevation: 2,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.1,
+        shadowRadius: 3,
+    },
+    friendItemGradient: {
+        flexDirection: 'row',
+        padding: 16,
+        alignItems: 'center',
+    },
+    avatarContainer: {
+        position: 'relative',
+    },
+    avatarRing: {
+        width: 56,
+        height: 56,
+        borderRadius: 28,
+        borderWidth: 2,
+        borderColor: '#f0f0f0',
+        justifyContent: 'center',
+        alignItems: 'center',
+        overflow: 'hidden',
+    },
+    unreadAvatarRing: {
+        borderColor: '#E91E63',
+        borderWidth: 3,
     },
     avatar: {
         width: 56,
         height: 56,
         borderRadius: 28,
+    },
+    avatarPlaceholder: {
         backgroundColor: '#f0f2f5',
         justifyContent: 'center',
         alignItems: 'center',
@@ -926,14 +1333,86 @@ const styles = StyleSheet.create({
     },
     conversationContent: {
         flex: 1,
-        marginLeft: 12,
-        justifyContent: 'center',
+        marginLeft: 16,
     },
     conversationHeader: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
+        marginBottom: 6,
+    },
+    userName: {
+        fontSize: 16,
+        fontWeight: '600',
+        color: '#1a1a1a',
+        flex: 1,
+    },
+    unreadUserName: {
+        fontWeight: '700',
+        color: '#000',
+    },
+    timestamp: {
+        fontSize: 12,
+        color: '#666',
+        fontWeight: '400',
+    },
+    messagePreview: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+    },
+    lastMessage: {
+        fontSize: 14,
+        color: '#666',
+        flex: 1,
+        marginRight: 8,
+    },
+    unreadMessage: {
+        fontWeight: '600',
+        color: '#1a1a1a',
+    },
+    unreadBadge: {
+        borderRadius: 12,
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        minWidth: 24,
+        height: 24,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    unreadBadgeText: {
+        color: '#fff',
+        fontSize: 12,
+        fontWeight: 'bold',
+    },
+    friendContent: {
+        flex: 1,
+        marginLeft: 16,
+    },
+    friendName: {
+        fontSize: 16,
+        fontWeight: '600',
+        color: '#1a1a1a',
         marginBottom: 4,
+    },
+    friendStatus: {
+        fontSize: 13,
+        color: '#666',
+    },
+    onlineFriendStatus: {
+        color: '#4CAF50',
+        fontWeight: '500',
+    },
+    messageButton: {
+        borderRadius: 20,
+        overflow: 'hidden',
+    },
+    messageButtonGradient: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        justifyContent: 'center',
+        alignItems: 'center',
     },
     name: {
         fontSize: 16,
@@ -982,8 +1461,26 @@ const styles = StyleSheet.create({
         borderColor: '#fff',
     },
     emptyContainer: {
+        flex: 1,
+        justifyContent: 'center',
         alignItems: 'center',
         paddingHorizontal: 32,
+        paddingVertical: 60,
+    },
+    emptyGradient: {
+        width: '100%',
+        alignItems: 'center',
+        paddingVertical: 40,
+        borderRadius: 20,
+    },
+    emptyIconContainer: {
+        width: 100,
+        height: 100,
+        borderRadius: 50,
+        backgroundColor: 'rgba(233, 30, 99, 0.1)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginBottom: 24,
     },
     emptyIcon: {
         marginBottom: 16,
@@ -1048,6 +1545,37 @@ const styles = StyleSheet.create({
         marginLeft: 8,
     },
     errorContainer: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        paddingHorizontal: 20,
+        backgroundColor: '#fff',
+    },
+    errorTitle: {
+        fontSize: 18,
+        fontWeight: 'bold',
+        color: '#333',
+        marginBottom: 12,
+        textAlign: 'center',
+    },
+    errorText: {
+        fontSize: 16,
+        color: '#666',
+        textAlign: 'center',
+        marginBottom: 20,
+    },
+    retryButton: {
+        backgroundColor: '#0084ff',
+        paddingHorizontal: 24,
+        paddingVertical: 12,
+        borderRadius: 8,
+    },
+    retryButtonText: {
+        color: '#fff',
+        fontSize: 16,
+        fontWeight: '600',
+    },
+    errorBanner: {
         position: 'absolute',
         bottom: 20,
         left: 20,
@@ -1059,7 +1587,7 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'space-between',
     },
-    errorText: {
+    errorBannerText: {
         color: '#fff',
         flex: 1,
         marginRight: 16,

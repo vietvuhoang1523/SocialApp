@@ -83,7 +83,7 @@ const ForgotPasswordScreen = ({ navigation }) => {
 
         try {
             // Use the corrected method name resetPassword
-            await AuthService.resetPassword(email, verificationCode, newPassword);
+            await AuthService.resetPassword(verificationCode, newPassword);
 
             Alert.alert(
                 'Thành công',

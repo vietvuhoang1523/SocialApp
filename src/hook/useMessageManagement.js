@@ -56,7 +56,12 @@ const useMessageManagement = (currentUser, user) => {
         }
 
         if (!currentUser?.id || !user?.id) {
-            console.log('⚠️ Missing user IDs for fetchMessages');
+            console.log('⚠️ Missing user IDs for fetchMessages:', {
+                currentUserId: currentUser?.id,
+                userId: user?.id,
+                hasCurrentUser: !!currentUser,
+                hasUser: !!user
+            });
             return;
         }
 
@@ -72,8 +77,8 @@ const useMessageManagement = (currentUser, user) => {
             }
 
             const response = await messagesService.getMessagesBetweenUsersPaginated(
-                currentUser.id, 
-                user.id, 
+                currentUser?.id, 
+                user?.id, 
                 {
                     page,
                     size: 20,
@@ -152,8 +157,8 @@ const useMessageManagement = (currentUser, user) => {
             const fetchTime = new Date().toISOString();
             
             const response = await messagesService.getMessagesBetweenUsersPaginated(
-                currentUser.id, 
-                user.id, 
+                currentUser?.id, 
+                user?.id, 
                 {
                     page: 0,
                     size: 20,
@@ -210,6 +215,11 @@ const useMessageManagement = (currentUser, user) => {
             return;
         }
         
+        if (newMessage.senderId === currentUser?.id) {
+            console.log(`📤 Skipping own message from WebSocket: ${newMessage.id}`);
+            return;
+        }
+        
         if (processedMessageIds.current.has(newMessage.id)) {
             console.log(`🔄 Message ${newMessage.id} already exists, skipping`);
             return;
@@ -233,7 +243,7 @@ const useMessageManagement = (currentUser, user) => {
             
             return sortMessagesByTimestamp([newMessage, ...prev]);
         });
-    }, [sortMessagesByTimestamp]);
+    }, [sortMessagesByTimestamp, currentUser?.id]);
 
     useEffect(() => {
         return () => {

@@ -11,11 +11,8 @@ import {
 } from 'react-native';
 import { useTheme } from '../../hook/ThemeContext';
 import { Ionicons } from '@expo/vector-icons';
-import { 
-  getParticipants, 
-  getPendingRequests, 
-  respondToJoinRequest 
-} from '../../services/sportsService';
+import SportsPostService from '../../services/SportsPostService';
+import SportsPostParticipantService from '../../services/SportsPostParticipantService';
 import ParticipantItem from '../../components/sports/ParticipantItem';
 import ResponseModal from '../../components/sports/ResponseModal';
 
@@ -36,7 +33,7 @@ const ParticipantManagementScreen = ({ route, navigation }) => {
   const fetchParticipants = useCallback(async () => {
     try {
       setLoading(true);
-      const response = await getParticipants(postId);
+      const response = await SportsPostParticipantService.getParticipants(postId);
       setParticipants(response.content || []);
     } catch (error) {
       console.error('Error fetching participants:', error);
@@ -50,7 +47,7 @@ const ParticipantManagementScreen = ({ route, navigation }) => {
   const fetchPendingRequests = useCallback(async () => {
     try {
       setLoading(true);
-      const response = await getPendingRequests(postId);
+      const response = await SportsPostParticipantService.getPendingRequests(postId);
       setPendingRequests(response.content || []);
     } catch (error) {
       console.error('Error fetching pending requests:', error);
@@ -105,7 +102,7 @@ const ParticipantManagementScreen = ({ route, navigation }) => {
       setLoading(true);
       
       const approve = responseType === 'approve';
-      await respondToJoinRequest(
+      await SportsPostParticipantService.respondToJoinRequest(
         postId,
         selectedParticipant.id,
         approve,

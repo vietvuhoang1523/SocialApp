@@ -17,6 +17,7 @@ import CommentService from '../services/CommentService';
 import PostService from '../services/CreatePostService';
 import AuthService from '../services/AuthService';
 import Config from '../../src/services/config';
+import { getAvatarFromUser } from '../utils/ImageUtils';
 
 // Hàm helper để tạo URL đầy đủ từ đường dẫn tương đối
 const getFullImageUrl = (relativePath) => {
@@ -256,6 +257,9 @@ const CommentsScreen = ({ route, navigation }) => {
         // Kiểm tra và đảm bảo item có đủ dữ liệu
         if (!item) return null;
         
+        // Debug logging để xem cấu trúc dữ liệu
+        console.log('🔍 Comment item structure:', JSON.stringify(item, null, 2));
+        
         // Đảm bảo trường user luôn tồn tại
         const user = item.user || {
             id: item.userId || 0,
@@ -264,17 +268,31 @@ const CommentsScreen = ({ route, navigation }) => {
             profilePictureUrl: null
         };
         
-        const avatarUrl = user.profilePictureUrl
-            ? getFullImageUrl(user.profilePictureUrl)
-            : 'https://randomuser.me/api/portraits/men/1.jpg';
+        console.log('👤 User data for comment:', JSON.stringify(user, null, 2));
+        
+        // Sử dụng ImageUtils để lấy avatar
+        const avatarUrl = getAvatarFromUser(user) || 
+                         `https://ui-avatars.com/api/?name=${encodeURIComponent(user.fullName || user.username || 'User')}&background=0095F6&color=fff&size=50`;
+            
+        console.log('🔗 Final avatar URL from ImageUtils:', avatarUrl);
 
         return (
             <View style={styles.commentItem}>
-                <Image
-                    source={{ uri: avatarUrl }}
-                    style={styles.avatar}
-                    defaultSource={require('../assets/default-avatar.png')}
-                />
+                <View style={styles.avatarContainer}>
+                    <Image
+                        source={{ uri: avatarUrl }}
+                        style={styles.avatar}
+                        defaultSource={require('../assets/default-avatar.png')}
+                        onError={() => console.log('❌ Avatar load failed for:', avatarUrl)}
+                        onLoad={() => console.log('✅ Avatar loaded successfully:', avatarUrl)}
+                    />
+                    {/* Fallback text avatar if image fails */}
+                    <View style={styles.textAvatar}>
+                        <Text style={styles.textAvatarText}>
+                            {(user.fullName || user.username || 'U').charAt(0).toUpperCase()}
+                        </Text>
+                    </View>
+                </View>
                 <View style={styles.commentContent}>
                     <View style={styles.commentBubble}>
                         <Text style={styles.username}>{user.fullName || user.username || 'Người dùng'}</Text>
@@ -335,18 +353,25 @@ const CommentsScreen = ({ route, navigation }) => {
     const renderOriginalPost = () => {
         if (!post) return null;
 
-        const avatarUrl = post.userRes?.profilePictureUrl
-            ? getFullImageUrl(post.userRes.profilePictureUrl)
-            : 'https://randomuser.me/api/portraits/men/1.jpg';
+        const avatarUrl = getAvatarFromUser(post.userRes) || 
+                         `https://ui-avatars.com/api/?name=${encodeURIComponent(post.userRes?.fullName || post.userRes?.username || 'User')}&background=1976D2&color=fff&size=50`;
 
         return (
             <View style={styles.originalPost}>
                 <View style={styles.postHeader}>
-                    <Image
-                        source={{ uri: avatarUrl }}
-                        style={styles.avatar}
-                        defaultSource={require('../assets/default-avatar.png')}
-                    />
+                    <View style={styles.avatarContainer}>
+                        <Image
+                            source={{ uri: avatarUrl }}
+                            style={styles.avatar}
+                            defaultSource={require('../assets/default-avatar.png')}
+                            onError={() => console.log('❌ Post avatar load failed')}
+                        />
+                        <View style={styles.textAvatar}>
+                            <Text style={styles.textAvatarText}>
+                                {(post.userRes?.fullName || post.userRes?.username || 'U').charAt(0).toUpperCase()}
+                            </Text>
+                        </View>
+                    </View>
                     <View style={styles.postUserInfo}>
                         <Text style={styles.username}>{post.userRes?.fullName || post.userRes?.username || 'Người dùng'}</Text>
                         <Text style={styles.postContent} numberOfLines={2}>{post.content}</Text>
@@ -358,17 +383,24 @@ const CommentsScreen = ({ route, navigation }) => {
 
     // Hiển thị khung nhập bình luận
     const renderCommentInput = () => {
-        const avatarUrl = currentUser?.profilePictureUrl
-            ? getFullImageUrl(currentUser.profilePictureUrl)
-            : 'https://randomuser.me/api/portraits/men/1.jpg';
+        const avatarUrl = getAvatarFromUser(currentUser) || 
+                         `https://ui-avatars.com/api/?name=${encodeURIComponent(currentUser?.fullName || currentUser?.username || 'User')}&background=4CAF50&color=fff&size=50`;
 
         return (
             <View style={styles.commentForm}>
-                <Image
-                    source={{ uri: avatarUrl }}
-                    style={styles.avatar}
-                    defaultSource={require('../assets/default-avatar.png')}
-                />
+                <View style={styles.avatarContainer}>
+                    <Image
+                        source={{ uri: avatarUrl }}
+                        style={styles.avatar}
+                        defaultSource={require('../assets/default-avatar.png')}
+                        onError={() => console.log('❌ Current user avatar load failed')}
+                    />
+                    <View style={styles.textAvatar}>
+                        <Text style={styles.textAvatarText}>
+                            {(currentUser?.fullName || currentUser?.username || 'U').charAt(0).toUpperCase()}
+                        </Text>
+                    </View>
+                </View>
                 <TextInput
                     ref={inputRef}
                     style={styles.commentInput}
@@ -485,10 +517,32 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         marginBottom: 15,
     },
+    avatarContainer: {
+        position: 'relative',
+        width: 36,
+        height: 36,
+    },
     avatar: {
         width: 36,
         height: 36,
         borderRadius: 18,
+        position: 'absolute',
+        zIndex: 2,
+    },
+    textAvatar: {
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        backgroundColor: '#0095F6',
+        justifyContent: 'center',
+        alignItems: 'center',
+        position: 'absolute',
+        zIndex: 1,
+    },
+    textAvatarText: {
+        color: 'white',
+        fontWeight: 'bold',
+        fontSize: 16,
     },
     commentContent: {
         flex: 1,

@@ -1,8 +1,6 @@
 // src/services/WebSocketMessageService.js
 // WebSocket Message Service - Tương thích với backend WebSocketMessageController
 import webSocketService from './WebSocketService';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Alert } from 'react-native';
 
 /**
  * WebSocket Message Service

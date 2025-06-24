@@ -23,7 +23,7 @@ import SportsPostService from '../services/SportsPostService';
 import FriendService from '../services/FriendService';
 import MapView, { Marker } from 'react-native-maps';
 import * as Location from 'expo-location';
-import DateTimePicker from '@react-native-community/datetimepicker';
+import CustomDatePicker from '../components/CustomDatePicker';
 
 // Enums from backend
 const SportType = {
@@ -109,7 +109,7 @@ const CreateSportsPostScreen = ({ navigation }) => {
     const [tags, setTags] = useState([]);
     const [currentTag, setCurrentTag] = useState('');
     const [visibility, setVisibility] = useState(PostVisibility.PUBLIC);
-    const [autoApprove, setAutoApprove] = useState(true);
+    const [autoApprove, setAutoApprove] = useState(false);
     
     // UI state
     const [error, setError] = useState('');
@@ -1061,6 +1061,24 @@ const CreateSportsPostScreen = ({ navigation }) => {
                             </View>
                         </View>
                         
+                        {/* Auto approve setting */}
+                        <View style={styles.inputGroup}>
+                            <View style={styles.labelRow}>
+                                <Text style={styles.inputLabel}>Chế độ duyệt tham gia</Text>
+                                <Switch
+                                    value={autoApprove}
+                                    onValueChange={setAutoApprove}
+                                    trackColor={{ false: '#ff7675', true: '#6c7ce7' }}
+                                    thumbColor={autoApprove ? '#74b9ff' : '#e17055'}
+                                />
+                            </View>
+                            <Text style={styles.helpText}>
+                                {autoApprove 
+                                    ? '🟢 Tự động duyệt - Người tham gia sẽ được chấp nhận ngay lập tức' 
+                                    : '🔴 Duyệt thủ công - Bạn cần phê duyệt từng yêu cầu tham gia'}
+                            </Text>
+                        </View>
+                        
                         {/* Invite friends */}
                         <View style={styles.inputGroup}>
                             <Text style={styles.inputLabel}>Mời bạn bè tham gia</Text>
@@ -1337,14 +1355,13 @@ const CreateSportsPostScreen = ({ navigation }) => {
                         <View style={styles.modalContent}>
                             <Text style={styles.modalTitle}>Chọn thời gian sự kiện</Text>
                             
-                            <DateTimePicker
+                            <CustomDatePicker
                                 value={tempDate}
                                 mode="datetime"
-                                display="spinner"
-                                onChange={(event, selectedDate) => {
-                                    const currentDate = selectedDate || tempDate;
-                                    setTempDate(currentDate);
+                                onChange={(selectedDate) => {
+                                    setTempDate(selectedDate);
                                 }}
+                                placeholder="Chọn thời gian"
                             />
                             
                             <View style={styles.modalButtons}>
@@ -1382,15 +1399,14 @@ const CreateSportsPostScreen = ({ navigation }) => {
                         <View style={styles.modalContent}>
                             <Text style={styles.modalTitle}>Chọn ngày kết thúc lặp lại</Text>
                             
-                            <DateTimePicker
+                            <CustomDatePicker
                                 value={repeatEndDate}
                                 mode="date"
-                                display="spinner"
-                                onChange={(event, selectedDate) => {
-                                    const currentDate = selectedDate || repeatEndDate;
-                                    setRepeatEndDate(currentDate);
+                                onChange={(selectedDate) => {
+                                    setRepeatEndDate(selectedDate);
                                 }}
                                 minimumDate={new Date()} // Phải là ngày trong tương lai
+                                placeholder="Chọn ngày kết thúc"
                             />
                             
                             <View style={styles.modalButtons}>
@@ -1969,6 +1985,18 @@ const styles = StyleSheet.create({
     },
     switchDescription: {
         color: '#888',
+    },
+    helpText: {
+        fontSize: 12,
+        color: '#666',
+        fontStyle: 'italic',
+        marginTop: 5,
+        paddingHorizontal: 10,
+        paddingVertical: 8,
+        backgroundColor: '#f8f9fa',
+        borderRadius: 6,
+        borderLeftWidth: 3,
+        borderLeftColor: '#6c7ce7',
     },
 });
 

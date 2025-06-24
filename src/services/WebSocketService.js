@@ -340,12 +340,17 @@ class WebSocketService {
             // ✅ Subscribe to conversations queue
             console.log('📡 Subscribing to /user/' + userEmail + '/queue/conversations');
             this.client.subscribe(`/user/${userEmail}/queue/conversations`, (message) => {
-                console.log('💬 Received conversations:', message.body);
+                console.log('💬 Received conversations RAW:', message.body);
+                console.log('💬 Message headers:', message.headers);
                 try {
                     const conversationsData = JSON.parse(message.body);
+                    console.log('💬 Parsed conversations data:', conversationsData);
+                    console.log('💬 Conversations data type:', typeof conversationsData);
+                    console.log('💬 Is conversations array:', Array.isArray(conversationsData));
                     this._notifyListeners('conversations', conversationsData);
                 } catch (error) {
                     console.error('❌ Error parsing conversations:', error);
+                    console.error('❌ Raw message body:', message.body);
                 }
             });
 
@@ -559,21 +564,44 @@ class WebSocketService {
 
     // Get conversations - backend endpoint /app/get-conversations
     async getConversations() {
-        // Enhanced connection check
-        if (!this.isConnected()) {
+        console.log('🔍 WebSocket status:', {
+            connected: this.connected,
+            clientConnected: this.client?.connected,
+            clientState: this.client?.state,
+            connecting: this.connecting
+        });
+
+        // ✅ FIX: Allow request if connecting or connected, but wait for readiness
+        if (!this.connected && !this.connecting && !this.client) {
+            console.error('❌ WebSocket not connected for conversations request');
             throw new Error('WebSocket not connected');
         }
 
-        // Wait for STOMP client to be truly ready
-        await this._waitForStompReady();
+        // Wait for STOMP client to be truly ready with longer timeout
+        try {
+            await this._waitForStompReady(10000); // Wait up to 10 seconds
+        } catch (waitError) {
+            console.warn('⚠️ STOMP not ready, but trying anyway:', waitError.message);
+            
+            // ✅ FIX: If wait fails, check if client exists and try anyway
+            if (!this.client) {
+                throw new Error('WebSocket client not available');
+            }
+        }
 
         try {
             console.log('📤 Requesting conversations from /app/get-conversations');
+            console.log('📤 Client ready:', !!this.client);
+            console.log('📤 Sending empty JSON to backend...');
+            
             this.client.send('/app/get-conversations', {}, JSON.stringify({}));
-            console.log('✅ Conversations request sent');
+            
+            console.log('✅ Conversations request sent successfully');
             return true;
         } catch (error) {
             console.error('❌ Error requesting conversations:', error);
+            console.error('❌ Client state:', this.client?.state);
+            console.error('❌ Error details:', error.message, error.stack);
             throw error;
         }
     }

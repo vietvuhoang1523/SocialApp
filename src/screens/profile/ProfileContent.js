@@ -94,6 +94,46 @@ const SportsProfileSection = ({ navigation, userProfile }) => {
                     </LinearGradient>
                 </TouchableOpacity>
             </View>
+
+            {/* Quick Access Section */}
+            <View style={styles.quickAccessSection}>
+                <Text style={styles.quickAccessTitle}>📊 Quản lý hoạt động</Text>
+                
+                <View style={styles.quickAccessGrid}>
+                    <TouchableOpacity 
+                        style={styles.quickAccessCard}
+                        onPress={() => navigation.navigate('MyJoinedPosts')}
+                    >
+                        <View style={[styles.quickAccessIcon, { backgroundColor: '#E8F5E8' }]}>
+                            <Ionicons name="checkmark-circle" size={24} color="#4CAF50" />
+                        </View>
+                        <Text style={styles.quickAccessLabel}>Đã tham gia</Text>
+                        <Text style={styles.quickAccessDesc}>Xem bài đăng đã tham gia</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity 
+                        style={styles.quickAccessCard}
+                        onPress={() => navigation.navigate('MyCreatedPosts')}
+                    >
+                        <View style={[styles.quickAccessIcon, { backgroundColor: '#FFF3E0' }]}>
+                            <Ionicons name="create" size={24} color="#FF9800" />
+                        </View>
+                        <Text style={styles.quickAccessLabel}>Đã tạo</Text>
+                        <Text style={styles.quickAccessDesc}>Quản lý bài đăng của bạn</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity 
+                        style={styles.quickAccessCard}
+                        onPress={() => navigation.navigate('AllPendingRequests')}
+                    >
+                        <View style={[styles.quickAccessIcon, { backgroundColor: '#FFF8E1' }]}>
+                            <Ionicons name="time" size={24} color="#FFC107" />
+                        </View>
+                        <Text style={styles.quickAccessLabel}>Chờ duyệt</Text>
+                        <Text style={styles.quickAccessDesc}>Yêu cầu cần xử lý</Text>
+                    </TouchableOpacity>
+                </View>
+            </View>
         </View>
     );
 };
@@ -690,6 +730,60 @@ const styles = StyleSheet.create({
         fontSize: 14,
         fontWeight: '600',
         color: '#fff',
+    },
+    // Quick Access Styles
+    quickAccessSection: {
+        marginTop: 15,
+        paddingTop: 15,
+        borderTopWidth: 1,
+        borderTopColor: '#E5E5E5',
+    },
+    quickAccessTitle: {
+        fontSize: 16,
+        fontWeight: 'bold',
+        color: '#333',
+        marginBottom: 12,
+        textAlign: 'left',
+    },
+    quickAccessGrid: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        gap: 10,
+    },
+    quickAccessCard: {
+        flex: 1,
+        backgroundColor: '#fff',
+        padding: 12,
+        borderRadius: 12,
+        alignItems: 'center',
+        elevation: 2,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.1,
+        shadowRadius: 2,
+        borderWidth: 1,
+        borderColor: '#F0F0F0',
+    },
+    quickAccessIcon: {
+        width: 48,
+        height: 48,
+        borderRadius: 24,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginBottom: 8,
+    },
+    quickAccessLabel: {
+        fontSize: 13,
+        fontWeight: 'bold',
+        color: '#333',
+        marginBottom: 2,
+        textAlign: 'center',
+    },
+    quickAccessDesc: {
+        fontSize: 10,
+        color: '#666',
+        textAlign: 'center',
+        lineHeight: 12,
     },
 });
 

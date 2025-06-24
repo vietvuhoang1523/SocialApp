@@ -62,30 +62,30 @@ class SportsPostService {
             
             // Try methods in order, catching failures until one works
             try {
-                // Option 1: Try simple GET to /sports-posts
-                console.log('Attempting GET to /sports-posts');
-                response = await this.api.get('/sports-posts');
-                console.log('GET request successful');
+                // Option 1: Try GET to /sports-posts with pagination
+                console.log('Attempting GET to /sports-posts with pagination');
+                response = await this.api.get('/sports-posts', {
+                    params: { page, size }
+                });
+                console.log('GET request with pagination successful');
             } catch (error1) {
-                console.warn('GET /sports-posts failed:', error1.message);
+                console.warn('GET /sports-posts with pagination failed:', error1.message);
                 
                 try {
-                    // Option 2: Try POST to /sports-posts/search
-                    console.log('Attempting POST to /sports-posts/search');
-                    response = await this.api.post('/sports-posts/search', {
-                        page, size
-                    });
-                    console.log('POST request successful');
+                    // Option 2: Try simple GET to /sports-posts
+                    console.log('Attempting simple GET to /sports-posts');
+                    response = await this.api.get('/sports-posts');
+                    console.log('Simple GET request successful');
                 } catch (error2) {
-                    console.warn('POST /sports-posts/search failed:', error2.message);
+                    console.warn('Simple GET /sports-posts failed:', error2.message);
                     
                     try {
-                        // Option 3: Try GET to /sports-posts/all
-                        console.log('Attempting GET to /sports-posts/all');
-                        response = await this.api.get('/sports-posts/all', {
-                            params: { page, size }
+                        // Option 3: Try POST to /sports-posts/search
+                        console.log('Attempting POST to /sports-posts/search');
+                        response = await this.api.post('/sports-posts/search', {
+                            page, size
                         });
-                        console.log('Alternate GET request successful');
+                        console.log('POST request successful');
                     } catch (error3) {
                         // All attempts failed, throw the original error
                         console.error('All API attempts failed');
@@ -205,13 +205,39 @@ class SportsPostService {
         
         return posts.map((post, index) => {
             try {
+                // Log raw post data for debugging
+                console.log(`📝 Raw Sports Post ${index + 1} data:`, {
+                    id: post.id,
+                    title: post.title,
+                    imageUrl: post.imageUrl,
+                    imageUrls: post.imageUrls,
+                    images: post.images,
+                    imagePaths: post.imagePaths,
+                    postImages: post.postImages
+                });
+                
+                // Extra debug: Check if imageUrls is actually an array with items
+                if (post.imageUrls) {
+                    console.log(`🔍 Deep debug imageUrls for post ${post.id}:`, {
+                        isArray: Array.isArray(post.imageUrls),
+                        length: post.imageUrls.length,
+                        type: typeof post.imageUrls,
+                        firstItem: post.imageUrls[0],
+                        allItems: [...post.imageUrls]
+                    });
+                }
+                
                 // Log info for each post for debugging
                 console.log(`📝 Sports Post ${index + 1}:`, {
                     id: post.id,
-                    hasContent: !!post.content,
+                    title: post.title,
                     hasImageUrl: !!post.imageUrl,
                     hasImageUrls: !!post.imageUrls,
                     hasImages: !!post.images,
+                    hasImagePaths: !!post.imagePaths,
+                    hasPostImages: !!post.postImages,
+                    imageUrlsLength: post.imageUrls?.length || 0,
+                    imagesLength: post.images?.length || 0,
                     userRes: post.userRes?.fullName || 'No user info'
                 });
                 
@@ -221,20 +247,123 @@ class SportsPostService {
                     console.log(`🖼️ Created fullImageUrl for post ${post.id}: ${post.fullImageUrl}`);
                 }
                 
-                // Process multiple images if present
-                if (post.imageUrls && Array.isArray(post.imageUrls)) {
-                    post.processedImageUrls = post.imageUrls.map(imgUrl => this.createImageUrl(imgUrl));
+                // Process multiple images if present (imageUrls field)
+                console.log(`🔍 Checking imageUrls conditions for post ${post.id}:`, {
+                    hasImageUrls: !!post.imageUrls,
+                    isArray: Array.isArray(post.imageUrls),
+                    hasLength: post.imageUrls && post.imageUrls.length > 0,
+                    actualLength: post.imageUrls?.length
+                });
+                
+                if (post.imageUrls && Array.isArray(post.imageUrls) && post.imageUrls.length > 0) {
+                    console.log(`🔄 Processing ${post.imageUrls.length} imageUrls for post ${post.id}:`, post.imageUrls);
+                    post.processedImageUrls = post.imageUrls.map(imgUrl => {
+                        const processedUrl = this.createImageUrl(imgUrl);
+                        console.log(`  📸 Processing imageUrl: "${imgUrl}" -> "${processedUrl}"`);
+                        return processedUrl;
+                    }).filter(Boolean); // Remove null/undefined URLs
+                    
+                    console.log(`🔍 After processing and filtering:`, {
+                        originalLength: post.imageUrls.length,
+                        processedLength: post.processedImageUrls.length,
+                        processedUrls: post.processedImageUrls
+                    });
+                    
+                    // Also update the original imageUrls field with processed URLs
+                    post.imageUrls = post.processedImageUrls;
                     console.log(`🖼️ Created ${post.processedImageUrls.length} processedImageUrls for post ${post.id}`);
+                } else if (post.imageUrls && Array.isArray(post.imageUrls)) {
+                    console.log(`⚠️ Post ${post.id} has empty imageUrls array`);
                 }
                 
-                // Process PostImage entities if present
-                if (post.images && Array.isArray(post.images)) {
-                    post.processedImages = post.images.map(img => ({
-                        ...img,
-                        fullUrl: this.createImageUrl(img.imageUrl || img.url)
-                    }));
+                // Process PostImage entities if present (images field)
+                if (post.images && Array.isArray(post.images) && post.images.length > 0) {
+                    console.log(`🔄 Processing ${post.images.length} images for post ${post.id}:`, post.images);
+                    post.processedImages = post.images.map(img => {
+                        const imageUrl = img.imageUrl || img.url || img;
+                        const processedUrl = this.createImageUrl(imageUrl);
+                        console.log(`  📸 Processing image: "${imageUrl}" -> "${processedUrl}"`);
+                        return {
+                            ...img,
+                            fullUrl: processedUrl
+                        };
+                    }).filter(img => img.fullUrl); // Remove items with null URLs
+                    
+                    // Also update the original images field with processed URLs
+                    post.images = post.processedImages.map(img => img.fullUrl);
                     console.log(`🖼️ Created ${post.processedImages.length} processedImages for post ${post.id}`);
+                } else if (post.images && Array.isArray(post.images)) {
+                    console.log(`⚠️ Post ${post.id} has empty images array`);
                 }
+                
+                // Process imagePaths field
+                if (post.imagePaths && Array.isArray(post.imagePaths) && post.imagePaths.length > 0) {
+                    console.log(`🔄 Processing ${post.imagePaths.length} imagePaths for post ${post.id}:`, post.imagePaths);
+                    post.imagePaths = post.imagePaths.map(imgPath => {
+                        const processedUrl = this.createImageUrl(imgPath);
+                        console.log(`  📸 Processing imagePath: "${imgPath}" -> "${processedUrl}"`);
+                        return processedUrl;
+                    }).filter(Boolean);
+                    console.log(`🖼️ Processed ${post.imagePaths.length} imagePaths for post ${post.id}`);
+                } else if (post.imagePaths && Array.isArray(post.imagePaths)) {
+                    console.log(`⚠️ Post ${post.id} has empty imagePaths array`);
+                }
+                
+                // Process postImages field
+                if (post.postImages && Array.isArray(post.postImages) && post.postImages.length > 0) {
+                    console.log(`🔄 Processing ${post.postImages.length} postImages for post ${post.id}:`, post.postImages);
+                    post.postImages = post.postImages.map(imgPath => {
+                        const processedUrl = this.createImageUrl(imgPath);
+                        console.log(`  📸 Processing postImage: "${imgPath}" -> "${processedUrl}"`);
+                        return processedUrl;
+                    }).filter(Boolean);
+                    console.log(`🖼️ Processed ${post.postImages.length} postImages for post ${post.id}`);
+                } else if (post.postImages && Array.isArray(post.postImages)) {
+                    console.log(`⚠️ Post ${post.id} has empty postImages array`);
+                }
+                
+                // Ensure at least one image field is available for display
+                if ((!post.imageUrls || post.imageUrls.length === 0) && 
+                    (!post.images || post.images.length === 0) && 
+                    (!post.imagePaths || post.imagePaths.length === 0) && 
+                    (!post.postImages || post.postImages.length === 0) && 
+                    post.fullImageUrl) {
+                    console.log(`🔄 Creating imageUrls from fullImageUrl for post ${post.id}`);
+                    post.imageUrls = [post.fullImageUrl];
+                }
+                
+                // Process user profile picture URL if exists
+                if (post.creator && post.creator.profilePictureUrl) {
+                    if (!post.creator.profilePictureUrl.startsWith('http://') && 
+                        !post.creator.profilePictureUrl.startsWith('https://')) {
+                        post.creator.processedProfilePictureUrl = this.createImageUrl(post.creator.profilePictureUrl);
+                        console.log(`🖼️ Processed creator profile picture for post ${post.id}: ${post.creator.processedProfilePictureUrl}`);
+                    } else {
+                        post.creator.processedProfilePictureUrl = post.creator.profilePictureUrl;
+                    }
+                }
+                
+                // Also handle userRes for backward compatibility
+                if (post.userRes && post.userRes.profilePictureUrl) {
+                    if (!post.userRes.profilePictureUrl.startsWith('http://') && 
+                        !post.userRes.profilePictureUrl.startsWith('https://')) {
+                        post.userRes.processedProfilePictureUrl = this.createImageUrl(post.userRes.profilePictureUrl);
+                        console.log(`🖼️ Processed userRes profile picture for post ${post.id}: ${post.userRes.processedProfilePictureUrl}`);
+                    } else {
+                        post.userRes.processedProfilePictureUrl = post.userRes.profilePictureUrl;
+                    }
+                }
+
+                // Final check - log what image fields are available after processing
+                console.log(`✅ Final image fields for post ${post.id}:`, {
+                    imageUrls: post.imageUrls?.length || 0,
+                    images: post.images?.length || 0,
+                    imagePaths: post.imagePaths?.length || 0,
+                    postImages: post.postImages?.length || 0,
+                    fullImageUrl: !!post.fullImageUrl,
+                    creatorProfilePicture: !!post.creator?.processedProfilePictureUrl,
+                    userResProfilePicture: !!post.userRes?.processedProfilePictureUrl
+                });
                 
                 return post;
             } catch (error) {
@@ -246,19 +375,38 @@ class SportsPostService {
     
     // Create image URL from path
     createImageUrl(path) {
-        if (!path) return null;
+        if (!path) {
+            console.log('⚠️ createImageUrl: path is null/undefined/empty');
+            return null;
+        }
+        
+        // If already a full URL, return as is
+        if (typeof path === 'string' && (path.startsWith('http://') || path.startsWith('https://'))) {
+            console.log(`✅ createImageUrl: path is already full URL: ${path}`);
+            return path;
+        }
         
         try {
+            // Convert to string if not already
+            const pathStr = String(path);
+            
             // Remove leading slash if present
-            const cleanPath = path.replace(/^\//, '');
+            const cleanPath = pathStr.replace(/^\//, '');
+            
+            // Skip if empty after cleaning
+            if (!cleanPath) {
+                console.log('⚠️ createImageUrl: path is empty after cleaning');
+                return null;
+            }
             
             // Create complete URL based on API configuration
             const baseUrl = this.api.defaults.baseURL || BASE_URL;
             const fullUrl = `${baseUrl}/files/image?bucketName=thanh&path=${encodeURIComponent(cleanPath)}`;
             
+            console.log(`🔄 createImageUrl: "${pathStr}" -> "${fullUrl}"`);
             return fullUrl;
         } catch (error) {
-            console.error('Error creating image URL:', error);
+            console.error('❌ Error creating image URL:', error, 'for path:', path);
             return null;
         }
     }
@@ -320,9 +468,9 @@ class SportsPostService {
             
         try {
             const response = await this.api.get(`/sports-posts/${postId}/participants`);
-                console.log(`✅ Successfully retrieved ${response.data?.length || 0} participants for post ${postId}`);
-                return response.data || [];
-            } catch (error) {
+            console.log(`✅ Successfully retrieved ${response.data?.length || 0} participants for post ${postId}`);
+            return response.data || [];
+        } catch (error) {
                 // Handle 404 errors gracefully
                 if (error.response && error.response.status === 404) {
                     console.log(`⚠️ No participants found for post ID ${postId}`);
@@ -352,7 +500,7 @@ class SportsPostService {
             // Append image files if any
             if (postData.imageFiles && postData.imageFiles.length > 0) {
                 postData.imageFiles.forEach((file, index) => {
-                    formData.append('images', {
+                    formData.append('imageFiles', {
                         uri: file.uri,
                         type: file.type || 'image/jpeg',
                         name: `sport_image_${index}.jpg`
@@ -382,6 +530,122 @@ class SportsPostService {
         }
     }
     
+    // Get my sports posts
+    async getMySportsPosts(page = 0, size = 10) {
+        try {
+            console.log(`🏀 Fetching my sports posts with page=${page} and size=${size}`);
+            
+            const response = await this.api.get('/sports-posts/my-posts', {
+                params: { page, size }
+            });
+            
+            console.log('📄 Raw Response from getMySportsPosts:', JSON.stringify(response.data, null, 2));
+            
+            // Process the response similar to getSportsPosts
+            let posts = [];
+            let isLastPage = true;
+            let totalElements = 0;
+            let totalPages = 0;
+            let currentPage = page;
+            
+            if (response.data) {
+                if (response.data.content && Array.isArray(response.data.content)) {
+                    posts = response.data.content;
+                    isLastPage = response.data.last || false;
+                    totalElements = response.data.totalElements || 0;
+                    totalPages = response.data.totalPages || 0;
+                    currentPage = response.data.number || page;
+                } else if (Array.isArray(response.data)) {
+                    posts = response.data;
+                    totalElements = posts.length;
+                    totalPages = posts.length > 0 ? 1 : 0;
+                    isLastPage = true;
+                }
+            }
+            
+            const processedPosts = this.processPostsImageUrls(posts);
+            
+            return {
+                content: processedPosts,
+                totalElements: totalElements,
+                totalPages: totalPages,
+                last: isLastPage,
+                number: currentPage,
+                size: size
+            };
+            
+        } catch (error) {
+            console.error('❌ Error fetching my sports posts:', error);
+            this.handleError(error);
+            
+            return {
+                content: [],
+                totalElements: 0,
+                totalPages: 0,
+                last: true,
+                number: page,
+                size: size
+            };
+        }
+    }
+
+    // Search sports posts
+    async searchSportsPosts(searchParams = {}) {
+        try {
+            console.log('🔍 Searching sports posts with params:', searchParams);
+            
+            const response = await this.api.post('/sports-posts/search', searchParams);
+            
+            console.log('📄 Raw Response from searchSportsPosts:', JSON.stringify(response.data, null, 2));
+            
+            // Process the response similar to getSportsPosts
+            let posts = [];
+            let isLastPage = true;
+            let totalElements = 0;
+            let totalPages = 0;
+            let currentPage = searchParams.page || 0;
+            
+            if (response.data) {
+                if (response.data.content && Array.isArray(response.data.content)) {
+                    posts = response.data.content;
+                    isLastPage = response.data.last || false;
+                    totalElements = response.data.totalElements || 0;
+                    totalPages = response.data.totalPages || 0;
+                    currentPage = response.data.number || searchParams.page || 0;
+                } else if (Array.isArray(response.data)) {
+                    posts = response.data;
+                    totalElements = posts.length;
+                    totalPages = posts.length > 0 ? 1 : 0;
+                    isLastPage = true;
+                }
+            }
+            
+            const processedPosts = this.processPostsImageUrls(posts);
+            
+            return {
+                content: processedPosts,
+                totalElements: totalElements,
+                totalPages: totalPages,
+                last: isLastPage,
+                number: currentPage,
+                size: searchParams.size || 10
+            };
+            
+        } catch (error) {
+            console.error('❌ Error searching sports posts:', error);
+            this.handleError(error);
+            
+            return {
+                content: [],
+                totalElements: 0,
+                totalPages: 0,
+                last: true,
+                number: searchParams.page || 0,
+                size: searchParams.size || 10
+            };
+        }
+    }
+
     // Validate sports post data
     validateSportsPostData(data) {
         const errors = [];

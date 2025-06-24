@@ -3,6 +3,7 @@ import { View, Text, FlatList, Modal, TouchableOpacity, TextInput, Image, StyleS
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import EmptyListComponent from './EmptyListComponent';
 import { determineFriendData } from '../../utils/friendUtils';
+import { getAvatarFromUser } from '../../utils/ImageUtils';
 
 const DEFAULT_PROFILE_IMAGE = 'https://cdn.pixabay.com/photo/2015/10/05/22/37/blank-profile-picture-973460_1280.png';
 
@@ -49,15 +50,38 @@ const AllFriendsModal = ({ visible, friends, onClose, onFriendPress,currentUserI
         const friendData = determineFriendData(item, currentUserId);
         if (!friendData) return null;
 
+        // Get avatar URL using ImageUtils
+        const avatarUrl = getAvatarFromUser(friendData);
+        
+        // Debug avatar data
+        console.log('🖼️ AllFriendsModal avatar data:', {
+            friendId: friendData?.id,
+            friendName: friendData?.fullName,
+            profilePictureUrl: friendData?.profilePictureUrl,
+            avatarUrl: friendData?.avatarUrl,
+            finalAvatarUrl: avatarUrl
+        });
+
         return (
             <TouchableOpacity
                 style={styles.allFriendItem}
                 onPress={() => onFriendPress(item)}
             >
-                <Image
-                    source={{ uri: friendData.avatarUrl || DEFAULT_PROFILE_IMAGE }}
-                    style={styles.allFriendImage}
-                />
+                {avatarUrl ? (
+                    <Image
+                        source={{ uri: avatarUrl }}
+                        style={styles.allFriendImage}
+                        onError={(e) => {
+                            console.log('❌ Failed to load friend avatar in AllFriendsModal:', friendData?.fullName, e.nativeEvent.error);
+                        }}
+                    />
+                ) : (
+                    <View style={[styles.allFriendImage, styles.avatarPlaceholder]}>
+                        <Text style={styles.avatarText}>
+                            {(friendData?.fullName || 'U').charAt(0).toUpperCase()}
+                        </Text>
+                    </View>
+                )}
                 <View style={styles.allFriendInfo}>
                     <Text style={styles.allFriendName}>
                         {friendData.fullName || "Người dùng"}
@@ -184,6 +208,16 @@ const styles = StyleSheet.create({
         width: 60,
         height: 60,
         borderRadius: 30,
+    },
+    avatarPlaceholder: {
+        backgroundColor: '#f0f2f5',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    avatarText: {
+        fontSize: 20,
+        fontWeight: 'bold',
+        color: '#666',
     },
     allFriendInfo: {
         marginLeft: 15,

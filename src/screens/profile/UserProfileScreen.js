@@ -10,29 +10,38 @@ import {
     Alert,
     ActivityIndicator,
     SafeAreaView,
-    StatusBar
+    StatusBar,
+    RefreshControl
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Ionicons from 'react-native-vector-icons/Ionicons';
+import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Services
 import UserProfileService from '../../services/UserProfileService';
 import FriendService from '../../services/FriendService';
+import { useTheme } from '../../hook/ThemeContext';
 
 const { width } = Dimensions.get('window');
-const DEFAULT_PROFILE_IMAGE = 'https://cdn.pixabay.com/photo/2015/10/05/22/37/blank-profile-picture-973460_1280.png';
+const DEFAULT_PROFILE_IMAGE = 'https://ui-avatars.com/api/?background=E91E63&color=fff&size=200';
+const DEFAULT_COVER_IMAGE = require('../../assets/h1.png');
 
 const UserProfileScreen = ({ navigation, route }) => {
+    const { colors } = useTheme();
+    
     // Get userId from navigation params
-    const { userId } = route.params;
+    const { userId } = route.params || {};
     
     // State
     const [userProfile, setUserProfile] = useState(null);
     const [currentUser, setCurrentUser] = useState(null);
     const [friendshipStatus, setFriendshipStatus] = useState('NOT_FRIEND');
     const [loading, setLoading] = useState(true);
+    const [refreshing, setRefreshing] = useState(false);
     const [actionLoading, setActionLoading] = useState(false);
+
+    console.log('🔍 UserProfileScreen initialized with userId:', userId);
 
     // Load current user
     useEffect(() => {
@@ -42,9 +51,13 @@ const UserProfileScreen = ({ navigation, route }) => {
                 const userProfileData = await AsyncStorage.getItem('userProfile');
                 
                 if (userData) {
-                    setCurrentUser(JSON.parse(userData));
+                    const parsedUser = JSON.parse(userData);
+                    setCurrentUser(parsedUser);
+                    console.log('👤 Current user loaded:', { id: parsedUser.id, name: parsedUser.fullName });
                 } else if (userProfileData) {
-                    setCurrentUser(JSON.parse(userProfileData));
+                    const parsedProfile = JSON.parse(userProfileData);
+                    setCurrentUser(parsedProfile);
+                    console.log('👤 Current user from profile:', { id: parsedProfile.id, name: parsedProfile.fullName });
                 }
             } catch (error) {
                 console.error('Error loading current user:', error);
@@ -57,44 +70,88 @@ const UserProfileScreen = ({ navigation, route }) => {
     // Load user profile and friendship status
     useEffect(() => {
         if (userId && currentUser) {
-            loadUserProfile();
-            loadFriendshipStatus();
+            loadData();
         }
     }, [userId, currentUser]);
+
+    // Load all data
+    const loadData = useCallback(async () => {
+        if (!userId) {
+            console.error('❌ No userId provided');
+            setLoading(false);
+            return;
+        }
+
+        try {
+            setLoading(true);
+            console.log(`🚀 Loading data for userId: ${userId}`);
+            
+            // Load user profile and friendship status in parallel
+            const [profileResult, friendshipResult] = await Promise.allSettled([
+                loadUserProfile(),
+                loadFriendshipStatus()
+            ]);
+
+            if (profileResult.status === 'rejected') {
+                console.error('Failed to load user profile:', profileResult.reason);
+            }
+            
+            if (friendshipResult.status === 'rejected') {
+                console.error('Failed to load friendship status:', friendshipResult.reason);
+            }
+        } catch (error) {
+            console.error('Error in loadData:', error);
+        } finally {
+            setLoading(false);
+        }
+    }, [userId]);
 
     // Load user profile
     const loadUserProfile = async () => {
         try {
-            setLoading(true);
+            console.log(`📡 Fetching profile for userId: ${userId}`);
             const profile = await UserProfileService.getUserProfile(userId);
+            console.log('✅ User profile loaded:', profile);
             setUserProfile(profile);
+            return profile;
         } catch (error) {
-            console.error('Error loading user profile:', error);
-            Alert.alert('Lỗi', 'Không thể tải thông tin người dùng');
-        } finally {
-            setLoading(false);
+            console.error('❌ Error loading user profile:', error);
+            throw error;
         }
     };
 
     // Load friendship status
     const loadFriendshipStatus = async () => {
         try {
+            console.log(`🤝 Checking friendship status with userId: ${userId}`);
             const status = await FriendService.checkFriendStatus(userId);
+            console.log('✅ Friendship status:', status);
             setFriendshipStatus(status);
+            return status;
         } catch (error) {
-            console.error('Error loading friendship status:', error);
+            console.error('❌ Error loading friendship status:', error);
+            setFriendshipStatus('NOT_FRIEND'); // Default fallback
+            throw error;
         }
     };
+
+    // Handle refresh
+    const handleRefresh = useCallback(async () => {
+        setRefreshing(true);
+        await loadData();
+        setRefreshing(false);
+    }, [loadData]);
 
     // Send friend request
     const sendFriendRequest = async () => {
         try {
             setActionLoading(true);
+            console.log(`📤 Sending friend request to userId: ${userId}`);
             await FriendService.sendFriendRequestById(userId);
             setFriendshipStatus('PENDING_SENT');
             Alert.alert('Thành công', 'Đã gửi lời mời kết bạn');
         } catch (error) {
-            console.error('Error sending friend request:', error);
+            console.error('❌ Error sending friend request:', error);
             Alert.alert('Lỗi', 'Không thể gửi lời mời kết bạn');
         } finally {
             setActionLoading(false);
@@ -113,6 +170,7 @@ const UserProfileScreen = ({ navigation, route }) => {
             email: userProfile.email
         };
 
+        console.log('💬 Starting conversation with:', chatUser);
         navigation.navigate('NewChatScreen', {
             user: chatUser,
             currentUser: currentUser
@@ -120,41 +178,63 @@ const UserProfileScreen = ({ navigation, route }) => {
     };
 
     // Get profile image URL
-    const profileImageUrl = userProfile?.profilePictureUrl || DEFAULT_PROFILE_IMAGE;
+    const getProfileImageUrl = () => {
+        if (userProfile?.profilePictureUrl) {
+            return { uri: userProfile.profilePictureUrl };
+        }
+        return { uri: `${DEFAULT_PROFILE_IMAGE}&name=${encodeURIComponent(getFullName())}` };
+    };
     
     // Get cover image URL
-    const coverImageUrl = userProfile?.coverImageUrl || require('../../assets/h1.png');
+    const getCoverImageUrl = () => {
+        if (userProfile?.coverImageUrl) {
+            return { uri: userProfile.coverImageUrl };
+        }
+        return DEFAULT_COVER_IMAGE;
+    };
 
     // Get full name
-    const fullName = userProfile?.fullName || 
-                    `${userProfile?.firstname || ''} ${userProfile?.lastname || ''}`.trim() || 
-                    'Người dùng';
+    const getFullName = () => {
+        return userProfile?.fullName || 
+               `${userProfile?.firstname || ''} ${userProfile?.lastname || ''}`.trim() || 
+               'Người dùng';
+    };
+
+    // Get user info text
+    const getUserInfo = () => {
+        const info = [];
+        if (userProfile?.email) info.push(userProfile.email);
+        if (userProfile?.occupation) info.push(userProfile.occupation);
+        if (userProfile?.education) info.push(userProfile.education);
+        if (userProfile?.address) info.push(userProfile.address);
+        return info;
+    };
 
     // Get friendship button
     const renderFriendshipButton = () => {
         if (actionLoading) {
             return (
-                <View style={styles.actionButton}>
+                <TouchableOpacity style={[styles.actionButton, { backgroundColor: colors.primary }]} disabled>
                     <ActivityIndicator size="small" color="#fff" />
                     <Text style={styles.actionButtonText}>Đang xử lý...</Text>
-                </View>
+                </TouchableOpacity>
             );
         }
 
         switch (friendshipStatus) {
             case 'ACCEPTED':
                 return (
-                    <View style={[styles.actionButton, styles.friendButton]}>
+                    <TouchableOpacity style={[styles.actionButton, styles.friendButton]}>
                         <Ionicons name="checkmark-circle" size={20} color="#4CAF50" />
                         <Text style={[styles.actionButtonText, { color: '#4CAF50' }]}>Bạn bè</Text>
-                    </View>
+                    </TouchableOpacity>
                 );
             case 'PENDING_SENT':
                 return (
-                    <View style={[styles.actionButton, styles.pendingButton]}>
+                    <TouchableOpacity style={[styles.actionButton, styles.pendingButton]}>
                         <Ionicons name="time" size={20} color="#FF9800" />
-                        <Text style={[styles.actionButtonText, { color: '#FF9800' }]}>Đã gửi</Text>
-                    </View>
+                        <Text style={[styles.actionButtonText, { color: '#FF9800' }]}>Đã gửi yêu cầu</Text>
+                    </TouchableOpacity>
                 );
             case 'PENDING_RECEIVED':
                 return (
@@ -166,7 +246,7 @@ const UserProfileScreen = ({ navigation, route }) => {
             default:
                 return (
                     <TouchableOpacity 
-                        style={styles.actionButton}
+                        style={[styles.actionButton, { backgroundColor: colors.primary }]}
                         onPress={sendFriendRequest}
                     >
                         <Ionicons name="person-add" size={20} color="#fff" />
@@ -176,23 +256,28 @@ const UserProfileScreen = ({ navigation, route }) => {
         }
     };
 
+    // Loading screen
     if (loading) {
         return (
-            <View style={styles.loadingContainer}>
-                <ActivityIndicator size="large" color="#007AFF" />
-                <Text style={styles.loadingText}>Đang tải thông tin...</Text>
+            <View style={[styles.loadingContainer, { backgroundColor: colors.background }]}>
+                <ActivityIndicator size="large" color={colors.primary} />
+                <Text style={[styles.loadingText, { color: colors.text }]}>Đang tải thông tin...</Text>
             </View>
         );
     }
 
-    if (!userProfile) {
+    // Error screen
+    if (!userProfile && !loading) {
         return (
-            <View style={styles.errorContainer}>
-                <Ionicons name="person-outline" size={64} color="#ccc" />
-                <Text style={styles.errorTitle}>Không tìm thấy người dùng</Text>
+            <View style={[styles.errorContainer, { backgroundColor: colors.background }]}>
+                <Ionicons name="person-outline" size={64} color={colors.textLight} />
+                <Text style={[styles.errorTitle, { color: colors.text }]}>Không tìm thấy người dùng</Text>
+                <Text style={[styles.errorSubtitle, { color: colors.textLight }]}>
+                    Người dùng có thể đã xóa tài khoản hoặc thay đổi quyền riêng tư
+                </Text>
                 <TouchableOpacity 
-                    style={styles.retryButton}
-                    onPress={loadUserProfile}
+                    style={[styles.retryButton, { backgroundColor: colors.primary }]}
+                    onPress={loadData}
                 >
                     <Text style={styles.retryButtonText}>Thử lại</Text>
                 </TouchableOpacity>
@@ -201,11 +286,11 @@ const UserProfileScreen = ({ navigation, route }) => {
     }
 
     return (
-        <SafeAreaView style={styles.container}>
-            <StatusBar barStyle="light-content" backgroundColor="#007AFF" />
+        <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+            <StatusBar barStyle="light-content" backgroundColor={colors.primary} />
             
             {/* Header */}
-            <LinearGradient colors={['#007AFF', '#0056D3']} style={styles.header}>
+            <LinearGradient colors={[colors.primary, colors.primary + 'DD']} style={styles.header}>
                 <View style={styles.headerContent}>
                     <TouchableOpacity 
                         style={styles.backButton}
@@ -222,82 +307,128 @@ const UserProfileScreen = ({ navigation, route }) => {
                 </View>
             </LinearGradient>
 
-            <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+            <ScrollView 
+                style={styles.content} 
+                showsVerticalScrollIndicator={false}
+                refreshControl={
+                    <RefreshControl 
+                        refreshing={refreshing} 
+                        onRefresh={handleRefresh}
+                        tintColor={colors.primary}
+                    />
+                }
+            >
                 {/* Cover & Profile Image */}
                 <View style={styles.profileSection}>
                     <Image
-                        source={typeof coverImageUrl === 'string' ? { uri: coverImageUrl } : coverImageUrl}
+                        source={getCoverImageUrl()}
                         style={styles.coverImage}
                         resizeMode="cover"
                     />
                     
                     <View style={styles.profileImageContainer}>
                         <Image
-                            source={{ uri: profileImageUrl }}
+                            source={getProfileImageUrl()}
                             style={styles.profileImage}
-                            defaultSource={{ uri: DEFAULT_PROFILE_IMAGE }}
+                            resizeMode="cover"
                         />
                     </View>
                 </View>
 
                 {/* User Info */}
-                <View style={styles.userInfoContainer}>
-                    <Text style={styles.userName}>{fullName}</Text>
-                    {userProfile.email && (
-                        <Text style={styles.userEmail}>{userProfile.email}</Text>
-                    )}
-                    {userProfile.bio && (
-                        <Text style={styles.userBio}>{userProfile.bio}</Text>
-                    )}
+                <View style={[styles.userInfoContainer, { backgroundColor: colors.cardBackground }]}>
+                    <Text style={[styles.userName, { color: colors.text }]}>{getFullName()}</Text>
                     
-                    {/* User Details */}
-                    <View style={styles.detailsContainer}>
-                        {userProfile.occupation && (
-                            <View style={styles.detailItem}>
-                                <Ionicons name="briefcase-outline" size={16} color="#666" />
-                                <Text style={styles.detailText}>{userProfile.occupation}</Text>
-                            </View>
-                        )}
-                        {userProfile.address && (
-                            <View style={styles.detailItem}>
-                                <Ionicons name="location-outline" size={16} color="#666" />
-                                <Text style={styles.detailText}>{userProfile.address}</Text>
-                            </View>
-                        )}
-                        {userProfile.education && (
-                            <View style={styles.detailItem}>
-                                <Ionicons name="school-outline" size={16} color="#666" />
-                                <Text style={styles.detailText}>{userProfile.education}</Text>
-                            </View>
-                        )}
-                    </View>
+                    {getUserInfo().map((info, index) => (
+                        <Text key={index} style={[styles.userDetail, { color: colors.textLight }]}>
+                            {info}
+                        </Text>
+                    ))}
+                    
+                    {userProfile?.bio && (
+                        <Text style={[styles.userBio, { color: colors.text }]}>{userProfile.bio}</Text>
+                    )}
 
                     {/* Action Buttons */}
-                    <View style={styles.actionButtonsContainer}>
+                    <View style={styles.actionsContainer}>
                         {renderFriendshipButton()}
                         
                         <TouchableOpacity 
-                            style={[styles.actionButton, styles.messageButton]}
+                            style={[styles.actionButton, styles.messageButton, { backgroundColor: colors.secondary }]}
                             onPress={startConversation}
                         >
-                            <Ionicons name="chatbubble-outline" size={20} color="#007AFF" />
-                            <Text style={[styles.actionButtonText, { color: '#007AFF' }]}>Nhắn tin</Text>
+                            <Ionicons name="chatbubble" size={20} color="#fff" />
+                            <Text style={styles.actionButtonText}>Nhắn tin</Text>
                         </TouchableOpacity>
                     </View>
                 </View>
 
-                {/* Posts/Photos Section */}
-                {userProfile.postImages && userProfile.postImages.length > 0 && (
-                    <View style={styles.postsSection}>
-                        <Text style={styles.sectionTitle}>Bài viết</Text>
-                        <View style={styles.postsGrid}>
-                            {userProfile.postImages.slice(0, 6).map((image, index) => (
-                                <Image
-                                    key={index}
-                                    source={{ uri: image }}
-                                    style={styles.postImage}
-                                />
-                            ))}
+                {/* User Details */}
+                <View style={[styles.detailsSection, { backgroundColor: colors.cardBackground }]}>
+                    <Text style={[styles.sectionTitle, { color: colors.text }]}>Thông tin chi tiết</Text>
+                    
+                    <View style={styles.detailsContainer}>
+                        {userProfile?.occupation && (
+                            <View style={styles.detailItem}>
+                                <MaterialIcons name="work" size={20} color={colors.primary} />
+                                <Text style={[styles.detailText, { color: colors.text }]}>
+                                    {userProfile.occupation}
+                                </Text>
+                            </View>
+                        )}
+                        
+                        {userProfile?.education && (
+                            <View style={styles.detailItem}>
+                                <Ionicons name="school" size={20} color={colors.primary} />
+                                <Text style={[styles.detailText, { color: colors.text }]}>
+                                    {userProfile.education}
+                                </Text>
+                            </View>
+                        )}
+                        
+                        {userProfile?.address && (
+                            <View style={styles.detailItem}>
+                                <Ionicons name="location" size={20} color={colors.primary} />
+                                <Text style={[styles.detailText, { color: colors.text }]}>
+                                    {userProfile.address}
+                                </Text>
+                            </View>
+                        )}
+                        
+                        {userProfile?.email && (
+                            <View style={styles.detailItem}>
+                                <Ionicons name="mail" size={20} color={colors.primary} />
+                                <Text style={[styles.detailText, { color: colors.text }]}>
+                                    {userProfile.email}
+                                </Text>
+                            </View>
+                        )}
+                    </View>
+                </View>
+
+                {/* Sports Profile Section - nếu có */}
+                {userProfile?.sportsProfile && (
+                    <View style={[styles.detailsSection, { backgroundColor: colors.cardBackground }]}>
+                        <Text style={[styles.sectionTitle, { color: colors.text }]}>Thông tin thể thao</Text>
+                        
+                        <View style={styles.detailsContainer}>
+                            {userProfile.sportsProfile.favoriteeSports && (
+                                <View style={styles.detailItem}>
+                                    <Ionicons name="basketball" size={20} color={colors.primary} />
+                                    <Text style={[styles.detailText, { color: colors.text }]}>
+                                        Môn thể thao yêu thích: {userProfile.sportsProfile.favoriteeSports}
+                                    </Text>
+                                </View>
+                            )}
+                            
+                            {userProfile.sportsProfile.skillLevel && (
+                                <View style={styles.detailItem}>
+                                    <Ionicons name="trophy" size={20} color={colors.primary} />
+                                    <Text style={[styles.detailText, { color: colors.text }]}>
+                                        Trình độ: {userProfile.sportsProfile.skillLevel}
+                                    </Text>
+                                </View>
+                            )}
                         </View>
                     </View>
                 )}
@@ -309,7 +440,41 @@ const UserProfileScreen = ({ navigation, route }) => {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#f8f9fa',
+    },
+    loadingContainer: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    loadingText: {
+        marginTop: 16,
+        fontSize: 16,
+    },
+    errorContainer: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: 20,
+    },
+    errorTitle: {
+        fontSize: 20,
+        fontWeight: 'bold',
+        marginTop: 16,
+        marginBottom: 8,
+    },
+    errorSubtitle: {
+        fontSize: 16,
+        textAlign: 'center',
+        marginBottom: 24,
+    },
+    retryButton: {
+        paddingHorizontal: 24,
+        paddingVertical: 12,
+        borderRadius: 25,
+    },
+    retryButtonText: {
+        color: '#fff',
+        fontWeight: 'bold',
     },
     header: {
         paddingTop: 10,
@@ -339,13 +504,11 @@ const styles = StyleSheet.create({
     },
     profileSection: {
         position: 'relative',
-        backgroundColor: '#fff',
         marginBottom: 10,
     },
     coverImage: {
         width: '100%',
         height: 200,
-        backgroundColor: '#007AFF',
     },
     profileImageContainer: {
         position: 'absolute',
@@ -354,6 +517,11 @@ const styles = StyleSheet.create({
         padding: 4,
         backgroundColor: '#fff',
         borderRadius: 64,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.25,
+        shadowRadius: 3.84,
+        elevation: 5,
     },
     profileImage: {
         width: 120,
@@ -361,136 +529,88 @@ const styles = StyleSheet.create({
         borderRadius: 60,
     },
     userInfoContainer: {
-        backgroundColor: '#fff',
         paddingTop: 70,
         paddingHorizontal: 20,
         paddingBottom: 20,
         alignItems: 'center',
+        marginBottom: 10,
     },
     userName: {
         fontSize: 24,
         fontWeight: 'bold',
-        color: '#333',
-        marginBottom: 5,
+        marginBottom: 8,
         textAlign: 'center',
     },
-    userEmail: {
+    userDetail: {
         fontSize: 16,
-        color: '#666',
-        marginBottom: 10,
+        marginBottom: 4,
+        textAlign: 'center',
     },
     userBio: {
         fontSize: 16,
-        color: '#333',
         textAlign: 'center',
         lineHeight: 22,
-        marginBottom: 15,
-    },
-    detailsContainer: {
-        width: '100%',
+        marginTop: 10,
         marginBottom: 20,
+        paddingHorizontal: 10,
     },
-    detailItem: {
+    actionsContainer: {
         flexDirection: 'row',
-        alignItems: 'center',
-        marginBottom: 8,
-        justifyContent: 'center',
-    },
-    detailText: {
-        marginLeft: 8,
-        fontSize: 14,
-        color: '#666',
-    },
-    actionButtonsContainer: {
-        flexDirection: 'row',
-        width: '100%',
-        gap: 10,
+        marginTop: 20,
+        gap: 12,
     },
     actionButton: {
-        flex: 1,
         flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: '#007AFF',
+        paddingHorizontal: 20,
         paddingVertical: 12,
         borderRadius: 25,
-        gap: 5,
+        flex: 1,
+        justifyContent: 'center',
+        gap: 8,
     },
     actionButtonText: {
         color: '#fff',
+        fontWeight: 'bold',
         fontSize: 16,
-        fontWeight: '600',
     },
     friendButton: {
         backgroundColor: '#E8F5E8',
+        borderWidth: 1,
+        borderColor: '#4CAF50',
     },
     pendingButton: {
         backgroundColor: '#FFF3E0',
+        borderWidth: 1,
+        borderColor: '#FF9800',
     },
     acceptButton: {
         backgroundColor: '#4CAF50',
     },
     messageButton: {
-        backgroundColor: '#E7F3FF',
-        borderWidth: 1,
-        borderColor: '#007AFF',
+        backgroundColor: '#2196F3',
     },
-    postsSection: {
-        backgroundColor: '#fff',
-        padding: 15,
-        marginTop: 10,
+    detailsSection: {
+        marginBottom: 10,
+        paddingHorizontal: 20,
+        paddingVertical: 16,
     },
     sectionTitle: {
         fontSize: 18,
         fontWeight: 'bold',
-        color: '#333',
-        marginBottom: 15,
+        marginBottom: 16,
     },
-    postsGrid: {
+    detailsContainer: {
+        gap: 12,
+    },
+    detailItem: {
         flexDirection: 'row',
-        flexWrap: 'wrap',
-        gap: 4,
-    },
-    postImage: {
-        width: (width - 38) / 3,
-        height: (width - 38) / 3,
-        borderRadius: 4,
-    },
-    loadingContainer: {
-        flex: 1,
-        justifyContent: 'center',
         alignItems: 'center',
-        backgroundColor: '#f8f9fa',
+        gap: 12,
     },
-    loadingText: {
-        marginTop: 10,
+    detailText: {
         fontSize: 16,
-        color: '#666',
-    },
-    errorContainer: {
         flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
-        backgroundColor: '#f8f9fa',
-        paddingHorizontal: 40,
-    },
-    errorTitle: {
-        fontSize: 18,
-        fontWeight: '600',
-        color: '#666',
-        marginTop: 15,
-        marginBottom: 20,
-    },
-    retryButton: {
-        backgroundColor: '#007AFF',
-        paddingHorizontal: 20,
-        paddingVertical: 12,
-        borderRadius: 25,
-    },
-    retryButtonText: {
-        color: '#fff',
-        fontSize: 16,
-        fontWeight: '600',
     },
 });
 

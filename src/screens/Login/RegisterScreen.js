@@ -72,8 +72,15 @@ const RegisterScreen = ({ navigation }) => {
         try {
             console.log('Đang đăng ký với thông tin:', { fullName, email, password });
 
+            // Tạo object userData đúng format cho API
+            const userData = {
+                fullName,
+                email,
+                password
+            };
+
             // Improved error handling for registration
-            const result = await AuthService.register(fullName, email, password);
+            const result = await AuthService.register(userData);
             console.log('Kết quả đăng ký:', result);
 
             setDebugInfo('Đăng ký thành công, hiển thị dialog xác thực...');

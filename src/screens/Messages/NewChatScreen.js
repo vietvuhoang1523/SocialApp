@@ -1,6 +1,4 @@
-// NewChatScreen.js - Enhanced messaging interface
-// ⚡ UI IMPROVEMENT: Removed "Tải thêm tin nhắn" button for cleaner interface
-// Load more functionality still works automatically via onEndReached when scrolling to top
+
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
@@ -43,6 +41,60 @@ const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
 const NewChatScreen = ({ route, navigation }) => {
     const { user, currentUser, conversationId } = route.params;
+
+    // ✅ CRITICAL FIX: Add validation for required params
+    useEffect(() => {
+        console.log('🔍 NewChatScreen params:', { user, currentUser, conversationId });
+        console.log('🔍 User avatar data:', {
+            profilePictureUrl: user?.profilePictureUrl,
+            avatarUrl: user?.avatarUrl,
+            avatar: user?.avatar,
+            allUserFields: Object.keys(user || {})
+        });
+        
+        if (!currentUser) {
+            console.error('❌ CRITICAL: currentUser is undefined in NewChatScreen');
+            Alert.alert(
+                'Lỗi',
+                'Không thể tải thông tin người dùng. Vui lòng thử lại.',
+                [
+                    {
+                        text: 'OK',
+                        onPress: () => navigation.goBack()
+                    }
+                ]
+            );
+            return;
+        }
+        
+        if (!user) {
+            console.error('❌ CRITICAL: user is undefined in NewChatScreen');
+            Alert.alert(
+                'Lỗi',
+                'Không thể tải thông tin cuộc trò chuyện. Vui lòng thử lại.',
+                [
+                    {
+                        text: 'OK',
+                        onPress: () => navigation.goBack()
+                    }
+                ]
+            );
+            return;
+        }
+    }, [currentUser, user, navigation]);
+
+    // ✅ Early return if required params are missing
+    if (!currentUser || !user) {
+        return (
+            <SafeAreaView style={styles.container}>
+                <StatusBar barStyle="dark-content" />
+                <View style={styles.errorContainer}>
+                    <ActivityIndicator size="large" color="#0084ff" />
+                    <Text style={styles.errorText}>Đang tải...</Text>
+                </View>
+            </SafeAreaView>
+        );
+    }
 
     // 📱 State
     const [messageText, setMessageText] = useState('');
@@ -341,6 +393,18 @@ const styles = StyleSheet.create({
         color: '#65676b',
         fontStyle: 'italic',
         fontSize: 12,
+    },
+    errorContainer: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: '#fff',
+    },
+    errorText: {
+        marginTop: 16,
+        fontSize: 16,
+        color: '#65676b',
+        textAlign: 'center',
     },
 });
 

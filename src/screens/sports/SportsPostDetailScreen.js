@@ -15,11 +15,11 @@ import { Ionicons, MaterialCommunityIcons, FontAwesome5 } from '@expo/vector-ico
 import { useTheme } from '../../hook/ThemeContext';
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
-import { getSportsPostById } from '../../services/sportsService';
-import { getParticipants, joinSportsPost, leaveSportsPost, getUserParticipationStatus } from '../../services/sportsService';
-import ParticipantItem from '../../components/sports/ParticipantItem';
+import SportsPostParticipantService from '../../services/SportsPostParticipantService';
 import JoinRequestModal from '../../components/sports/JoinRequestModal';
 import { SportTypeIcons } from '../../constants/SportConstants';
+import { createAvatarUrl, getAvatarFromUser } from '../../utils/ImageUtils';
+import sportsService from '../../services/sportsService';
 
 const SportsPostDetailScreen = ({ route, navigation }) => {
   const { postId } = route.params;
@@ -37,14 +37,31 @@ const SportsPostDetailScreen = ({ route, navigation }) => {
   const fetchPostDetails = useCallback(async () => {
     try {
       setLoading(true);
-      const postData = await getSportsPostById(postId);
+      const postData = await sportsService.getSportsPostById(postId);
+      console.log('📊 Post data received:', {
+        hasCreator: !!postData.creator,
+        hasUser: !!postData.user,
+        creatorName: postData.creator?.fullName,
+        creatorProfilePicture: postData.creator?.profilePictureUrl,
+        userName: postData.user?.fullName,
+        userAvatar: postData.user?.avatar,
+        title: postData.title,
+        description: postData.description,
+        eventTime: postData.eventTime,
+        location: postData.location,
+        maxParticipants: postData.maxParticipants,
+        currentParticipants: postData.currentParticipants,
+        skillLevel: postData.skillLevel,
+        sportType: postData.sportType
+      });
       setPost(postData);
       
       // Check user participation status
-      const status = await getUserParticipationStatus(postId);
+      const status = await SportsPostParticipantService.getUserParticipationStatus(postId);
       setParticipationStatus(status);
       
       // Load participants
+      console.log(`📋 About to fetch participants for post ${postId}`);
       fetchParticipants();
     } catch (error) {
       Alert.alert('Lỗi', 'Không thể tải thông tin bài đăng');
@@ -56,11 +73,87 @@ const SportsPostDetailScreen = ({ route, navigation }) => {
   // Fetch participants
   const fetchParticipants = useCallback(async () => {
     try {
+      console.log(`🚀 STARTING fetchParticipants for postId: ${postId}`);
       setParticipantsLoading(true);
-      const response = await getParticipants(postId);
-      setParticipants(response.content || []);
+      const response = await sportsService.getParticipants(postId);
+      
+      let participantsList = [];
+      
+      // Handle different response formats
+      if (Array.isArray(response)) {
+        participantsList = response;
+      } else if (response && response.content && Array.isArray(response.content)) {
+        participantsList = response.content;
+      } else if (response && Array.isArray(response.data)) {
+        participantsList = response.data;
+      }
+      
+      console.log('👥 Participants data received:', {
+        responseType: typeof response,
+        isArray: Array.isArray(response),
+        hasContent: !!(response && response.content),
+        count: participantsList.length,
+        rawResponse: response,
+        sampleParticipant: participantsList[0] ? {
+          id: participantsList[0].id,
+          userId: participantsList[0].userId,
+          status: participantsList[0].status,
+          participantStatus: participantsList[0].participantStatus,
+          requestStatus: participantsList[0].requestStatus,
+          hasUser: !!participantsList[0].user,
+          hasFullName: !!participantsList[0].fullName,
+          userName: participantsList[0].user?.fullName,
+          userProfilePicture: participantsList[0].user?.profilePictureUrl,
+          directFullName: participantsList[0].fullName,
+          directProfilePicture: participantsList[0].profilePictureUrl,
+          allFields: Object.keys(participantsList[0]),
+          rawParticipant: participantsList[0]
+        } : null,
+        allParticipantsData: participantsList
+      });
+      
+      // Debug individual participant data with detailed user info
+      participantsList.forEach((participant, index) => {
+        console.log(`🔍 Participant ${index + 1} DETAILED:`, {
+          id: participant.id,
+          userId: participant.userId,
+          status: participant.status,
+          isCreator: participant.isCreator,
+          joinedAt: participant.joinedAt,
+          
+          // User object details
+          hasUser: !!participant.user,
+          userDetails: participant.user ? {
+            id: participant.user.id,
+            fullName: participant.user.fullName,
+            name: participant.user.name,
+            email: participant.user.email,
+            profilePictureUrl: participant.user.profilePictureUrl,
+            avatarUrl: participant.user.avatarUrl,
+            avatar: participant.user.avatar,
+            allUserFields: Object.keys(participant.user)
+          } : null,
+          
+          // Direct fields
+          directFullName: participant.fullName,
+          directName: participant.name,
+          directProfilePictureUrl: participant.profilePictureUrl,
+          
+          // All participant fields
+          allParticipantFields: Object.keys(participant)
+        });
+        
+        // Separate log just for user object
+        if (participant.user) {
+          console.log(`👤 User object for participant ${index + 1}:`, participant.user);
+        }
+      });
+      
+      setParticipants(participantsList);
     } catch (error) {
       console.error('Error fetching participants:', error);
+      // Set empty array on error to prevent crashes
+      setParticipants([]);
     } finally {
       setParticipantsLoading(false);
     }
@@ -103,7 +196,7 @@ const SportsPostDetailScreen = ({ route, navigation }) => {
   const handleJoinSubmit = async (message) => {
     try {
       setShowJoinModal(false);
-      const response = await joinSportsPost(postId, message);
+      const response = await SportsPostParticipantService.joinSportsPost(postId, message);
       setParticipationStatus('PENDING');
       Alert.alert(
         'Thành công',
@@ -131,7 +224,7 @@ const SportsPostDetailScreen = ({ route, navigation }) => {
           style: 'destructive',
           onPress: async () => {
             try {
-              await leaveSportsPost(postId);
+              await sportsService.leaveSportsPost(postId);
               setParticipationStatus(null);
               fetchParticipants(); // Refresh participants list
               Alert.alert('Thành công', 'Đã hủy tham gia hoạt động');
@@ -147,6 +240,12 @@ const SportsPostDetailScreen = ({ route, navigation }) => {
   // Load data on mount
   useEffect(() => {
     fetchPostDetails();
+    
+    // Run debug test
+    if (postId) {
+      console.log(`🧪 Running debug test for postId: ${postId}`);
+      // testParticipantsAPI(); // Uncomment to run debug test
+    }
   }, [fetchPostDetails]);
   
   if (loading) {
@@ -171,11 +270,15 @@ const SportsPostDetailScreen = ({ route, navigation }) => {
     );
   }
   
-  // Format dates
-  const startTime = new Date(post.availableFrom);
-  const endTime = new Date(post.availableUntil);
+  // Format dates - handle different field names from backend
+  const eventTime = post.eventTime || post.availableFrom || post.startTime;
+  const endTime = post.availableUntil || post.endTime || (eventTime ? new Date(new Date(eventTime).getTime() + (post.durationHours || 2) * 60 * 60 * 1000) : new Date());
+  
+  const startTime = eventTime ? new Date(eventTime) : new Date();
   const formattedDate = format(startTime, 'EEEE, dd/MM/yyyy', { locale: vi });
-  const formattedTime = `${format(startTime, 'HH:mm')} - ${format(endTime, 'HH:mm')}`;
+  const formattedTime = post.durationHours 
+    ? `${format(startTime, 'HH:mm')} - ${format(new Date(endTime), 'HH:mm')}` 
+    : format(startTime, 'HH:mm');
   
   // Get sport icon
   const sportIcon = SportTypeIcons[post.sportType] || 'football';
@@ -184,7 +287,7 @@ const SportsPostDetailScreen = ({ route, navigation }) => {
   const isCreator = post.isCreator || false;
   
   // Check if post is ended
-  const isEnded = new Date() > endTime;
+  const isEnded = new Date() > new Date(endTime);
   
   // Get join button status
   const getJoinButtonText = () => {
@@ -211,6 +314,51 @@ const SportsPostDetailScreen = ({ route, navigation }) => {
   
   // Check if user can leave
   const canLeave = !isCreator && (participationStatus === 'ACCEPTED' || participationStatus === 'PENDING');
+
+  // Get accepted participants with better filtering logic
+  const getAcceptedParticipants = () => {
+    console.log('🔍 getAcceptedParticipants - Raw participants data:', participants);
+    
+    if (!participants || participants.length === 0) {
+      console.log('❌ No participants data available');
+      return [];
+    }
+    
+    // Log sample participant structure for debugging
+    console.log('📋 Sample participant structure:', {
+      sampleParticipant: participants[0],
+      hasStatus: participants[0]?.status !== undefined,
+      statusValue: participants[0]?.status,
+      hasParticipantStatus: participants[0]?.participantStatus !== undefined,
+      participantStatusValue: participants[0]?.participantStatus,
+      hasUser: !!participants[0]?.user,
+      hasFullName: !!participants[0]?.fullName,
+      participantCount: participants.length
+    });
+    
+    // Filter accepted participants based on different possible status fields
+    const acceptedParticipants = participants.filter(participant => {
+      // Check various status field names and values
+      const status = participant.status || participant.participantStatus || participant.requestStatus;
+      
+      // Accept if:
+      // 1. Status is explicitly 'ACCEPTED'
+      // 2. Status is missing (assume accepted for backwards compatibility)
+      // 3. Status is 'APPROVED' (alternative naming)
+      const isAccepted = !status || 
+                        status === 'ACCEPTED' || 
+                        status === 'APPROVED' ||
+                        status === 'CONFIRMED';
+      
+      console.log(`👤 Participant ${participant.id || 'unknown'}: status=${status}, isAccepted=${isAccepted}`);
+      
+      return isAccepted;
+    });
+    
+    console.log(`✅ Filtered ${acceptedParticipants.length} accepted participants from ${participants.length} total`);
+    
+    return acceptedParticipants;
+  };
   
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -223,11 +371,16 @@ const SportsPostDetailScreen = ({ route, navigation }) => {
         <View style={styles.header}>
           <View style={styles.userInfo}>
             <Image 
-              source={post.user?.avatar ? { uri: post.user.avatar } : require('../../assets/default-avatar.png')}
+              source={{ 
+                uri: getAvatarFromUser(post.creator || post.user) || 
+                     'https://randomuser.me/api/portraits/men/1.jpg' 
+              }}
               style={styles.avatar}
             />
             <View>
-              <Text style={[styles.userName, { color: colors.text }]}>{post.user?.fullName || 'Người dùng'}</Text>
+              <Text style={[styles.userName, { color: colors.text }]}>
+                {(post.creator?.fullName || post.user?.fullName) || 'Người dùng'}
+              </Text>
               <Text style={[styles.timeAgo, { color: colors.textLight }]}>
                 {format(new Date(post.createdAt), "'Đăng ngày' dd/MM/yyyy", { locale: vi })}
               </Text>
@@ -260,11 +413,11 @@ const SportsPostDetailScreen = ({ route, navigation }) => {
               <Text style={[styles.infoHeaderText, { color: colors.primary }]}>Địa điểm</Text>
             </View>
             <Text style={[styles.infoText, { color: colors.text }]}>
-              {post.customLocationName || (post.preferredLocation ? post.preferredLocation.locationName : 'Chưa xác định')}
+              {post.location || post.customLocationName || (post.preferredLocation ? post.preferredLocation.locationName : 'Chưa xác định')}
             </Text>
-            {post.maxDistanceKm && (
+            {post.locationNotes && (
               <Text style={[styles.infoSubText, { color: colors.textLight }]}>
-                Phạm vi: {post.maxDistanceKm}km
+                {post.locationNotes}
               </Text>
             )}
           </View>
@@ -276,13 +429,16 @@ const SportsPostDetailScreen = ({ route, navigation }) => {
               <Text style={[styles.infoHeaderText, { color: colors.primary }]}>Số người</Text>
             </View>
             <Text style={[styles.infoText, { color: colors.text }]}>
-              {post.groupSizeMin === post.groupSizeMax 
-                ? `${post.groupSizeMin} người` 
-                : `${post.groupSizeMin} - ${post.groupSizeMax} người`}
+              Tối đa: {post.maxParticipants || 'Không giới hạn'} người
             </Text>
             <Text style={[styles.infoSubText, { color: colors.textLight }]}>
-              Đã tham gia: {participants.filter(p => p.status === 'ACCEPTED').length} người
+              Đã tham gia: {post.currentParticipants || getAcceptedParticipants().length} người
             </Text>
+            {post.availableSlots !== undefined && (
+              <Text style={[styles.infoSubText, { color: colors.textLight }]}>
+                Còn lại: {post.availableSlots} chỗ
+              </Text>
+            )}
           </View>
           
           {/* Skill level */}
@@ -291,35 +447,25 @@ const SportsPostDetailScreen = ({ route, navigation }) => {
               <MaterialCommunityIcons name="trophy-outline" size={20} color={colors.primary} />
               <Text style={[styles.infoHeaderText, { color: colors.primary }]}>Trình độ</Text>
             </View>
-            {post.requiredSkillLevel && (
-              <Text style={[styles.infoText, { color: colors.text }]}>
-                Yêu cầu: {post.requiredSkillLevel}
-              </Text>
-            )}
             <Text style={[styles.infoText, { color: colors.text }]}>
-              Chấp nhận: {post.skillLevelPreferences && post.skillLevelPreferences.length > 0 
-                ? post.skillLevelPreferences.join(', ') 
-                : 'Tất cả trình độ'}
+              {post.skillLevel || post.skillLevelName || 'Mọi trình độ'}
             </Text>
-            {post.isCompetitive && (
-              <View style={[styles.badge, { backgroundColor: colors.error + '20' }]}>
-                <MaterialCommunityIcons name="medal-outline" size={14} color={colors.error} />
-                <Text style={[styles.badgeText, { color: colors.error }]}>
-                  Thi đấu
-                </Text>
-              </View>
+            {post.requirements && (
+              <Text style={[styles.infoSubText, { color: colors.textLight }]}>
+                Yêu cầu: {post.requirements}
+              </Text>
             )}
           </View>
           
-          {/* Message */}
-          {post.message && (
+          {/* Description */}
+          {post.description && (
             <View style={styles.infoSection}>
               <View style={styles.infoHeader}>
                 <Ionicons name="chatbubble-outline" size={20} color={colors.primary} />
-                <Text style={[styles.infoHeaderText, { color: colors.primary }]}>Ghi chú</Text>
+                <Text style={[styles.infoHeaderText, { color: colors.primary }]}>Mô tả</Text>
               </View>
               <Text style={[styles.messageText, { color: colors.text }]}>
-                {post.message}
+                {post.description}
               </Text>
             </View>
           )}
@@ -329,7 +475,7 @@ const SportsPostDetailScreen = ({ route, navigation }) => {
         <View style={[styles.participantsSection, { borderTopColor: colors.border }]}>
           <View style={styles.sectionHeader}>
             <Text style={[styles.sectionTitle, { color: colors.text }]}>
-              Người tham gia ({participants.filter(p => p.status === 'ACCEPTED').length})
+              Người tham gia ({getAcceptedParticipants().length})
             </Text>
             {isCreator && (
               <TouchableOpacity 
@@ -342,15 +488,81 @@ const SportsPostDetailScreen = ({ route, navigation }) => {
           
           {participantsLoading ? (
             <ActivityIndicator size="small" color={colors.primary} style={styles.participantsLoading} />
-          ) : participants.filter(p => p.status === 'ACCEPTED').length > 0 ? (
-            <FlatList
-              data={participants.filter(p => p.status === 'ACCEPTED')}
-              keyExtractor={(item) => item.id.toString()}
-              renderItem={({ item }) => <ParticipantItem participant={item} />}
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              style={styles.participantsList}
-            />
+          ) : getAcceptedParticipants().length > 0 ? (
+            <View>
+              <FlatList
+                data={getAcceptedParticipants()}
+                keyExtractor={(item) => (item.id || item.userId || Math.random()).toString()}
+                renderItem={({ item }) => {
+                  // Detailed logging for debugging
+                  console.log(`🎭 Rendering participant ${item.id}:`, {
+                    rawItem: JSON.stringify(item, null, 2),
+                    hasUser: !!item.user,
+                    userObject: item.user ? JSON.stringify(item.user, null, 2) : 'No user object',
+                    userKeys: item.user ? Object.keys(item.user) : [],
+                    directName: item.fullName || item.name,
+                    userFullName: item.user?.fullName,
+                    userFirstName: item.user?.firstName,
+                    userUsername: item.user?.username,
+                    userName: item.user?.name,
+                    userEmail: item.user?.email,
+                    avatarAttempt: getAvatarFromUser(item.user || item)
+                  });
+                  
+                  // Extract name with detailed logging
+                  const extractedName = item.user?.fullName || 
+                                      item.user?.firstName || 
+                                      item.user?.username || 
+                                      item.user?.name || 
+                                      item.fullName || 
+                                      item.name || 
+                                      item.userName ||
+                                      item.user?.email?.split('@')[0] ||
+                                      `Participant ${item.id}`;
+                  
+                  console.log(`👤 Extracted name for participant ${item.id}: "${extractedName}"`);
+                  
+                  return (
+                    <View 
+                      style={styles.participantItem}
+                    >
+                      <TouchableOpacity 
+                        onPress={() => navigation.navigate('UserProfileScreen', { userId: item.user?.id || item.userId || item.id })}
+                      >
+                        <Image 
+                          source={{ 
+                            uri: getAvatarFromUser(item.user || item) || 
+                                 `https://ui-avatars.com/api/?name=${encodeURIComponent(extractedName)}&background=E91E63&color=fff&size=100` 
+                          }} 
+                          style={styles.participantAvatar} 
+                          onError={(error) => {
+                            console.log(`❌ Failed to load avatar for participant ${item.id}:`, {
+                              error: error.nativeEvent.error,
+                              attemptedUri: getAvatarFromUser(item.user || item),
+                              fallbackUri: `https://ui-avatars.com/api/?name=${encodeURIComponent(extractedName)}&background=E91E63&color=fff&size=100`,
+                              participant: item,
+                              user: item.user
+                            });
+                          }}
+                        />
+                      </TouchableOpacity>
+                      <TouchableOpacity 
+                        onPress={() => navigation.navigate('UserProfileScreen', { userId: item.user?.id || item.userId || item.id })}
+                      >
+                        <Text style={[styles.participantName, { color: colors.text }]} numberOfLines={1}>
+                          {extractedName}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  );
+                }}
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={styles.participantsList}
+              />
+              
+             
+            </View>
           ) : (
             <Text style={[styles.emptyText, { color: colors.textLight }]}>
               Chưa có người tham gia
@@ -507,6 +719,22 @@ const styles = StyleSheet.create({
   participantsList: {
     marginTop: 8,
   },
+  participantItem: {
+    alignItems: 'center',
+    marginRight: 16,
+    maxWidth: 80,
+  },
+  participantAvatar: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    marginBottom: 8,
+  },
+  participantName: {
+    fontSize: 12,
+    textAlign: 'center',
+    fontWeight: '500',
+  },
   emptyText: {
     fontStyle: 'italic',
     textAlign: 'center',
@@ -535,6 +763,6 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     marginTop: 16,
   },
-});
-
+  });
+  
 export default SportsPostDetailScreen; 

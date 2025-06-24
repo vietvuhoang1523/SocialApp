@@ -211,9 +211,16 @@ class CreatePostService {
     // Lấy chi tiết bài đăng
     async getPostById(postId) {
         try {
+            console.log(`📖 Fetching post by ID: ${postId}`);
+            console.log(`📡 API URL: ${this.api.defaults.baseURL}/posts/${postId}`);
+            
             const response = await this.api.get(`/posts/${postId}`);
+            
+            console.log('✅ Post fetched successfully:', response.data);
             return response.data;
         } catch (error) {
+            console.error(`❌ Error fetching post ${postId}:`, error);
+            console.error('Error details:', error.response?.data || error.message);
             this.handleError(error);
         }
     }

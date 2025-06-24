@@ -242,6 +242,14 @@ const LoginScreen = ({ navigation }) => {
             </TouchableOpacity>
           </View>
 
+          {/* Xác thực tài khoản */}
+          <View style={styles.verificationContainer}>
+            <Text style={styles.verificationText}>Đã đăng ký nhưng chưa xác thực? </Text>
+            <TouchableOpacity onPress={() => navigation.navigate('Verification')}>
+              <Text style={styles.verificationButtonText}>Xác thực ngay</Text>
+            </TouchableOpacity>
+          </View>
+
           {/* Hoặc đăng nhập với */}
           <View style={styles.socialLoginContainer}>
             <View style={styles.divider}>
@@ -360,6 +368,19 @@ const styles = StyleSheet.create({
   },
   registerButtonText: {
     color: '#4CAF50',
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  verificationContainer: {
+    flexDirection: 'row',
+    marginBottom: 20,
+  },
+  verificationText: {
+    color: '#757575',
+    fontSize: 14,
+  },
+  verificationButtonText: {
+    color: '#FF9800',
     fontSize: 14,
     fontWeight: 'bold',
   },

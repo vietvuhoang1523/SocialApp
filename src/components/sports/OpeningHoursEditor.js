@@ -8,7 +8,7 @@ import {
   Platform
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import DateTimePicker from '@react-native-community/datetimepicker';
+import CustomDatePicker from '../CustomDatePicker';
 
 const daysOfWeek = [
   { key: 'MONDAY', label: 'Thứ 2' },

@@ -139,4 +139,89 @@ class ImageUtils {
     }
 }
 
+const BASE_URL = 'http://192.168.100.193:8082/api';
+
+/**
+ * Tạo full URL cho avatar từ relative path
+ * @param {string} relativePath - Đường dẫn relative từ backend (vd: "users/2/profile-picture/xyz.jpeg") 
+ * @returns {string|null} Full URL hoặc null nếu không có path
+ */
+export const createAvatarUrl = (relativePath) => {
+    if (!relativePath) {
+        console.log('❌ createAvatarUrl: No relativePath provided');
+        return null;
+    }
+    
+    console.log('🔍 createAvatarUrl input:', relativePath);
+    
+    // Nếu đã là full URL, return nguyên
+    if (relativePath.startsWith('http://') || relativePath.startsWith('https://')) {
+        console.log('✅ Already full URL:', relativePath);
+        return relativePath;
+    }
+    
+    // Xóa leading slash nếu có
+    const cleanPath = relativePath.startsWith('/') ? relativePath.substring(1) : relativePath;
+    console.log('🧹 Clean path:', cleanPath);
+    
+    // Tạo full URL với backend API
+    const fullUrl = `${BASE_URL}/files/image?bucketName=thanh&path=${encodeURIComponent(cleanPath)}`;
+    console.log('🔗 Generated full URL:', fullUrl);
+    
+    return fullUrl;
+};
+
+/**
+ * Lấy avatar URL từ user object với nhiều field names khác nhau
+ * @param {object} user - User object có thể chứa avatar
+ * @returns {string|null} Avatar URL hoặc null
+ */
+export const getAvatarFromUser = (user) => {
+    if (!user) return null;
+    
+    // Thử các field names khác nhau
+    const avatarFields = [
+        'profilePictureUrl',
+        'avatarUrl', 
+        'avatar',
+        'senderAvatar',
+        'profilePicture',
+        'imageUrl',
+        'profileImage',
+        'userAvatar',
+        'picture'
+    ];
+    
+    for (const field of avatarFields) {
+        if (user[field]) {
+            console.log(`🖼️ Found avatar field '${field}' for user:`, user[field]);
+            return createAvatarUrl(user[field]);
+        }
+    }
+    
+    console.log(`❌ No avatar found for user:`, {
+        userExists: !!user,
+        userFields: user ? Object.keys(user) : [],
+        checkedFields: avatarFields
+    });
+    
+    return null;
+};
+
+/**
+ * Lấy avatar URL từ message object 
+ * @param {object} message - Message object từ backend
+ * @returns {string|null} Avatar URL hoặc null
+ */
+export const getAvatarFromMessage = (message) => {
+    if (!message) return null;
+    
+    // Message có senderAvatar field
+    if (message.senderAvatar) {
+        return createAvatarUrl(message.senderAvatar);
+    }
+    
+    return null;
+};
+
 export default ImageUtils;
