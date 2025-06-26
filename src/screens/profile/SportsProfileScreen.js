@@ -21,6 +21,8 @@ import { Picker } from '@react-native-picker/picker';
 
 // Services
 import sportsProfileService from '../../services/sportsProfileService';
+// Add ProfileContext import
+import { useProfileContext } from '../../components/ProfileContext';
 
 const { width: screenWidth } = Dimensions.get('window');
 
@@ -69,6 +71,18 @@ const SportsProfileScreen = ({ navigation, route }) => {
     const currentUser = route.params?.currentUser;
     const isViewMode = route.params?.isViewMode || false;
     const userId = route.params?.userId || currentUser?.id;
+
+    // Use ProfileContext for enhanced sports profile management
+    const { 
+        sportsProfile, 
+        sportsLoading, 
+        createOrUpdateSportsProfile, 
+        refreshSportsProfile,
+        hasSportsProfile,
+        getSportsStats,
+        error,
+        clearError 
+    } = useProfileContext();
 
     // Animation refs
     const fadeAnim = useRef(new Animated.Value(0)).current;

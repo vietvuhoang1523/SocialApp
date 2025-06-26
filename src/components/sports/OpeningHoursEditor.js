@@ -8,7 +8,7 @@ import {
   Platform
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import CustomDatePicker from '../CustomDatePicker';
+import DateTimePickerModal from 'react-native-modal-datetime-picker';
 
 const daysOfWeek = [
   { key: 'MONDAY', label: 'Thứ 2' },
@@ -50,28 +50,7 @@ const OpeningHoursEditor = ({ openingHours, onChange, colors }) => {
     setTimePickerVisible(true);
   };
   
-  // Handle time change
-  const handleTimeChange = (event, selectedDate) => {
-    if (Platform.OS === 'android') {
-      setTimePickerVisible(false);
-    }
-    
-    if (event.type === 'dismissed') {
-      return;
-    }
-    
-    if (selectedDate) {
-      const timeString = dateToTimeString(selectedDate);
-      
-      const updatedHours = { ...openingHours };
-      if (!updatedHours[selectedDay]) {
-        updatedHours[selectedDay] = { open: '07:00', close: '22:00' };
-      }
-      
-      updatedHours[selectedDay][selectedType] = timeString;
-      onChange(updatedHours);
-    }
-  };
+
   
   // Toggle day open/closed
   const toggleDay = (day) => {
@@ -170,15 +149,29 @@ const OpeningHoursEditor = ({ openingHours, onChange, colors }) => {
         </View>
       ))}
       
-      {timePickerVisible && (
-        <DateTimePicker
-          value={timeStringToDate(openingHours[selectedDay]?.[selectedType])}
-          mode="time"
-          is24Hour={true}
-          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-          onChange={handleTimeChange}
-        />
-      )}
+      <DateTimePickerModal
+        isVisible={timePickerVisible}
+        mode="time"
+        date={timeStringToDate(openingHours[selectedDay]?.[selectedType])}
+        onConfirm={(selectedDate) => {
+          setTimePickerVisible(false);
+          if (selectedDate) {
+            const timeString = dateToTimeString(selectedDate);
+            
+            const updatedHours = { ...openingHours };
+            if (!updatedHours[selectedDay]) {
+              updatedHours[selectedDay] = { open: '07:00', close: '22:00' };
+            }
+            
+            updatedHours[selectedDay][selectedType] = timeString;
+            onChange(updatedHours);
+          }
+        }}
+        onCancel={() => setTimePickerVisible(false)}
+        locale="vi_VN"
+        confirmTextIOS="Xác nhận"
+        cancelTextIOS="Hủy"
+      />
     </View>
   );
 };

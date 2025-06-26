@@ -169,13 +169,12 @@ const NewMessageItem = memo(({
                 <View style={styles.avatarContainer}>
                     {(() => {
                         const avatarUrl = getAvatarFromUser(chatPartner);
-                        console.log('🔍 Message Avatar URL:', avatarUrl, 'from chatPartner:', chatPartner);
                         
                         return avatarUrl ? (
                             <Image
                                 source={{ uri: avatarUrl }}
                                 style={styles.avatarImage}
-                                defaultSource={{ uri: 'https://via.placeholder.com/32' }}
+                                defaultSource={require('../../assets/default-avatar.png')}
                                 onError={() => {
                                     console.log('❌ Message avatar image failed to load:', avatarUrl);
                                 }}
@@ -183,7 +182,8 @@ const NewMessageItem = memo(({
                         ) : (
                             <View style={styles.avatar}>
                                 <Text style={styles.avatarText}>
-                                    {chatPartner?.fullName?.charAt(0)?.toUpperCase() || '?'}
+                                    {chatPartner?.fullName?.charAt(0)?.toUpperCase() || 
+                                     chatPartner?.username?.charAt(0)?.toUpperCase() || '?'}
                                 </Text>
                             </View>
                         );

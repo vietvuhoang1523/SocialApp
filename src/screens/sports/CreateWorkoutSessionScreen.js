@@ -16,6 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import CustomDatePicker from '../../components/CustomDatePicker';
 import { Picker } from '@react-native-picker/picker';
 import * as ImagePicker from 'expo-image-picker';
+import DateTimePickerModal from 'react-native-modal-datetime-picker';
 
 const CreateWorkoutSessionScreen = ({ navigation }) => {
   // State cho các trường dữ liệu
@@ -100,31 +101,7 @@ const CreateWorkoutSessionScreen = ({ navigation }) => {
     setPhotos(newPhotos);
   };
 
-  // Xử lý thay đổi thời gian bắt đầu
-  const onChangeStartTime = (event, selectedDate) => {
-    setShowStartDatePicker(false);
-    if (selectedDate) {
-      setStartTime(selectedDate);
-      
-      // Nếu thời gian kết thúc < thời gian bắt đầu thì cập nhật thời gian kết thúc
-      if (endTime < selectedDate) {
-        const newEndTime = new Date(selectedDate.getTime() + 60 * 60 * 1000); // 1 giờ sau
-        setEndTime(newEndTime);
-      }
-    }
-  };
 
-  // Xử lý thay đổi thời gian kết thúc
-  const onChangeEndTime = (event, selectedDate) => {
-    setShowEndDatePicker(false);
-    if (selectedDate) {
-      if (selectedDate < startTime) {
-        Alert.alert('Lỗi', 'Thời gian kết thúc phải sau thời gian bắt đầu');
-        return;
-      }
-      setEndTime(selectedDate);
-    }
-  };
 
   // Format thời gian hiển thị
   const formatTime = (date) => {
@@ -219,15 +196,26 @@ const CreateWorkoutSessionScreen = ({ navigation }) => {
               <Text>{formatTime(startTime)}</Text>
               <Ionicons name="calendar-outline" size={20} color="#666" />
             </TouchableOpacity>
-            {showStartDatePicker && (
-              <DateTimePicker
-                value={startTime}
-                mode="datetime"
-                is24Hour={true}
-                display="default"
-                onChange={onChangeStartTime}
-              />
-            )}
+            <DateTimePickerModal
+              isVisible={showStartDatePicker}
+              mode="datetime"
+              date={startTime}
+              onConfirm={(selectedDate) => {
+                setShowStartDatePicker(false);
+                if (selectedDate) {
+                  setStartTime(selectedDate);
+                  // Nếu thời gian kết thúc < thời gian bắt đầu thì cập nhật thời gian kết thúc
+                  if (endTime < selectedDate) {
+                    const newEndTime = new Date(selectedDate.getTime() + 60 * 60 * 1000); // 1 giờ sau
+                    setEndTime(newEndTime);
+                  }
+                }
+              }}
+              onCancel={() => setShowStartDatePicker(false)}
+              locale="vi_VN"
+              confirmTextIOS="Xác nhận"
+              cancelTextIOS="Hủy"
+            />
           </View>
 
           {/* Thời gian kết thúc */}
@@ -240,15 +228,26 @@ const CreateWorkoutSessionScreen = ({ navigation }) => {
               <Text>{formatTime(endTime)}</Text>
               <Ionicons name="calendar-outline" size={20} color="#666" />
             </TouchableOpacity>
-            {showEndDatePicker && (
-              <DateTimePicker
-                value={endTime}
-                mode="datetime"
-                is24Hour={true}
-                display="default"
-                onChange={onChangeEndTime}
-              />
-            )}
+            <DateTimePickerModal
+              isVisible={showEndDatePicker}
+              mode="datetime"
+              date={endTime}
+              onConfirm={(selectedDate) => {
+                setShowEndDatePicker(false);
+                if (selectedDate) {
+                  if (selectedDate < startTime) {
+                    Alert.alert('Lỗi', 'Thời gian kết thúc phải sau thời gian bắt đầu');
+                    return;
+                  }
+                  setEndTime(selectedDate);
+                }
+              }}
+              onCancel={() => setShowEndDatePicker(false)}
+              minimumDate={startTime}
+              locale="vi_VN"
+              confirmTextIOS="Xác nhận"
+              cancelTextIOS="Hủy"
+            />
           </View>
 
           {/* Mô tả */}

@@ -60,19 +60,19 @@ const LocationMap = ({ route, navigation }) => {
         return;
       }
       
-      const location = await LocationService.getCurrentLocation();
+      const locationResult = await LocationService.getLocationWithFallback();
       
       const newRegion = {
-        latitude: location.coords.latitude,
-        longitude: location.coords.longitude,
+        latitude: locationResult.coords.latitude,
+        longitude: locationResult.coords.longitude,
         latitudeDelta: LATITUDE_DELTA,
         longitudeDelta: LONGITUDE_DELTA,
       };
       
       setRegion(newRegion);
       setMarkerCoords({
-        latitude: location.coords.latitude,
-        longitude: location.coords.longitude,
+        latitude: locationResult.coords.latitude,
+        longitude: locationResult.coords.longitude,
       });
       
       if (mapReady && mapRef.current) {

@@ -21,6 +21,7 @@ import sportsAvailabilityService from '../../services/SportsAvailabilityService'
 import CustomDatePicker from '../../components/CustomDatePicker';
 import { Picker } from '@react-native-picker/picker';
 import { SportTypeNames, SkillLevelNames } from '../../constants/SportConstants';
+import DateTimePickerModal from 'react-native-modal-datetime-picker';
 
 const CreateSportsAvailabilityScreen = () => {
   const navigation = useNavigation();
@@ -102,19 +103,7 @@ const CreateSportsAvailabilityScreen = () => {
     return date?.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
   };
 
-  const handleDateChange = (event, selectedDate, type) => {
-    if (type === 'from') {
-      setShowFromPicker(Platform.OS === 'ios');
-      if (selectedDate) {
-        handleChange('availableFrom', selectedDate);
-      }
-    } else {
-      setShowUntilPicker(Platform.OS === 'ios');
-      if (selectedDate) {
-        handleChange('availableUntil', selectedDate);
-      }
-    }
-  };
+
   
   if (loading) {
     return (
@@ -190,25 +179,39 @@ const CreateSportsAvailabilityScreen = () => {
               </TouchableOpacity>
             </View>
             
-            {showFromPicker && (
-              <DateTimePicker
-                value={formData.availableFrom}
-                mode="datetime"
-                display="default"
-                onChange={(event, date) => handleDateChange(event, date, 'from')}
-                minimumDate={new Date()}
-              />
-            )}
+            <DateTimePickerModal
+              isVisible={showFromPicker}
+              mode="datetime"
+              date={formData.availableFrom}
+              onConfirm={(selectedDate) => {
+                setShowFromPicker(false);
+                if (selectedDate) {
+                  handleChange('availableFrom', selectedDate);
+                }
+              }}
+              onCancel={() => setShowFromPicker(false)}
+              minimumDate={new Date()}
+              locale="vi_VN"
+              confirmTextIOS="Xác nhận"
+              cancelTextIOS="Hủy"
+            />
             
-            {showUntilPicker && (
-              <DateTimePicker
-                value={formData.availableUntil}
-                mode="datetime"
-                display="default"
-                onChange={(event, date) => handleDateChange(event, date, 'until')}
-                minimumDate={formData.availableFrom}
-              />
-            )}
+            <DateTimePickerModal
+              isVisible={showUntilPicker}
+              mode="datetime"
+              date={formData.availableUntil}
+              onConfirm={(selectedDate) => {
+                setShowUntilPicker(false);
+                if (selectedDate) {
+                  handleChange('availableUntil', selectedDate);
+                }
+              }}
+              onCancel={() => setShowUntilPicker(false)}
+              minimumDate={formData.availableFrom}
+              locale="vi_VN"
+              confirmTextIOS="Xác nhận"
+              cancelTextIOS="Hủy"
+            />
           </View>
           
           {/* Location */}

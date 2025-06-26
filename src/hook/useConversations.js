@@ -2,7 +2,8 @@
 // React Hook để quản lý danh sách cuộc trò chuyện
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { Alert } from 'react-native';
-import webSocketMessageService from '../services/WebSocketMessageService';
+import webSocketService from '../services/WebSocketService';
+import messagesService from '../services/messagesService';
 
 /**
  * Hook để quản lý danh sách cuộc trò chuyện và tin nhắn chưa đọc
@@ -61,7 +62,7 @@ const useConversations = (currentUser) => {
             setLoading(true);
             console.log('📄 Loading conversations...');
 
-            const result = await webSocketMessageService.getConversations();
+            const result = await messagesService.getConversations();
 
             if (Array.isArray(result)) {
                 const newConversations = result
@@ -113,7 +114,7 @@ const useConversations = (currentUser) => {
         try {
             console.log('📄 Loading unread messages...');
 
-            const result = await webSocketMessageService.getUnreadMessages();
+            const result = await messagesService.getUnreadMessages();
 
             if (Array.isArray(result)) {
                 setUnreadMessages(result);
@@ -137,7 +138,7 @@ const useConversations = (currentUser) => {
         try {
             console.log('📄 Loading unread count...');
 
-            const result = await webSocketMessageService.getUnreadCount();
+            const result = await webSocketService.getUnreadMessagesCount();
 
             if (typeof result === 'number') {
                 setUnreadCount(result);
@@ -238,26 +239,19 @@ const useConversations = (currentUser) => {
 
         const setupListeners = async () => {
             try {
-                await webSocketMessageService.initialize();
-
-                // Listen for new messages to update conversations
-                const unsubscribeNewMessage = webSocketMessageService.on('newMessage', (message) => {
-                    console.log('📨 Updating conversation with new message:', message);
-                    updateConversationWithNewMessage(message);
-                    
-                    // Update unread count if message is not from current user
-                    if (message.senderId !== currentUser.id) {
-                        setUnreadCount(prev => prev + 1);
-                    }
-                });
+                // Setup WebSocket listeners using the service directly
+                
+                // 🚫 REMOVED: newMessage listener to prevent duplicates
+                // This was causing multiple conversation updates
+                // New message handling is now centralized
 
                 // Listen for read receipts
-                const unsubscribeReadReceipt = webSocketMessageService.on('readReceipt', (receipt) => {
+                const unsubscribeReadReceipt = webSocketService.on('readSuccess', (receipt) => {
                     markConversationAsRead(receipt.senderId);
                 });
 
                 // Listen for status updates
-                const unsubscribeStatusUpdate = webSocketMessageService.on('statusUpdate', (update) => {
+                const unsubscribeStatusUpdate = webSocketService.on('userOnline', (update) => {
                     setConversations(prev => prev.map(conv => 
                         conv.participantId === update.userId
                             ? { 
@@ -269,9 +263,8 @@ const useConversations = (currentUser) => {
                     ));
                 });
 
-                // Store unsubscribe functions
+                // Store unsubscribe functions (excluding removed newMessage listener)
                 listenersRef.current = [
-                    unsubscribeNewMessage,
                     unsubscribeReadReceipt,
                     unsubscribeStatusUpdate
                 ];
@@ -351,8 +344,8 @@ const useConversations = (currentUser) => {
         getConversationById,
         
         // Service status
-        isConnected: webSocketMessageService.isConnected(),
-        serviceStatus: webSocketMessageService.getStatus()
+        isConnected: webSocketService.isConnected(),
+        serviceStatus: webSocketService.getConnectionStatus()
     };
 };
 

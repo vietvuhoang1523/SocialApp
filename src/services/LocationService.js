@@ -32,47 +32,96 @@ class LocationService {
   // Lấy vị trí hiện tại
   async getCurrentLocation(options = {}) {
     try {
-      // Trước tiên, kiểm tra xem dịch vụ vị trí có được bật không
+      // 1. Kiểm tra quyền truy cập vị trí
+      const permissionStatus = await this.getLocationPermissionStatus();
+      console.log('📍 Location permission status:', permissionStatus);
+      
+      if (permissionStatus !== 'granted') {
+        console.log('📍 Requesting location permission...');
+        const requestResult = await this.requestLocationPermission();
+        if (requestResult !== 'granted') {
+          throw new Error('LOCATION_PERMISSION_DENIED');
+        }
+      }
+
+      // 2. Kiểm tra xem dịch vụ vị trí có được bật không
       const isLocationServicesEnabled = await Location.hasServicesEnabledAsync();
+      console.log('📍 Location services enabled:', isLocationServicesEnabled);
+      
       if (!isLocationServicesEnabled) {
         throw new Error('LOCATION_SERVICES_DISABLED');
       }
       
-      // Thử lấy vị trí với mức độ chính xác thấp trước
+      // 3. Thử lấy vị trí cuối cùng đã biết trước (nhanh hơn)
+      console.log('📍 Trying to get last known position...');
+      const lastKnownPosition = await Location.getLastKnownPositionAsync({
+        maxAge: 300000, // 5 phút
+        requiredAccuracy: 1000 // 1km
+      });
+      
+      if (lastKnownPosition) {
+        console.log('📍 Using last known position:', lastKnownPosition.coords);
+        return lastKnownPosition;
+      }
+      
+      // 4. Thử lấy vị trí với mức độ chính xác thấp trước (nhanh nhất)
+      console.log('📍 Getting current position with low accuracy...');
       try {
         const location = await Location.getCurrentPositionAsync({
           accuracy: Location.Accuracy.Low,
-          timeout: 15000,
+          timeout: 10000,
+          maximumAge: 60000, // 1 phút
           ...options
         });
+        console.log('📍 Got location with low accuracy:', location.coords);
         return location;
       } catch (lowAccuracyError) {
-        console.warn('Failed to get location with low accuracy, trying with balanced accuracy:', lowAccuracyError);
+        console.warn('📍 Failed with low accuracy:', lowAccuracyError.message);
         
-        // Nếu độ chính xác thấp không hoạt động, thử với độ chính xác cân bằng
+        // 5. Thử với độ chính xác cân bằng
+        console.log('📍 Trying with balanced accuracy...');
         try {
           const location = await Location.getCurrentPositionAsync({
             accuracy: Location.Accuracy.Balanced,
-            timeout: 20000,
+            timeout: 15000,
+            maximumAge: 30000, // 30 giây
             ...options
           });
+          console.log('📍 Got location with balanced accuracy:', location.coords);
           return location;
         } catch (balancedAccuracyError) {
-          console.warn('Failed to get location with balanced accuracy, falling back to last known position:', balancedAccuracyError);
+          console.warn('📍 Failed with balanced accuracy:', balancedAccuracyError.message);
           
-          // Nếu tất cả đều thất bại, thử lấy vị trí cuối cùng đã biết
-          const lastKnownPosition = await Location.getLastKnownPositionAsync();
-          if (lastKnownPosition) {
-            return lastKnownPosition;
+          // 6. Thử lấy vị trí cuối cùng với tiêu chí rộng hơn
+          console.log('📍 Trying last known position with relaxed criteria...');
+          const fallbackPosition = await Location.getLastKnownPositionAsync({
+            maxAge: 3600000, // 1 giờ
+            requiredAccuracy: 5000 // 5km
+          });
+          
+          if (fallbackPosition) {
+            console.log('📍 Using fallback position:', fallbackPosition.coords);
+            return fallbackPosition;
           }
           
-          // Nếu không có vị trí nào khả dụng, ném lỗi
+          // 7. Nếu tất cả đều thất bại, ném lỗi với thông tin chi tiết
+          console.error('📍 All location methods failed');
           throw new Error('LOCATION_UNAVAILABLE');
         }
       }
     } catch (error) {
-      console.error('Error getting current location:', error);
-      throw error;
+      console.error('❌ Error getting current location:', error);
+      
+      // Xử lý các loại lỗi khác nhau
+      if (error.message === 'LOCATION_PERMISSION_DENIED') {
+        throw new Error('Vui lòng cho phép ứng dụng truy cập vị trí trong Cài đặt');
+      } else if (error.message === 'LOCATION_SERVICES_DISABLED') {
+        throw new Error('Vui lòng bật GPS/Định vị trong Cài đặt thiết bị');
+      } else if (error.message === 'LOCATION_UNAVAILABLE') {
+        throw new Error('Không thể xác định vị trí. Vui lòng kiểm tra kết nối GPS');
+      } else {
+        throw new Error('Lỗi khi lấy vị trí: ' + error.message);
+      }
     }
   }
 
@@ -580,6 +629,43 @@ class LocationService {
     }
     
     return `Không thể lấy vị trí: ${errorMessage}`;
+  }
+
+  /**
+   * Lấy vị trí với fallback khi GPS không khả dụng
+   * Sử dụng vị trí mặc định (Hà Nội) nếu không thể lấy vị trí thực
+   */
+  async getLocationWithFallback() {
+    try {
+      console.log('📍 Attempting to get location with fallback...');
+      const location = await this.getCurrentLocation();
+      return {
+        coords: location.coords,
+        source: 'GPS',
+        accuracy: location.coords.accuracy || 10
+      };
+    } catch (error) {
+      console.warn('📍 GPS unavailable, using fallback location:', error.message);
+      
+      // Vị trí mặc định (Hà Nội, Việt Nam)
+      const fallbackLocation = {
+        coords: {
+          latitude: 21.0285,
+          longitude: 105.8542,
+          accuracy: 1000,
+          altitude: null,
+          altitudeAccuracy: null,
+          heading: null,
+          speed: null
+        },
+        source: 'FALLBACK',
+        accuracy: 1000,
+        timestamp: Date.now()
+      };
+      
+      console.log('📍 Using fallback location (Hanoi):', fallbackLocation.coords);
+      return fallbackLocation;
+    }
   }
 }
 

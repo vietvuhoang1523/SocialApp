@@ -48,37 +48,92 @@ const NewMessageInput = memo(({
         textInputRef.current?.focus();
     }, []);
 
-    // 📱 Handle send message với debounce protection
+    // 🔒 ENHANCED: Handle send message với strict debounce protection
     const lastSendTime = useRef(0);
-    const sendDebounceTime = 1000; // 1 giây
+    const sendingRef = useRef(false);
+    const lastSentContent = useRef('');
+    const sendCount = useRef(0);
+    const sendDebounceTime = 2000; // Tăng lên 2 giây cho chắc chắn
 
     const handleSend = useCallback(() => {
+        sendCount.current += 1;
+        const sendAttemptId = `attempt_${sendCount.current}_${Date.now()}`;
+        
+        console.log(`🔍 [NewMessageInput-${sendAttemptId}] handleSend called:`, {
+            text: text?.substring(0, 20),
+            hasAttachment: !!attachment,
+            sending,
+            sendingRef: sendingRef.current,
+            connectionStatus,
+            lastSentContent: lastSentContent.current?.substring(0, 20),
+            sendCount: sendCount.current
+        });
+
+        // 🔒 ENHANCED: Multiple layers of protection
+        const now = Date.now();
+        const timeSinceLastSend = now - lastSendTime.current;
+        const currentText = text?.trim() || '';
+        
         // Check if sending is disabled
         const isDisabled = connectionStatus === 'error' || connectionStatus === 'disconnected';
         
-        // ⚡ Debounce protection - prevent double press trong 1 giây
-        const now = Date.now();
-        if (now - lastSendTime.current < sendDebounceTime) {
-            console.log('⚠️ Send prevented by debounce protection');
+        // 🔒 CRITICAL: Check for identical content recently sent
+        if (currentText === lastSentContent.current && timeSinceLastSend < 5000) {
+            console.log(`⚠️ [NewMessageInput-${sendAttemptId}] Send blocked: IDENTICAL CONTENT recently sent (${timeSinceLastSend}ms ago)`);
             return;
         }
         
-        if (sending || isDisabled) {
-            if (isDisabled) {
-                Alert.alert(
-                    'Mất kết nối',
-                    'Không thể gửi tin nhắn khi mất kết nối. Vui lòng thử lại sau.',
-                    [{ text: 'Đã hiểu' }]
-                );
-            }
+        // 🔒 STRICT: Prevent multiple sends
+        if (sendingRef.current) {
+            console.log(`⚠️ [NewMessageInput-${sendAttemptId}] Send blocked: already sending (ref)`);
+            return;
+        }
+        
+        if (sending) {
+            console.log(`⚠️ [NewMessageInput-${sendAttemptId}] Send blocked: already sending (state)`);
+            return;
+        }
+        
+        // 🔒 ENHANCED: Time-based debounce protection
+        if (timeSinceLastSend < sendDebounceTime) {
+            console.log(`⚠️ [NewMessageInput-${sendAttemptId}] Send blocked: debounce protection (${timeSinceLastSend}ms < ${sendDebounceTime}ms)`);
+            return;
+        }
+        
+        if (isDisabled) {
+            console.log(`⚠️ [NewMessageInput-${sendAttemptId}] Send blocked: connection disabled`);
+            Alert.alert(
+                'Mất kết nối',
+                'Không thể gửi tin nhắn khi mất kết nối. Vui lòng thử lại sau.',
+                [{ text: 'Đã hiểu' }]
+            );
             return;
         }
 
-        if (text.trim().length > 0 || attachment) {
-            console.log('📤 Triggering send message...');
-            lastSendTime.current = now; // Cập nhật thời gian gửi cuối
+        // 🔒 ENHANCED: Content validation
+        const hasContent = (currentText.length > 0) || attachment;
+        if (!hasContent) {
+            console.log(`⚠️ [NewMessageInput-${sendAttemptId}] Send blocked: no content`);
+            return;
+        }
+
+        // 🔒 ENHANCED: Set multiple locks IMMEDIATELY before any async operations
+        sendingRef.current = true;
+        lastSendTime.current = now;
+        lastSentContent.current = currentText;
+        
+        console.log(`✅ [NewMessageInput-${sendAttemptId}] Sending message with locks set:`, {
+            contentLength: currentText.length,
+            hasAttachment: !!attachment,
+            sendingRef: sendingRef.current,
+            lastSendTime: lastSendTime.current
+        });
+        
+        try {
+            // Call onSend with current values
+            const currentAttachment = attachment;
             
-            onSend(text, attachment);
+            onSend(currentText, currentAttachment);
             setIsExpanded(false);
             
             // Reset typing state
@@ -100,6 +155,17 @@ const NewMessageInput = memo(({
                     useNativeDriver: true,
                 })
             ]).start();
+            
+            // 🔒 ENHANCED: Release lock after delay to ensure send completion
+            setTimeout(() => {
+                sendingRef.current = false;
+                console.log(`🔓 [NewMessageInput-${sendAttemptId}] Send lock released after safety delay`);
+            }, 4000); // 4 seconds safety delay
+            
+        } catch (error) {
+            console.error(`❌ [NewMessageInput-${sendAttemptId}] Error in handleSend:`, error);
+            sendingRef.current = false; // Release lock on error
+            lastSentContent.current = ''; // Reset content on error
         }
     }, [text, attachment, onSend, scaleAnim, sending, connectionStatus, onTyping]);
 

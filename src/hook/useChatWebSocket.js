@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import webSocketService from '../services/WebSocketService';
 import { EMERGENCY_MODE } from '../../EmergencyMode';
 
@@ -43,6 +43,54 @@ const useChatWebSocket = (currentUserId, receiverId, handleNewWebSocketMessage) 
     const typingTimeoutRef = useRef(null);
     const eventKeys = useRef({}); // Store event keys for cleanup
 
+    // 🔒 ENHANCED: Duplicate protection with processed message tracking
+    const processedMessageIds = useRef(new Set());
+    
+    const handleMessage = useCallback((message) => {
+        console.log('📨 [useChatWebSocket] Message received:', {
+            id: message.id,
+            senderId: message.senderId,
+            receiverId: message.receiverId
+        });
+
+        // 🔒 CRITICAL: Check for duplicate processing
+        if (processedMessageIds.current.has(message.id)) {
+            console.log('⚠️ [useChatWebSocket] DUPLICATE message detected and blocked:', message.id);
+            return;
+        }
+
+        // Kiểm tra tin nhắn có liên quan đến cuộc trò chuyện hiện tại không
+        const isRelevantMessage = 
+            (message.senderId === currentUserId && message.receiverId === receiverId) ||
+            (message.senderId === receiverId && message.receiverId === currentUserId);
+
+        if (isRelevantMessage) {
+            console.log('✅ [useChatWebSocket] Message is relevant to current chat');
+            
+            // 🔒 CRITICAL: Mark as processed BEFORE calling handler
+            processedMessageIds.current.add(message.id);
+            
+            // Auto-cleanup old processed IDs (keep last 100)
+            if (processedMessageIds.current.size > 100) {
+                const idsArray = Array.from(processedMessageIds.current);
+                const toRemove = idsArray.slice(0, idsArray.length - 100);
+                toRemove.forEach(id => processedMessageIds.current.delete(id));
+                console.log('🧹 [useChatWebSocket] Cleaned up old processed message IDs');
+            }
+            
+            setLastMessage(message);
+            setIsOtherUserTyping(false);
+            
+            // CHỈ GỌI handleNewWebSocketMessage MỘT LẦN DUY NHẤT
+            if (typeof handleNewWebSocketMessage === 'function') {
+                console.log('📤 [useChatWebSocket] Calling handleNewWebSocketMessage for ID:', message.id);
+                handleNewWebSocketMessage(message);
+            }
+        } else {
+            console.log('📨 [useChatWebSocket] Message not relevant to current chat');
+        }
+    }, [currentUserId, receiverId, handleNewWebSocketMessage]);
+
     useEffect(() => {
         if (!currentUserId || !receiverId) {
             console.log('⚠️ Missing user IDs, không thể kết nối WebSocket');
@@ -58,54 +106,6 @@ const useChatWebSocket = (currentUserId, receiverId, handleNewWebSocketMessage) 
             console.error('❌ WebSocket error:', error);
             setConnectionError(error);
             setIsConnected(false);
-        };
-
-        // Hàm xử lý tin nhắn mới
-        const handleNewMessage = (message) => {
-            console.log('📨 Tin nhắn mới qua WebSocket:', message);
-            console.log('📨 Message details:', {
-                id: message.id,
-                senderId: message.senderId,
-                receiverId: message.receiverId,
-                content: message.content?.substring(0, 50),
-                timestamp: message.timestamp
-            });
-            
-            // Kiểm tra xem tin nhắn có liên quan đến cuộc trò chuyện hiện tại không
-            const isRelevantMessage = 
-                (message.senderId === currentUserId && message.receiverId === receiverId) ||
-                (message.senderId === receiverId && message.receiverId === currentUserId);
-            
-            console.log('🔍 Message relevance check:', {
-                currentUserId,
-                receiverId,
-                messageSenderId: message.senderId,
-                messageReceiverId: message.receiverId,
-                isRelevantMessage
-            });
-            
-            if (isRelevantMessage) {
-                // ⚡ FIX: Chỉ pass tin nhắn từ NGƯỜI KHÁC để tránh duplicate
-                // Tin nhắn từ chính mình đã được xử lý bởi temporary message system
-                if (message.senderId === receiverId) {
-                    console.log('📨 Message from other user, passing to handleNewWebSocketMessage');
-                    setLastMessage(message);
-                    setIsOtherUserTyping(false);
-                    
-                    // Pass to message management hook
-                    if (typeof handleNewWebSocketMessage === 'function') {
-                        handleNewWebSocketMessage(message);
-                    } else {
-                        console.warn('⚠️ handleNewWebSocketMessage function not provided');
-                    }
-                } else {
-                    console.log('📤 Message from current user, updating lastMessage but not passing to UI to avoid duplicate');
-                    // Vẫn cập nhật lastMessage để theo dõi trạng thái, nhưng không pass vào UI
-                    setLastMessage(message);
-                }
-            } else {
-                console.log('📨 Message not relevant to current conversation, ignoring');
-            }
         };
 
         // Hàm xử lý thông báo typing
@@ -164,7 +164,7 @@ const useChatWebSocket = (currentUserId, receiverId, handleNewWebSocketMessage) 
                 const actualConnectionStatus = checkConnectionStatus();
                 console.log('WebSocket actualConnectionStatus:', actualConnectionStatus);
 
-                eventKeys.current.newMessage = webSocketService.on('newMessage', handleNewMessage);
+                eventKeys.current.newMessage = webSocketService.on('newMessage', handleMessage);
                 eventKeys.current.typing = webSocketService.on('typing', handleTyping);
                 eventKeys.current.error = webSocketService.on('error', handleError);
                 
@@ -234,8 +234,12 @@ const useChatWebSocket = (currentUserId, receiverId, handleNewWebSocketMessage) 
             setIsTyping(false);
             setIsOtherUserTyping(false);
             setLastMessage(null);
+            
+            // 🔒 CRITICAL: Clear processed message IDs on cleanup
+            processedMessageIds.current.clear();
+            console.log('🧹 [useChatWebSocket] Cleared processed message IDs');
         };
-    }, [currentUserId, receiverId]);
+    }, [currentUserId, receiverId, handleMessage]);
 
     // Gửi tin nhắn
     const sendMessage = async (content, attachmentUrl = null) => {

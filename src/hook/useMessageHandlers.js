@@ -16,9 +16,12 @@ const useMessageHandlers = (
     // 📱 State
     const [sending, setSending] = useState(false);
     
-    // ✅ FIX: Theo dõi ID tin nhắn đã gửi để tránh gửi lại
+    // ✅ ENHANCED: Better duplicate prevention system
     const sentMessageIds = useRef(new Set());
-    const pendingSends = useRef(new Set());
+    const pendingSends = useRef(new Map()); // Changed to Map for better tracking
+    const lastSendTime = useRef(0);
+    const globalSendLock = useRef(false); // 🔒 CRITICAL: Global lock để chặn hoàn toàn
+    const lastSentContent = useRef(''); // 🔒 Track last sent content
 
     // 🕒 Format time helper
     const formatTime = useCallback((timestamp) => {
@@ -53,47 +56,88 @@ const useMessageHandlers = (
         }
     }, []);
 
-    // 📤 Send message handler
+    // 📤 ENHANCED: Send message handler with better duplicate prevention
     const sendMessage = useCallback(async (messageText, attachment) => {
-        if (!currentUser?.id || !user?.id) {
-            console.log('⚠️ Missing user IDs for sending message');
-            return;
-        }
+        console.log('📤 [useMessageHandlers] sendMessage called:', {
+            messageText: messageText?.substring(0, 50),
+            hasAttachment: !!attachment,
+            sending,
+            wsConnected
+        });
 
-        if ((!messageText || messageText.trim().length === 0) && !attachment) {
-            console.log('⚠️ No content to send');
-            return;
-        }
-
-        if (sending) {
-            console.log('⚠️ Already sending a message');
-            return;
-        }
-
-        const messageContent = messageText?.trim() || '';
-        
-        // ✅ CRITICAL FIX: Check for required user data
+        // ✅ ENHANCED: Strict validation
         if (!currentUser?.id || !user?.id) {
             console.error('❌ Cannot send message: missing user IDs', {
                 currentUserId: currentUser?.id,
                 userId: user?.id
             });
-            return;
+            return { success: false, error: 'Missing user information' };
         }
 
-        // ✅ FIX: Tạo message fingerprint để kiểm tra trùng lặp
-        const messageFingerprint = `${currentUser.id}_${user.id}_${messageContent}_${Date.now()}`;
+        if ((!messageText || messageText.trim().length === 0) && !attachment) {
+            console.log('⚠️ No content to send');
+            return { success: false, error: 'No content' };
+        }
+
+        // ✅ ENHANCED: Prevent rapid successive sends (debounce)
+        const now = Date.now();
+        if (now - lastSendTime.current < 500) { // 500ms minimum with global lock
+            console.log('⚠️ Send blocked: too rapid (< 1 second)');
+            return { success: false, error: 'Too rapid sends' };
+        }
+
+        // 🔒 CRITICAL: Check global lock first
+        if (globalSendLock.current) {
+            console.log('🔒 Send blocked: GLOBAL LOCK active');
+            return { success: false, error: 'Global lock active' };
+        }
+
+        // ✅ ENHANCED: Global sending lock
+        if (sending) {
+            console.log('⚠️ Send blocked: already sending');
+            return { success: false, error: 'Already sending' };
+        }
+
+        const messageContent = messageText?.trim() || '';
         
-        // ✅ FIX: Kiểm tra xem tin nhắn đã được gửi gần đây chưa
-        if (pendingSends.current.has(messageFingerprint)) {
-            console.log('⚠️ Duplicate message send prevented:', messageFingerprint);
-            return;
+        // 🔒 CRITICAL: Check exact same content recently sent
+        if (messageContent === lastSentContent.current && (now - lastSendTime.current) < 3000) {
+            console.log('🔒 Send blocked: IDENTICAL CONTENT recently sent');
+            return { success: false, error: 'Identical content recently sent' };
         }
         
-        // ✅ FIX: Đánh dấu tin nhắn đang được gửi
-        pendingSends.current.add(messageFingerprint);
+                 // ✅ ENHANCED: Better fingerprint with user context (3-second window for more protection)
+         const messageFingerprint = `${currentUser.id}->${user.id}:${messageContent}:${Math.floor(now / 3000)}`; // 3-second window
         
-        const tempId = `temp_${Date.now()}_${Math.random()}`;
+        // ✅ ENHANCED: Check for pending identical messages
+        if (pendingSends.current.has(messageFingerprint)) {
+            const pendingInfo = pendingSends.current.get(messageFingerprint);
+            console.log('⚠️ Duplicate message send prevented:', {
+                fingerprint: messageFingerprint,
+                pendingSince: now - pendingInfo.timestamp
+            });
+            return { success: false, error: 'Duplicate message' };
+        }
+        
+        // ✅ ENHANCED: Mark as pending with metadata
+        pendingSends.current.set(messageFingerprint, {
+            timestamp: now,
+            content: messageContent,
+            userId: currentUser.id,
+            receiverId: user.id
+        });
+        
+                 // ✅ ENHANCED: Auto-cleanup with longer timeout
+         setTimeout(() => {
+             if (pendingSends.current.has(messageFingerprint)) {
+                 pendingSends.current.delete(messageFingerprint);
+                 console.log('🧹 Cleaned up pending message fingerprint:', messageFingerprint);
+             }
+         }, 15000); // 15 seconds for extra safety
+        
+        lastSendTime.current = now;
+        lastSentContent.current = messageContent; // 🔒 Track sent content
+        const tempId = `temp_${now}_${Math.random().toString(36).substr(2, 9)}`;
 
         // 📝 Create temporary message
         const tempMessage = {
@@ -106,32 +150,36 @@ const useMessageHandlers = (
             isSending: true,
             isError: false,
             attachment: attachment || null,
-            // ✅ FIX: Thêm fingerprint để theo dõi
-            _fingerprint: messageFingerprint
+            _fingerprint: messageFingerprint,
+            _tempId: tempId
         };
 
         try {
+            // 🔒 CRITICAL: Set global lock IMMEDIATELY
+            globalSendLock.current = true;
             setSending(true);
-            console.log(`📤 Sending message: "${messageContent.substring(0, 50)}${messageContent.length > 50 ? '...' : ''}"`);
+            console.log(`📤 [useMessageHandlers] Starting send process: "${messageContent.substring(0, 50)}${messageContent.length > 50 ? '...' : ''}"`);
 
-            // Add temporary message to UI immediately
+            // ✅ ENHANCED: Add to UI with better duplicate checking
             setMessages(prev => {
-                // ✅ FIX: Kiểm tra xem tin nhắn tương tự đã tồn tại chưa
-                const isDuplicate = prev.some(msg => 
+                // Check for exact content duplicates in recent messages (last 10)
+                const recentMessages = prev.slice(0, 10);
+                const isDuplicate = recentMessages.some(msg => 
                     msg.content === messageContent && 
                     msg.senderId === currentUser.id &&
-                    Date.now() - new Date(msg.timestamp).getTime() < 10000 // Trong vòng 10 giây
+                    Math.abs(new Date().getTime() - new Date(msg.timestamp || msg.createdAt).getTime()) < 15000 // 15 seconds
                 );
                 
                 if (isDuplicate) {
-                    console.log('⚠️ Phát hiện tin nhắn trùng lặp, không thêm vào UI');
+                    console.log('⚠️ [useMessageHandlers] Duplicate message detected in UI, skipping add');
                     return prev;
                 }
                 
+                console.log('✅ [useMessageHandlers] Adding temp message to UI');
                 return [tempMessage, ...prev];
             });
 
-            // Clear input
+            // Clear input immediately to prevent re-sends
             setMessageText('');
             setAttachment(null);
 
@@ -142,163 +190,178 @@ const useMessageHandlers = (
 
             let success = false;
             let realMessage = null;
+            let sendMethod = 'none';
                     
-            // Try WebSocket first if connected
+            // ✅ ENHANCED: Try WebSocket first with better error handling
             if (wsConnected && sendMessageViaWebSocket) {
                 try {
-                    console.log('🔌 Sending via WebSocket...');
+                    console.log('🔌 [useMessageHandlers] Attempting WebSocket send...');
                     const wsResult = await sendMessageViaWebSocket(messageContent, attachment);
-                    if (wsResult && wsResult.success === true) {
-                        console.log('✅ WebSocket send successful');
-                        realMessage = wsResult.message;
+                    console.log('🔌 [useMessageHandlers] WebSocket result:', wsResult);
+                    
+                    if (wsResult && (wsResult.success === true || wsResult.id)) {
+                        console.log('✅ [useMessageHandlers] WebSocket send successful');
+                        realMessage = wsResult.message || wsResult;
+                        sendMethod = 'websocket';
                         
-                        // ✅ FIX: Đánh dấu ID tin nhắn đã gửi thành công
+                        // Track successful message ID
                         if (realMessage && realMessage.id) {
                             sentMessageIds.current.add(realMessage.id);
                         }
                         
                         success = true;
+                        // 🚫 CRITICAL: WebSocket success means NO FALLBACK NEEDED
+                        console.log('🚫 [useMessageHandlers] WebSocket success - SKIPPING API fallback');
                     } else {
-                        console.log('⚠️ WebSocket send returned unexpected result:', wsResult);
+                        console.log('⚠️ [useMessageHandlers] WebSocket send failed or returned non-success:', wsResult);
                         throw new Error('WebSocket send did not return success');
                     }
                 } catch (wsError) {
-                    console.log('⚠️ WebSocket send failed, trying messagesService fallback:', wsError.message);
-                    success = false; // Explicitly set to ensure fallback
+                    console.log('⚠️ [useMessageHandlers] WebSocket send error:', wsError.message);
+                    success = false;
                 }
+            } else {
+                console.log('⚠️ [useMessageHandlers] WebSocket not available:', { wsConnected, hasSendMethod: !!sendMessageViaWebSocket });
             }
 
-            // ⚡ FIX: Use messagesService fallback when WebSocket fails OR not connected
+            // ✅ ENHANCED: Fallback to messagesService ONLY if WebSocket completely failed
             if (!success) {
+                console.log('🌐 [useMessageHandlers] WebSocket failed, trying API fallback...');
                 try {
-                    console.log('🌐 Using messagesService fallback...');
+                    console.log('🌐 [useMessageHandlers] Using messagesService fallback...');
                     
-                    // Use correct API format for messagesService
                     const messageData = {
                         receiverId: user.id,
                         content: messageContent,
-                        messageType: 'text'
+                        messageType: attachment ? (attachment.type || 'image') : 'text'
                     };
                     
-                    // Add attachment if present
                     if (attachment) {
                         messageData.attachmentUrl = attachment.uri || attachment.url;
-                        messageData.messageType = attachment.type || 'image';
                     }
                     
+                    console.log('🌐 [useMessageHandlers] Sending via messagesService:', messageData);
                     const response = await messagesService.sendMessage(messageData);
+                    console.log('🌐 [useMessageHandlers] messagesService response:', response);
                     
-                    if (response && response.success) {
-                        console.log('✅ messagesService fallback successful');
+                    if (response && (response.success || response.id)) {
+                        console.log('✅ [useMessageHandlers] messagesService send successful');
+                        realMessage = response.message || response;
+                        sendMethod = 'api';
                         success = true;
                         
-                        // ✅ FIX: Đánh dấu ID tin nhắn đã gửi thành công nếu có
-                        if (response.message && response.message.id) {
-                            sentMessageIds.current.add(response.message.id);
-                            realMessage = response.message;
+                        // Track successful message ID
+                        if (realMessage && realMessage.id) {
+                            sentMessageIds.current.add(realMessage.id);
                         }
                     } else {
-                        console.log('❌ messagesService fallback returned false');
-                        throw new Error('messagesService returned unsuccessful result');
+                        throw new Error('messagesService send failed: ' + JSON.stringify(response));
                     }
-                } catch (httpError) {
-                    console.error('❌ messagesService fallback failed:', httpError);
+                } catch (apiError) {
+                    console.error('❌ [useMessageHandlers] messagesService fallback failed:', apiError);
                     success = false;
                 }
             }
 
+            // ✅ ENHANCED: Update UI based on send result
             if (success) {
-                if (realMessage) {
-                    // Replace temporary message with real message
-                    setMessages(prev => {
-                        // ✅ FIX: Kiểm tra xem tin nhắn thật đã tồn tại trong danh sách chưa
-                        const realMessageExists = prev.some(msg => msg.id === realMessage.id && msg.id !== tempId);
-                        
-                        if (realMessageExists) {
-                            console.log('⚠️ Real message already exists, removing temp message');
-                            return prev.filter(msg => msg.id !== tempId);
-                        }
-                        
-                        return prev.map(msg => 
-                            msg.id === tempId
-                                ? { ...realMessage, isSending: false, isError: false }
-                                : msg
-                        );
-                    });
-                    console.log('✅ Message sent successfully with ID:', realMessage.id);
-                } else {
-                    // ⚡ FIX: Mark temp message as sent but keep it as permanent message
-                    console.log('✅ Message sent successfully, converting temp to permanent');
-                    setMessages(prev => prev.map(msg => 
-                        msg.id === tempId 
-                            ? { 
-                                ...msg, 
-                                id: `sent_${Date.now()}_${Math.random()}`, // Tạo ID mới cho tin nhắn đã gửi
-                                isSending: false, 
-                                isError: false, 
-                                isSent: true,
-                                isPermanent: true // Đánh dấu là tin nhắn vĩnh viễn
+                console.log(`✅ [useMessageHandlers] Message sent successfully via ${sendMethod}`);
+                console.log(`🔍 [DEBUG] Final success status: ${success}, method: ${sendMethod}, realMessage: ${!!realMessage}`);
+                
+                // 🔥 CRITICAL FIX: Remove temp message immediately and DO NOT add real message
+                // Real message will come via WebSocket subscription (avoid duplicates)
+                setMessages(prev => {
+                    const filteredPrev = prev.filter(msg => msg.id !== tempId);
+                    console.log('🔥 [useMessageHandlers] Removed temp message, waiting for WebSocket delivery');
+                    console.log(`🔍 [DEBUG] Temp ID: ${tempId}, Real message ID: ${realMessage?.id || 'none'}`);
+                    
+                    // 🚫 DO NOT ADD REAL MESSAGE HERE - WebSocket will deliver it
+                    // This prevents the duplicate issue completely
+                    return filteredPrev;
+                });
+
+                // 🔒 SAFE FALLBACK: Handle WebSocket vs API different scenarios
+                if (sendMethod === 'websocket') {
+                    console.log('✅ [useMessageHandlers] WebSocket send - message will arrive via subscription');
+                } else if (sendMethod === 'api') {
+                    console.log('🌐 [useMessageHandlers] API send - adding message manually since no WebSocket');
+                    // For API sends, we need to add the message since WebSocket won't deliver
+                    if (realMessage && realMessage.id) {
+                        setMessages(prev => {
+                            const exists = prev.some(msg => msg.id === realMessage.id);
+                            if (!exists) {
+                                console.log('📝 [useMessageHandlers] Adding API message to UI');
+                                return [realMessage, ...prev];
                             }
-                            : msg
-                    ));
+                            return prev;
+                        });
+                    }
                 }
+                
+                // 🔄 Backup fetch for disconnected scenarios
+                setTimeout(() => {
+                    if (!wsConnected && sendMethod === 'api') {
+                        console.log('🔄 [useMessageHandlers] API send completed, fetching for sync');
+                        fetchNewMessages?.(true);
+                    }
+                }, 1000);
+
             } else {
-                // Mark as error
+                console.error('❌ [useMessageHandlers] All send methods failed');
+                
+                // Mark temp message as error
                 setMessages(prev => prev.map(msg => 
                     msg.id === tempId 
                         ? { ...msg, isSending: false, isError: true }
                         : msg
                 ));
-                console.log('❌ Message send failed');
             }
 
-            // ❌ REMOVED: Don't fetch new messages after sending to avoid duplicates
-            // The message will arrive via WebSocket automatically
+            return { 
+                success, 
+                message: realMessage,
+                method: sendMethod,
+                tempId 
+            };
 
         } catch (error) {
-            console.error('❌ Error in sendMessage:', error);
+            console.error('❌ [useMessageHandlers] Send message error:', error);
             
-            // Mark temporary message as error
+            // Mark temp message as error
             setMessages(prev => prev.map(msg => 
                 msg.id === tempId 
                     ? { ...msg, isSending: false, isError: true }
                     : msg
             ));
+
+            return { 
+                success: false, 
+                error: error.message,
+                tempId 
+            };
+
         } finally {
+            // 🔒 CRITICAL: Release global lock
+            globalSendLock.current = false;
             setSending(false);
+            console.log('🔓 [useMessageHandlers] Message send process completed - locks released');
             
-            // ✅ FIX: Xóa khỏi danh sách đang gửi sau một khoảng thời gian
+            // Clean up fingerprint after send attempt
             setTimeout(() => {
                 pendingSends.current.delete(messageFingerprint);
-            }, 10000); // 10 giây
+            }, 5000);
         }
-    }, [
-        currentUser?.id,
-        user?.id,
-        sending,
-        setMessages,
-        setMessageText,
-        setAttachment,
-        wsConnected,
-        sendMessageViaWebSocket,
-        flatListRef,
-        fetchNewMessages
-    ]);
+         }, [currentUser, user, setMessages, setAttachment, setMessageText, wsConnected, sendMessageViaWebSocket, flatListRef, fetchNewMessages, sending]);
 
     // 🔄 Resend message handler
-    const resendMessage = useCallback(async (failedMessage) => {
-        if (!failedMessage) {
-            console.log('⚠️ No message to resend');
-            return;
-        }
-
-        console.log('🔄 Resending message:', failedMessage.id);
-
-        // Remove the failed message
-        setMessages(prev => prev.filter(msg => msg.id !== failedMessage.id));
-
-        // Resend using the normal send flow
-        await sendMessage(failedMessage.content, failedMessage.attachment);
+    const resendMessage = useCallback(async (message) => {
+        console.log('🔄 Resending message:', message.id);
+        
+        // Remove error message first
+        setMessages(prev => prev.filter(msg => msg.id !== message.id));
+        
+        // Send again
+        return await sendMessage(message.content, message.attachment);
     }, [sendMessage, setMessages]);
 
     return {

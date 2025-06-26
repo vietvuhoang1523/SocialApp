@@ -9,7 +9,8 @@ import {
     Animated,
     ScrollView,
     TouchableOpacity,
-    Image
+    Image,
+    Alert
 } from 'react-native';
 import PostItem from '../../hook/PostItem';
 import { CreatePostButton, EmptyContent } from '../../components/UIComponents';
@@ -28,27 +29,24 @@ import UserLocationController from './UserLocationController';
 // Sports Profile Section Component
 const SportsProfileSection = ({ navigation, userProfile }) => {
     const handleNavigateToSportsProfile = () => {
-        navigation.navigate('SportsProfileScreen', {
-            currentUser: userProfile,
-            isViewMode: false
-        });
+        // Navigate to sports profile creation/editing
+        navigation.navigate('CreateSportsPost');
     };
 
     const handleNavigateToSportsMatching = () => {
-        navigation.navigate('SportsMatchingScreen', {
-            currentUser: userProfile
-        });
+        // Navigate to sports availability screen which exists
+        navigation.navigate('SportsAvailabilityScreen');
     };
 
     const handleNavigateToSportsAvailability = () => {
-        navigation.navigate('SportsAvailability');
+        navigation.navigate('CreateSportsPost');
     };
 
     return (
         <View style={styles.sportsProfileSection}>
             <View style={styles.sportsProfileHeader}>
                 <Text style={styles.sportsProfileTitle}>🏃‍♂️ Thể thao</Text>
-                <Text style={styles.sportsProfileSubtitle}>Quản lý hồ sơ thể thao và tìm đối tác</Text>
+                <Text style={styles.sportsProfileSubtitle}>Quản lý hoạt động thể thao của bạn</Text>
             </View>
             
             <View style={styles.sportsButtonsContainer}>
@@ -62,7 +60,7 @@ const SportsProfileSection = ({ navigation, userProfile }) => {
                         style={styles.sportsButtonGradient}
                     >
                         <Ionicons name="person-circle" size={20} color="#fff" />
-                        <Text style={styles.sportsButtonText}>Sports Profile</Text>
+                        <Text style={styles.sportsButtonText}>Hồ sơ</Text>
                     </LinearGradient>
                 </TouchableOpacity>
 
@@ -89,62 +87,49 @@ const SportsProfileSection = ({ navigation, userProfile }) => {
                         colors={['#4CAF50', '#388E3C']}
                         style={styles.sportsButtonGradient}
                     >
-                        <Ionicons name="calendar" size={20} color="#fff" />
-                        <Text style={styles.sportsButtonText}>Lịch chơi thể thao</Text>
+                        <Ionicons name="add" size={20} color="#fff" />
+                        <Text style={styles.sportsButtonText}>Tạo bài đăng</Text>
                     </LinearGradient>
                 </TouchableOpacity>
-            </View>
-
-            {/* Quick Access Section */}
-            <View style={styles.quickAccessSection}>
-                <Text style={styles.quickAccessTitle}>📊 Quản lý hoạt động</Text>
-                
-                <View style={styles.quickAccessGrid}>
-                    <TouchableOpacity 
-                        style={styles.quickAccessCard}
-                        onPress={() => navigation.navigate('MyJoinedPosts')}
-                    >
-                        <View style={[styles.quickAccessIcon, { backgroundColor: '#E8F5E8' }]}>
-                            <Ionicons name="checkmark-circle" size={24} color="#4CAF50" />
-                        </View>
-                        <Text style={styles.quickAccessLabel}>Đã tham gia</Text>
-                        <Text style={styles.quickAccessDesc}>Xem bài đăng đã tham gia</Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity 
-                        style={styles.quickAccessCard}
-                        onPress={() => navigation.navigate('MyCreatedPosts')}
-                    >
-                        <View style={[styles.quickAccessIcon, { backgroundColor: '#FFF3E0' }]}>
-                            <Ionicons name="create" size={24} color="#FF9800" />
-                        </View>
-                        <Text style={styles.quickAccessLabel}>Đã tạo</Text>
-                        <Text style={styles.quickAccessDesc}>Quản lý bài đăng của bạn</Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity 
-                        style={styles.quickAccessCard}
-                        onPress={() => navigation.navigate('AllPendingRequests')}
-                    >
-                        <View style={[styles.quickAccessIcon, { backgroundColor: '#FFF8E1' }]}>
-                            <Ionicons name="time" size={24} color="#FFC107" />
-                        </View>
-                        <Text style={styles.quickAccessLabel}>Chờ duyệt</Text>
-                        <Text style={styles.quickAccessDesc}>Yêu cầu cần xử lý</Text>
-                    </TouchableOpacity>
-                </View>
             </View>
         </View>
     );
 };
 
-// Sports Tab Component
+// Sports Tab Component - Simplified version
 const SportsTab = ({ navigation, userProfile, onRefresh, isRefreshing, scrollY }) => {
-    // Dummy sports data - in a real app, this would come from an API or context
-    const sportsData = [
-        { id: 1, name: 'Bóng đá', level: 'Trung bình', frequency: '2-3 lần/tuần', icon: 'football-outline' },
-        { id: 2, name: 'Bơi lội', level: 'Nâng cao', frequency: '3-4 lần/tuần', icon: 'water-outline' },
-        { id: 3, name: 'Tennis', level: 'Sơ cấp', frequency: '1-2 lần/tuần', icon: 'tennisball-outline' },
+    console.log('🏃‍♂️ SportsTab component rendering...', { 
+        navigation: !!navigation, 
+        userProfile: !!userProfile,
+        sportsInterestsLength: 3
+    });
+
+    // Sample sports interests - this would normally come from user profile
+    const sportsInterests = [
+        { 
+            id: 1, 
+            name: 'Bóng đá', 
+            level: 'Trung bình', 
+            frequency: '2-3 lần/tuần', 
+            icon: 'football-outline',
+            description: 'Thích chơi bóng đá với bạn bè'
+        },
+        { 
+            id: 2, 
+            name: 'Bơi lội', 
+            level: 'Nâng cao', 
+            frequency: '3-4 lần/tuần', 
+            icon: 'water-outline',
+            description: 'Bơi lội để rèn luyện sức khỏe'
+        },
+        { 
+            id: 3, 
+            name: 'Tennis', 
+            level: 'Sơ cấp', 
+            frequency: '1-2 lần/tuần', 
+            icon: 'tennisball-outline',
+            description: 'Muốn học và cải thiện kỹ năng tennis'
+        },
     ];
 
     const renderSportItem = ({ item }) => (
@@ -154,6 +139,7 @@ const SportsTab = ({ navigation, userProfile, onRefresh, isRefreshing, scrollY }
             </View>
             <View style={styles.sportInfoContainer}>
                 <Text style={styles.sportName}>{item.name}</Text>
+                <Text style={styles.sportDescription}>{item.description}</Text>
                 <View style={styles.sportDetailsRow}>
                     <View style={styles.sportDetail}>
                         <Text style={styles.sportDetailLabel}>Trình độ:</Text>
@@ -168,71 +154,130 @@ const SportsTab = ({ navigation, userProfile, onRefresh, isRefreshing, scrollY }
         </View>
     );
 
+    const handleCreateSportsProfile = () => {
+        Alert.alert(
+            'Tạo hồ sơ thể thao',
+            'Bạn muốn tạo hồ sơ thể thao mới?',
+            [
+                { text: 'Hủy', style: 'cancel' },
+                { 
+                    text: 'Tạo', 
+                    onPress: () => {
+                        Alert.alert('Thông báo', 'Chức năng đang được phát triển');
+                    }
+                }
+            ]
+        );
+    };
+
+    const handleEditSportsProfile = () => {
+        Alert.alert(
+            'Chỉnh sửa hồ sơ thể thao',
+            'Chức năng chỉnh sửa hồ sơ thể thao đang được phát triển',
+            [{ text: 'OK' }]
+        );
+    };
+
+    // Render sports tab header with profile info included
+    const renderSportsHeader = () => (
+        <>
+            <ProfileInfo 
+                onEditProfile={() => {
+                    Alert.alert('Chỉnh sửa profile', 'Chức năng đang được phát triển');
+                }}
+                onViewIntro={() => {
+                    Alert.alert('Xem giới thiệu', 'Chức năng đang được phát triển');
+                }}
+            />
+            
+            <FriendsSection 
+                onFindFriends={() => {
+                    navigation.navigate('FriendSearch');
+                }}
+                onViewAllFriends={() => {
+                    navigation.navigate('NewMessages', { currentUser: userProfile });
+                }}
+            />
+
+            <SportsProfileSection 
+                navigation={navigation}
+                userProfile={userProfile}
+            />
+
+            <ProfileTabs
+                activeTab="sports"
+                onTabChange={() => {}} // Không cần onChange ở đây
+            />
+
+            <View style={styles.sportsTabHeader}>
+                <Text style={styles.sportsTabTitle}>🏃‍♂️ Sở thích thể thao</Text>
+                <Text style={styles.sportsTabSubtitle}>
+                    Những môn thể thao bạn yêu thích và muốn tìm đối tác
+                </Text>
+                
+                <TouchableOpacity 
+                    style={styles.editSportsProfileButton}
+                    onPress={handleEditSportsProfile}
+                >
+                    <LinearGradient
+                        colors={['#E91E63', '#C2185B']}
+                        style={styles.editButtonGradient}
+                    >
+                        <Ionicons name="create-outline" size={18} color="#fff" />
+                        <Text style={styles.editButtonText}>Chỉnh sửa sở thích</Text>
+                    </LinearGradient>
+                </TouchableOpacity>
+            </View>
+        </>
+    );
+
     return (
-        <FlatList
-            data={sportsData}
-            renderItem={renderSportItem}
-            keyExtractor={(item) => item.id.toString()}
-            ListHeaderComponent={
-                <View style={styles.sportsTabHeader}>
-                    <Text style={styles.sportsTabTitle}>Thông tin thể thao của bạn</Text>
-                    <Text style={styles.sportsTabSubtitle}>
-                        Quản lý các môn thể thao yêu thích và tìm đối tác phù hợp
-                    </Text>
-                    
-                    <TouchableOpacity 
-                        style={styles.editSportsProfileButton}
-                        onPress={() => navigation.navigate('SportsProfileScreen', {
-                            currentUser: userProfile,
-                            isViewMode: false
-                        })}
-                    >
-                        <LinearGradient
-                            colors={['#E91E63', '#C2185B']}
-                            style={styles.editButtonGradient}
+        <View style={{ flex: 1, backgroundColor: '#f8f9fa' }}>
+            <FlatList
+                data={sportsInterests}
+                renderItem={renderSportItem}
+                keyExtractor={(item) => item.id.toString()}
+                ListHeaderComponent={renderSportsHeader}
+                ListEmptyComponent={
+                    <View style={styles.emptySportsContainer}>
+                        <Ionicons name="fitness-outline" size={60} color="#ccc" />
+                        <Text style={styles.emptySportsText}>
+                            Bạn chưa có thông tin thể thao nào
+                        </Text>
+                        <Text style={styles.emptySportsSubText}>
+                            Hãy thêm các môn thể thao yêu thích để tìm đối tác phù hợp
+                        </Text>
+                        <TouchableOpacity 
+                            style={styles.createSportsProfileButton}
+                            onPress={handleCreateSportsProfile}
                         >
-                            <Ionicons name="create-outline" size={18} color="#fff" />
-                            <Text style={styles.editButtonText}>Chỉnh sửa hồ sơ thể thao</Text>
-                        </LinearGradient>
-                    </TouchableOpacity>
-                </View>
-            }
-            ListEmptyComponent={
-                <View style={styles.emptySportsContainer}>
-                    <Ionicons name="fitness-outline" size={60} color="#ccc" />
-                    <Text style={styles.emptySportsText}>
-                        Bạn chưa có thông tin thể thao nào
-                    </Text>
-                    <TouchableOpacity 
-                        style={styles.createSportsProfileButton}
-                        onPress={() => navigation.navigate('SportsProfileScreen', {
-                            currentUser: userProfile,
-                            isViewMode: false
-                        })}
-                    >
-                        <LinearGradient
-                            colors={['#E91E63', '#C2185B']}
-                            style={styles.createButtonGradient}
-                        >
-                            <Text style={styles.createButtonText}>Tạo hồ sơ thể thao</Text>
-                        </LinearGradient>
-                    </TouchableOpacity>
-                </View>
-            }
-            contentContainerStyle={styles.sportsTabContainer}
-            refreshControl={
-                <RefreshControl
-                    refreshing={isRefreshing}
-                    onRefresh={onRefresh}
-                    colors={['#1877F2']}
-                />
-            }
-            onScroll={Animated.event(
-                [{ nativeEvent: { contentOffset: { y: scrollY } } }],
-                { useNativeDriver: false }
-            )}
-            scrollEventThrottle={16}
-        />
+                            <LinearGradient
+                                colors={['#E91E63', '#C2185B']}
+                                style={styles.createButtonGradient}
+                            >
+                                <Ionicons name="add" size={18} color="#fff" />
+                                <Text style={styles.createButtonText}>Thêm sở thích thể thao</Text>
+                            </LinearGradient>
+                        </TouchableOpacity>
+                    </View>
+                }
+                contentContainerStyle={styles.sportsTabContainer}
+                refreshControl={
+                    <RefreshControl
+                        refreshing={isRefreshing}
+                        onRefresh={onRefresh}
+                        colors={['#E91E63']}
+                        tintColor="#E91E63"
+                    />
+                }
+                onScroll={Animated.event(
+                    [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+                    { useNativeDriver: false }
+                )}
+                scrollEventThrottle={16}
+                showsVerticalScrollIndicator={false}
+            />
+        </View>
     );
 };
 
@@ -246,7 +291,8 @@ const ProfileContent = ({
                             onEditProfile,
                             onViewIntro,
                             onFindFriends,
-                            onViewAllFriends
+                            onViewAllFriends,
+                            locationTab
                         }) => {
     // State để lưu userId hiện tại
     const [currentUserId, setCurrentUserId] = useState(null);
@@ -270,21 +316,6 @@ const ProfileContent = ({
     // Tham chiếu tới FlatList để kiểm soát scroll
     const flatListRef = useRef(null);
 
-    // Lấy userId hiện tại khi component mount
-    // useEffect(() => {
-    //     const getCurrentUser = async () => {
-    //         try {
-    //             const userData = await authService.getCurrentUser();
-    //             if (userData && userData.id) {
-    //                 setCurrentUserId(userData.id);
-    //             }
-    //         } catch (error) {
-    //             console.error('Lỗi khi lấy thông tin người dùng hiện tại:', error);
-    //         }
-    //     };
-    //
-    //     getCurrentUser();
-    // }, []);
 
     // Gọi API khi component mount hoặc activeTab thay đổi
     useEffect(() => {
@@ -371,10 +402,7 @@ const ProfileContent = ({
                 onViewAllFriends={onViewAllFriends}
             />
 
-            <SportsProfileSection 
-                navigation={navigation}
-                userProfile={userProfile}
-            />
+
 
             <ProfileTabs
                 activeTab={activeTab}
@@ -423,46 +451,16 @@ const ProfileContent = ({
                         }
                     />
                 );
-            case 'photos':
-                return (
-                    <FlatList
-                        ref={flatListRef}
-                        data={[]} // Không có dữ liệu ảnh
-                        ListHeaderComponent={renderListHeader}
-                        contentContainerStyle={styles.centeredContainer}
-                        refreshControl={
-                            <RefreshControl
-                                refreshing={isRefreshing}
-                                onRefresh={handleUserRefresh}
-                                colors={['#1877F2']}
-                            />
-                        }
-                        onScroll={Animated.event(
-                            [{ nativeEvent: { contentOffset: { y: scrollY } } }],
-                            { useNativeDriver: false }
-                        )}
-                        scrollEventThrottle={16}
-                        ListEmptyComponent={
-                            <View style={styles.centeredContent}>
-                                <EmptyContent message="Không có ảnh nào" />
-                            </View>
-                        }
-                    />
-                );
             case 'sports':
+                console.log('🏃‍♂️ Rendering Sports Tab');
                 return (
-                    <View style={styles.tabContentContainer}>
-                        <View style={styles.tabHeaderContainer}>
-                            {renderListHeader()}
-                        </View>
-                        <SportsTab 
-                            navigation={navigation}
-                            userProfile={userProfile}
-                            onRefresh={handleUserRefresh}
-                            isRefreshing={isRefreshing}
-                            scrollY={scrollY}
-                        />
-                    </View>
+                    <SportsTab 
+                        navigation={navigation}
+                        userProfile={userProfile}
+                        onRefresh={handleUserRefresh}
+                        isRefreshing={isRefreshing}
+                        scrollY={scrollY}
+                    />
                 );
             case 'location':
                 return (
@@ -483,7 +481,8 @@ const ProfileContent = ({
                         </View>
                         <View style={styles.locationControllerContainer}>
                             <UserLocationController 
-                                navigation={navigation} 
+                                navigation={navigation}
+                                initialTab={locationTab || 'location'}
                                 key="locationController"
                             />
                         </View>
@@ -606,6 +605,7 @@ const styles = StyleSheet.create({
     // Styles for Sports Tab
     tabContentContainer: {
         flex: 1,
+        backgroundColor: '#f8f9fa',
     },
     sportsTabContainer: {
         flexGrow: 1,
@@ -685,6 +685,11 @@ const styles = StyleSheet.create({
         color: '#333',
         marginBottom: 5,
     },
+    sportDescription: {
+        fontSize: 12,
+        color: '#666',
+        marginBottom: 5,
+    },
     sportDetailsRow: {
         flexDirection: 'row',
         justifyContent: 'space-between',
@@ -705,15 +710,28 @@ const styles = StyleSheet.create({
     },
     emptySportsContainer: {
         alignItems: 'center',
-        justifyContent: 'center',
         padding: 30,
-        marginTop: 20,
+        marginHorizontal: 15,
+        marginVertical: 20,
+        backgroundColor: '#fff',
+        borderRadius: 15,
+        elevation: 2,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.1,
+        shadowRadius: 3,
     },
     emptySportsText: {
         fontSize: 16,
         color: '#666',
         textAlign: 'center',
         marginVertical: 15,
+    },
+    emptySportsSubText: {
+        fontSize: 12,
+        color: '#666',
+        textAlign: 'center',
+        marginVertical: 10,
     },
     createSportsProfileButton: {
         width: '80%',
@@ -722,68 +740,17 @@ const styles = StyleSheet.create({
         marginTop: 15,
     },
     createButtonGradient: {
+        flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
         paddingVertical: 12,
+        paddingHorizontal: 20,
+        gap: 8,
     },
     createButtonText: {
         fontSize: 14,
         fontWeight: '600',
         color: '#fff',
-    },
-    // Quick Access Styles
-    quickAccessSection: {
-        marginTop: 15,
-        paddingTop: 15,
-        borderTopWidth: 1,
-        borderTopColor: '#E5E5E5',
-    },
-    quickAccessTitle: {
-        fontSize: 16,
-        fontWeight: 'bold',
-        color: '#333',
-        marginBottom: 12,
-        textAlign: 'left',
-    },
-    quickAccessGrid: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        gap: 10,
-    },
-    quickAccessCard: {
-        flex: 1,
-        backgroundColor: '#fff',
-        padding: 12,
-        borderRadius: 12,
-        alignItems: 'center',
-        elevation: 2,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.1,
-        shadowRadius: 2,
-        borderWidth: 1,
-        borderColor: '#F0F0F0',
-    },
-    quickAccessIcon: {
-        width: 48,
-        height: 48,
-        borderRadius: 24,
-        justifyContent: 'center',
-        alignItems: 'center',
-        marginBottom: 8,
-    },
-    quickAccessLabel: {
-        fontSize: 13,
-        fontWeight: 'bold',
-        color: '#333',
-        marginBottom: 2,
-        textAlign: 'center',
-    },
-    quickAccessDesc: {
-        fontSize: 10,
-        color: '#666',
-        textAlign: 'center',
-        lineHeight: 12,
     },
 });
 

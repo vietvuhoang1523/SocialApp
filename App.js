@@ -32,7 +32,7 @@ import FriendsSection from "./src/components/friends/FriendsSection";
 
 // Import Sports Profile screens
 import SportsProfileScreen from "./src/screens/profile/SportsProfileScreen";
-import SportsMatchingScreen from "./src/screens/profile/SportsMatchingScreen";
+import ViewSportsProfileScreen from "./src/screens/profile/ViewSportsProfileScreen";
 import SportsPostDetailScreen from "./src/screens/SportsPostDetailScreen";
 
 // Import Sports Availability screens
@@ -44,13 +44,25 @@ import ManageParticipantsScreen from "./src/screens/sports/ManageParticipantsScr
 import AllPendingRequestsScreen from "./src/screens/sports/AllPendingRequestsScreen";
 import MyJoinedPostsScreen from "./src/screens/sports/MyJoinedPostsScreen";
 import MyCreatedPostsScreen from "./src/screens/sports/MyCreatedPostsScreen";
-import AutoApproveDebugScreen from "./src/screens/debug/AutoApproveDebugScreen";
+
+
+// Import Sports Matching screens
+import SportsMatchingScreen from "./src/screens/sports/SportsMatchingScreen";
+import MatchRequestsScreen from "./src/screens/sports/MatchRequestsScreen";
+import BrowseAvailabilitiesScreen from "./src/screens/sports/BrowseAvailabilitiesScreen";
 
 // Import Report and Workout screens
 import ReportScreen from "./src/screens/ReportScreen";
 import WorkoutTrackingScreen from "./src/screens/workout/WorkoutTrackingScreen";
 import WorkoutHistoryScreen from "./src/screens/workout/WorkoutHistoryScreen";
 import ReportManagementScreen from "./src/screens/admin/ReportManagementScreen";
+
+// Import Statistics and Analytics screens
+import SportsStatsScreen from "./src/screens/sports/SportsStatsScreen";
+import WorkoutSessionsScreen from "./src/screens/sports/WorkoutSessionsScreen";
+import CreateWorkoutSessionScreen from "./src/screens/sports/CreateWorkoutSessionScreen";
+import WorkoutSessionDetailScreen from "./src/screens/sports/WorkoutSessionDetailScreen";
+import SportsRecommendationsScreen from "./src/screens/sports/SportsRecommendationsScreen";
 
 // Import Location screens
 import UserLocationController from "./src/screens/profile/UserLocationController";
@@ -69,6 +81,7 @@ import VideoCallScreen from "./src/screens/Calls/VideoCallScreen";
 
 // Import services
 import webSocketService from './src/services/WebSocketService';
+import webSocketManager from './src/services/WebSocketManager';
 import AuthService from './src/services/AuthService';
 //
 import { ProfileProvider } from './src/components/ProfileContext';
@@ -85,18 +98,22 @@ export default function App() {
   // State quản lý việc kết nối WebSocket
   const [isWebSocketConnected, setIsWebSocketConnected] = useState(false);
 
-  // Kiểm tra xác thực và kết nối WebSocket
+  // ✅ FIXED: Initialize WebSocketManager for unified messaging
   useEffect(() => {
     const checkAuthAndSetupWebSocket = async () => {
       try {
         const isAuthenticated = await AuthService.checkAuthentication();
         if (isAuthenticated) {
-          // Kết nối WebSocket
-          await webSocketService.connect();
-          setIsWebSocketConnected(true);
+          console.log('🔌 App: Initializing WebSocketManager...');
+          
+          // ✅ Initialize unified WebSocket manager
+          await webSocketManager.initialize();
+          setIsWebSocketConnected(webSocketManager.isConnected());
+          
+          console.log('✅ App: WebSocketManager initialized successfully');
         }
       } catch (error) {
-        console.error('Auth check error:', error);
+        console.error('❌ App: WebSocket setup error:', error);
         setIsWebSocketConnected(false);
       }
     };
@@ -105,10 +122,12 @@ export default function App() {
 
     // Cleanup khi unmount
     return () => {
+      console.log('🧹 App: Cleaning up WebSocket connections');
+      webSocketManager.cleanup();
       webSocketService.disconnect();
       setIsWebSocketConnected(false);
     };
-  }, []); // Dependency array rỗng để chỉ chạy một lần
+  }, []);
 
   // Tạo navigator một cách ổn định (KHÔNG SỬ DỤNG - đã chuyển xuống return)
   /*
@@ -290,8 +309,23 @@ export default function App() {
                   options={{ headerShown: false }}
               />
               <Stack.Screen
+                  name="ViewSportsProfileScreen"
+                  component={ViewSportsProfileScreen}
+                  options={{ headerShown: false }}
+              />
+              <Stack.Screen
                   name="SportsMatchingScreen"
                   component={SportsMatchingScreen}
+                  options={{ headerShown: false }}
+              />
+              <Stack.Screen
+                  name="MatchRequestsScreen"
+                  component={MatchRequestsScreen}
+                  options={{ headerShown: false }}
+              />
+              <Stack.Screen
+                  name="BrowseAvailabilitiesScreen"
+                  component={BrowseAvailabilitiesScreen}
                   options={{ headerShown: false }}
               />
               {/* Sports Availability */}
@@ -335,11 +369,7 @@ export default function App() {
                   component={MyCreatedPostsScreen}
                   options={{ headerShown: false }}
               />
-              <Stack.Screen
-                  name="AutoApproveDebug"
-                  component={AutoApproveDebugScreen}
-                  options={{ title: "🔧 Auto Approve Debug" }}
-              />
+
               {/* Report and Workout screens */}
               <Stack.Screen
                   name="Report"
@@ -359,6 +389,52 @@ export default function App() {
               <Stack.Screen
                   name="ReportManagement"
                   component={ReportManagementScreen}
+                  options={{ headerShown: false }}
+              />
+              {/* Statistics and Analytics screens */}
+              <Stack.Screen
+                  name="SportsStatsScreen"
+                  component={SportsStatsScreen}
+                  options={{ headerShown: false }}
+              />
+              <Stack.Screen
+                  name="WorkoutTrackingScreen"
+                  component={WorkoutTrackingScreen}
+                  options={{ headerShown: false }}
+              />
+              <Stack.Screen
+                  name="WorkoutHistoryScreen"
+                  component={WorkoutHistoryScreen}
+                  options={{ headerShown: false }}
+              />
+              <Stack.Screen
+                  name="WorkoutSessionsScreen"
+                  component={WorkoutSessionsScreen}
+                  options={{ headerShown: false }}
+              />
+              <Stack.Screen
+                  name="CreateWorkoutSessionScreen"
+                  component={CreateWorkoutSessionScreen}
+                  options={{ headerShown: false }}
+              />
+              <Stack.Screen
+                  name="WorkoutSessionDetailScreen"
+                  component={WorkoutSessionDetailScreen}
+                  options={{ headerShown: false }}
+              />
+              <Stack.Screen
+                  name="MyCreatedPostsScreen"
+                  component={MyCreatedPostsScreen}
+                  options={{ headerShown: false }}
+              />
+              <Stack.Screen
+                  name="MyJoinedPostsScreen"
+                  component={MyJoinedPostsScreen}
+                  options={{ headerShown: false }}
+              />
+              <Stack.Screen
+                  name="SportsRecommendationsScreen"
+                  component={SportsRecommendationsScreen}
                   options={{ headerShown: false }}
               />
               {/* Main Tab Navigator - Must be last */}

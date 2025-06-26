@@ -1,5 +1,3 @@
-
-
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
     View,
@@ -32,10 +30,12 @@ import NewChatHeader from '../../components/chat/NewChatHeader';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import ConnectionStatusIndicator from '../../components/chat/ConnectionStatusIndicator';
 
+
 // Services
 import messagesService from '../../services/messagesService';
 import videoCallService from '../../services/videoCallService';
 import webSocketReconnectionManager from '../../services/WebSocketReconnectionManager';
+import webSocketService from '../../services/WebSocketService';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
@@ -109,6 +109,7 @@ const NewChatScreen = ({ route, navigation }) => {
     const flatListRef = useRef(null);
     const scrollOffsetY = useRef(0);
     const fadeAnim = useRef(new Animated.Value(0)).current;
+    const directMessageListenerRef = useRef(null);
 
     // 🔑 Chat key for WebSocket
     const chatKey = useMemo(() =>
@@ -132,11 +133,16 @@ const NewChatScreen = ({ route, navigation }) => {
         loadMessages
     } = useMessageManagement(currentUser, user);
 
-    // 🔌 WebSocket Connection Hook - Enhanced with reconnection manager
+    // 🔌 WebSocket Connection Hook - Enhanced with reconnection manager  
     const handleReconnect = useCallback(() => {
-        console.log("🔄 Chat reconnected, fetching new messages");
-        fetchNewMessages();
-    }, [fetchNewMessages]);
+        console.log("🔄 Chat reconnected");
+        // Don't fetch new messages on reconnect - WebSocket will deliver them automatically
+        // Only refresh if no messages are currently loaded
+        if (messages.length === 0) {
+            console.log("📭 No messages loaded, refreshing...");
+            fetchMessages();
+        }
+    }, [messages.length, fetchMessages]);
 
     const {
         connectionStatus,
@@ -146,7 +152,7 @@ const NewChatScreen = ({ route, navigation }) => {
         manualReconnect
     } = useConnection(currentUser, user, chatKey, handleReconnect);
 
-    // 🌐 WebSocket Chat Hook
+    // 🌐 WebSocket Chat Hook - This handles ALL message processing
     const {
         isConnected: wsConnected,
         isTyping,
@@ -201,10 +207,46 @@ const NewChatScreen = ({ route, navigation }) => {
         };
     }, []);
 
+    // ✅ FIXED: Removed duplicate WebSocket listener to prevent duplicate messages
+    // The useChatWebSocket hook already handles all WebSocket message processing
+    useEffect(() => {
+        console.log('🎧 [NewChatScreen] Message handling setup');
+        console.log('✅ [NewChatScreen] Using useChatWebSocket hook for all WebSocket processing');
+        console.log('❌ [NewChatScreen] No additional listeners to prevent duplicates');
+        
+        // No additional WebSocket subscriptions needed here
+        // useChatWebSocket hook handles everything
+        
+        return () => {
+            console.log('🧹 [NewChatScreen] No cleanup needed - no duplicate listeners');
+        };
+    }, [currentUser?.id, user?.id]);
+
     // Handle connection status changes
     useEffect(() => {
         console.log(`🔌 Connection status: ${connectionStatus}, reconnecting: ${reconnecting}`);
-    }, [connectionStatus, reconnecting]);
+        
+        // 🔧 DEBUG: Log WebSocket connection details
+        console.log('🔧 [DEBUG] WebSocket Status Details:', {
+            connectionStatus,
+            wsConnected,
+            reconnecting,
+            reconnectAttempt,
+            maxAttempts,
+            hasUser: !!user,
+            hasCurrentUser: !!currentUser,
+            userId: user?.id,
+            currentUserId: currentUser?.id
+        });
+        
+        // 🔧 DEBUG: Test WebSocket service directly
+        if (webSocketService) {
+            console.log('🔧 [DEBUG] WebSocket Service Status:', {
+                isConnected: webSocketService.isConnected(),
+                connectionStatus: webSocketService.getConnectionStatus()
+            });
+        }
+    }, [connectionStatus, reconnecting, wsConnected, reconnectAttempt]);
 
     // Handle scroll events
     const handleScroll = (event) => {
@@ -243,22 +285,22 @@ const NewChatScreen = ({ route, navigation }) => {
             return <LoadingSpinner size="large" style={styles.loadingSpinner} />;
         }
         
-        if (hasMore) {
-            return (
-                <View style={styles.loadMoreContainer}>
-                    {refreshing ? (
-                        <ActivityIndicator size="small" color="#0084ff" />
-                    ) : (
-                        <TouchableOpacity
-                            style={styles.loadMoreButton}
-                            onPress={loadMoreMessages}
-                        >
-                            <Text style={styles.loadMoreText}>Xem tin nhắn cũ hơn</Text>
-                        </TouchableOpacity>
-                    )}
-                </View>
-            );
-        }
+        // if (hasMore) {
+        //     return (
+        //         <View style={styles.loadMoreContainer}>
+        //             {refreshing ? (
+        //                 <ActivityIndicator size="small" color="#0084ff" />
+        //             ) : (
+        //                 <TouchableOpacity
+        //                     style={styles.loadMoreButton}
+        //                     onPress={loadMoreMessages}
+        //                 >
+        //                     <Text style={styles.loadMoreText}>Xem tin nhắn cũ hơn</Text>
+        //                 </TouchableOpacity>
+        //             )}
+        //         </View>
+        //     );
+        // }
         
         return null;
     };
@@ -275,6 +317,8 @@ const NewChatScreen = ({ route, navigation }) => {
                 reconnecting={reconnecting} 
                 onRetry={handleRetryConnection}
             />
+            
+           
             
             <KeyboardAvoidingView
                 behavior={Platform.OS === 'ios' ? 'padding' : null}

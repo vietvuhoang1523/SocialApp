@@ -23,7 +23,6 @@ import CreatePostService from '../services/CreatePostService';
 import SportsPostService from '../services/SportsPostService';
 import authService from '../services/AuthService';
 import Config from '../../src/services/config';
-import StoryItem from '../components/StoryItem';
 import SportsPostItem from '../components/SportsPostItem';
 import LoadingSpinner from '../components/LoadingSpinner';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -51,7 +50,6 @@ const createImageUrl = (path) => {
 };
 
 const InstagramHomeScreen = ({ navigation }) => {
-    const [stories, setStories] = useState([]);
     const [posts, setPosts] = useState([]);
     const [sportsPosts, setSportsPosts] = useState([]);
     const [currentUser, setCurrentUser] = useState(null);
@@ -81,25 +79,6 @@ const InstagramHomeScreen = ({ navigation }) => {
             console.error('Lỗi khi lấy thông tin người dùng:', error);
             return null;
         }
-    };
-
-    // Mock stories data - you can replace with real API call
-    const generateMockStories = () => {
-        const mockStories = [
-            {
-                id: 'add_story',
-                username: 'Tạo story',
-                imageUrl: currentUser?.profilePictureUrl || 'https://randomuser.me/api/portraits/men/1.jpg',
-                isAddStory: true
-            },
-            ...Array.from({ length: 8 }, (_, i) => ({
-                id: `story_${i}`,
-                username: `User ${i + 1}`,
-                imageUrl: `https://randomuser.me/api/portraits/${i % 2 === 0 ? 'men' : 'women'}/${i + 2}.jpg`,
-                hasNewStory: Math.random() > 0.5
-            }))
-        ];
-        setStories(mockStories);
     };
 
     const fetchPosts = async (pageNumber = 0, shouldRefresh = false) => {
@@ -170,7 +149,6 @@ const InstagramHomeScreen = ({ navigation }) => {
     const onRefresh = useCallback(() => {
         fetchPosts(0, true);
         fetchSportsPosts(0, true);
-        generateMockStories();
         // Cập nhật thông báo khi làm mới
         refreshNotifications();
         // Cập nhật số lượng yêu cầu kết bạn
@@ -239,7 +217,6 @@ const InstagramHomeScreen = ({ navigation }) => {
             await fetchCurrentUser();
             fetchPosts();
             fetchSportsPosts();
-            generateMockStories();
             fetchFriendRequestsCount();
         };
         loadInitialData();
@@ -267,18 +244,6 @@ const InstagramHomeScreen = ({ navigation }) => {
             </View>
         );
     };
-
-    const renderStoryItem = ({ item }) => (
-        <StoryItem
-            story={item}
-            onPress={(story) => {
-                console.log('Story pressed:', story);
-                // Handle story press - navigate to story viewer
-            }}
-            createImageUrl={createImageUrl}
-            currentUser={currentUser}
-        />
-    );
 
     if (loading && !refreshing && posts.length === 0) {
         return (
@@ -312,12 +277,6 @@ const InstagramHomeScreen = ({ navigation }) => {
                     <View style={styles.headerLeft}>
                         <TouchableOpacity onPress={() => setShowSearch(!showSearch)}>
                             <Ionicons name="search" size={26} color="#333" />
-                        </TouchableOpacity>
-                        <TouchableOpacity 
-                            style={{marginLeft: 15}}
-                            onPress={() => navigation.navigate('AutoApproveDebug')}
-                        >
-                            <MaterialIcons name="bug-report" size={24} color="#e74c3c" />
                         </TouchableOpacity>
                     </View>
                     
@@ -380,18 +339,6 @@ const InstagramHomeScreen = ({ navigation }) => {
                 onEndReachedThreshold={0.5}
                 ListHeaderComponent={
                     <View>
-                        <View style={styles.storiesSection}>
-                            <Text style={styles.storiesTitle}>Stories</Text>
-                            <FlatList
-                                data={stories}
-                                renderItem={renderStoryItem}
-                                keyExtractor={(item) => item.id}
-                                horizontal
-                                showsHorizontalScrollIndicator={false}
-                                contentContainerStyle={styles.storiesContainer}
-                            />
-                        </View>
-                        
                         {/* Content Type Tabs */}
                         <View style={styles.tabContainer}>
                             <TouchableOpacity 
@@ -474,18 +421,6 @@ const InstagramHomeScreen = ({ navigation }) => {
                     onEndReachedThreshold={0.5}
                     ListHeaderComponent={
                         <View>
-                            <View style={styles.storiesSection}>
-                                <Text style={styles.storiesTitle}>Stories</Text>
-                                <FlatList
-                                    data={stories}
-                                    renderItem={renderStoryItem}
-                                    keyExtractor={(item) => item.id}
-                                    horizontal
-                                    showsHorizontalScrollIndicator={false}
-                                    contentContainerStyle={styles.storiesContainer}
-                                />
-                            </View>
-                            
                             {/* Content Type Tabs */}
                             <View style={styles.tabContainer}>
                                 <TouchableOpacity 
@@ -493,7 +428,7 @@ const InstagramHomeScreen = ({ navigation }) => {
                                     onPress={() => setActiveTab('all')}
                                 >
                                     <Text style={[styles.tabText, activeTab === 'all' && styles.activeTabText]}>
-                                        Tất cả
+                                        Bài Viết
                                     </Text>
                                 </TouchableOpacity>
                                 <TouchableOpacity 
@@ -571,9 +506,9 @@ const InstagramHomeScreen = ({ navigation }) => {
                 
                 <TouchableOpacity 
                     style={styles.navItem}
-                    onPress={() => navigation.navigate('SportsAvailabilityScreen')}
+                    onPress={() => navigation.navigate('SportsMatchingScreen')}
                 >
-                    <MaterialIcons name="sports-soccer" size={26} color="#666" />
+                    <MaterialIcons name="fitness-center" size={26} color="#666" />
                 </TouchableOpacity>
                 
                 {/* <TouchableOpacity 
@@ -709,23 +644,6 @@ const styles = StyleSheet.create({
         flex: 1,
         fontSize: 16,
         color: '#333',
-    },
-    storiesSection: {
-        backgroundColor: '#fff',
-        paddingVertical: 15,
-        borderBottomWidth: 1,
-        borderBottomColor: '#f0f0f0',
-    },
-    storiesTitle: {
-        fontSize: 18,
-        fontWeight: 'bold',
-        color: '#333',
-        marginLeft: 20,
-        marginBottom: 12,
-    },
-    storiesContainer: {
-        paddingHorizontal: 15,
-        paddingVertical: 5,
     },
     postWrapper: {
         marginBottom: 1,

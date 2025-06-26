@@ -20,6 +20,8 @@ export const ProfileProvider = ({ children }) => {
     const [userProfile, setUserProfile] = useState(null);
     const [sportsProfile, setSportsProfile] = useState(null);
     const [loading, setLoading] = useState(true);
+    const [sportsLoading, setSportsLoading] = useState(false);
+    const [error, setError] = useState(null);
 
     // Directly use the exported instance
     const userProfileService = UserProfileService;
@@ -28,6 +30,7 @@ export const ProfileProvider = ({ children }) => {
     const fetchUserProfile = async () => {
         try {
             setLoading(true);
+            setError(null);
 
             // Load từ AsyncStorage trước (có data ngay lập tức)
             const userProfileString = await AsyncStorage.getItem('userProfile');
@@ -66,10 +69,148 @@ export const ProfileProvider = ({ children }) => {
 
         } catch (error) {
             console.error('Lỗi khi lấy dữ liệu profile:', error);
+            setError(error.message || 'Không thể tải thông tin profile');
             // Nếu API lỗi, vẫn giữ data từ AsyncStorage
         } finally {
             setLoading(false);
         }
+    };
+
+    // 🏃‍♂️ SPORTS PROFILE FUNCTIONS
+    
+    // Hàm tạo hoặc cập nhật sports profile
+    const createOrUpdateSportsProfile = async (profileData) => {
+        try {
+            setSportsLoading(true);
+            setError(null);
+
+            let result;
+            if (sportsProfile?.id) {
+                // Update existing profile
+                result = await sportsProfileService.updateProfile(sportsProfile.id, profileData);
+            } else {
+                // Create new profile
+                result = await sportsProfileService.createOrUpdateProfile(profileData);
+            }
+
+            // Update state and AsyncStorage
+            setSportsProfile(result);
+            await AsyncStorage.setItem('sportsProfile', JSON.stringify(result));
+            
+            console.log('✅ Sports profile saved successfully');
+            return result;
+        } catch (error) {
+            console.error('❌ Error saving sports profile:', error);
+            setError(error.message || 'Không thể lưu hồ sơ thể thao');
+            throw error;
+        } finally {
+            setSportsLoading(false);
+        }
+    };
+
+    // Hàm refresh sports profile
+    const refreshSportsProfile = async () => {
+        try {
+            setSportsLoading(true);
+            setError(null);
+
+            const result = await sportsProfileService.getMyProfile();
+            if (result) {
+                setSportsProfile(result);
+                await AsyncStorage.setItem('sportsProfile', JSON.stringify(result));
+            } else {
+                setSportsProfile(null);
+                await AsyncStorage.removeItem('sportsProfile');
+            }
+            
+            return result;
+        } catch (error) {
+            console.error('❌ Error refreshing sports profile:', error);
+            setError(error.message || 'Không thể tải lại hồ sơ thể thao');
+            throw error;
+        } finally {
+            setSportsLoading(false);
+        }
+    };
+
+    // Hàm xóa sports profile
+    const deleteSportsProfile = async () => {
+        try {
+            setSportsLoading(true);
+            setError(null);
+
+            if (sportsProfile?.id) {
+                await sportsProfileService.deleteProfileById(sportsProfile.id);
+            }
+
+            // Clear state and AsyncStorage
+            setSportsProfile(null);
+            await AsyncStorage.removeItem('sportsProfile');
+            
+            console.log('✅ Sports profile deleted successfully');
+            return true;
+        } catch (error) {
+            console.error('❌ Error deleting sports profile:', error);
+            setError(error.message || 'Không thể xóa hồ sơ thể thao');
+            throw error;
+        } finally {
+            setSportsLoading(false);
+        }
+    };
+
+    // Hàm tìm kiếm đối tác thể thao
+    const findSportsPartners = async (filters = {}) => {
+        try {
+            setSportsLoading(true);
+            setError(null);
+
+            const result = await sportsProfileService.searchProfiles(filters);
+            return result;
+        } catch (error) {
+            console.error('❌ Error finding sports partners:', error);
+            setError(error.message || 'Không thể tìm kiếm đối tác thể thao');
+            throw error;
+        } finally {
+            setSportsLoading(false);
+        }
+    };
+
+    // Hàm tìm người dùng tương thích
+    const findCompatibleUsers = async () => {
+        try {
+            setSportsLoading(true);
+            setError(null);
+
+            const result = await sportsProfileService.findCompatibleUsers();
+            return result;
+        } catch (error) {
+            console.error('❌ Error finding compatible users:', error);
+            setError(error.message || 'Không thể tìm người dùng tương thích');
+            throw error;
+        } finally {
+            setSportsLoading(false);
+        }
+    };
+
+    // Hàm kiểm tra xem có sports profile hay không
+    const hasSportsProfile = () => {
+        return sportsProfile !== null && sportsProfile !== undefined;
+    };
+
+    // Hàm lấy thống kê sports profile
+    const getSportsStats = () => {
+        if (!sportsProfile) return null;
+
+        return {
+            favoriteSportsCount: sportsProfile.favoriteSports?.length || 0,
+            skillLevel: sportsProfile.skillLevel || 'Chưa xác định',
+            activityLevel: sportsProfile.activityLevel || 'Chưa xác định',
+            yearsOfExperience: sportsProfile.yearsOfExperience || 0,
+            isLookingForPartner: sportsProfile.lookingForPartner || false,
+            isLookingForTeam: sportsProfile.lookingForTeam || false,
+            isAvailableForTraining: sportsProfile.availableForTraining || false,
+            isOpenToCoaching: sportsProfile.openToCoaching || false
+        };
     };
 
     // Lấy thông tin profile từ AsyncStorage và API khi component được mount
@@ -104,6 +245,7 @@ export const ProfileProvider = ({ children }) => {
             return true;
         } catch (error) {
             console.error('Lỗi khi cập nhật profile:', error);
+            setError(error.message || 'Không thể cập nhật profile');
             return false;
         }
     };
@@ -113,14 +255,32 @@ export const ProfileProvider = ({ children }) => {
         await fetchUserProfile();
     };
 
+    // Hàm clear error
+    const clearError = () => {
+        setError(null);
+    };
+
     // Context value
     const value = {
+        // User Profile
         userProfile,
-        sportsProfile,
         loading,
+        error,
         updateProfile,
         refreshProfile,
-        fetchUserProfile
+        fetchUserProfile,
+        clearError,
+        
+        // Sports Profile
+        sportsProfile,
+        sportsLoading,
+        createOrUpdateSportsProfile,
+        refreshSportsProfile,
+        deleteSportsProfile,
+        findSportsPartners,
+        findCompatibleUsers,
+        hasSportsProfile,
+        getSportsStats
     };
 
     return (

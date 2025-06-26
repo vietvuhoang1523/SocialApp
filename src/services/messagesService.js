@@ -18,37 +18,27 @@ class MessagesService {
     }
 
     _setupWebSocketListeners() {
-        // Listen for new messages
-        webSocketService.on('newMessage', (message) => {
-        this._cacheMessage(message);
-        this._notifyCallbacks('newMessage', this.normalizeMessage(message));
-        });
+        // 🚫 REMOVED: newMessage listener to prevent duplicates
+        // This listener was causing duplicate message processing
+        // All newMessage handling is now done in useChatWebSocket.js
 
-        // Listen for message history - handle both array and paginated format
+        // Message history
         webSocketService.on('messageHistory', (data) => {
-            console.log('Received messageHistory:', data);
+            console.log('📚 [MessagesService] Message history received');
             
             let messages = [];
             let pagination = null;
 
-            // Check if it's paginated response (from backend)
-            if (data && typeof data === 'object' && data.messages) {
-                // Paginated format: { messages: [...], pagination: {...} }
+            if (data?.messages) {
                 messages = data.messages;
                 pagination = data.pagination;
             } else if (Array.isArray(data)) {
-                // Simple array format
                 messages = data;
-            } else {
-                console.warn('Unexpected message history format:', data);
-                return;
             }
 
-            // Normalize and cache messages
             const normalizedMessages = messages.map(msg => this.normalizeMessage(msg));
             normalizedMessages.forEach(message => this._cacheMessage(message));
 
-            // Notify callbacks
             const result = pagination 
                 ? { messages: normalizedMessages, pagination }
                 : normalizedMessages;
@@ -56,43 +46,35 @@ class MessagesService {
             this._notifyCallbacks('messageHistory', result);
         });
 
-        // Listen for conversations
+        // Conversations
         webSocketService.on('conversations', (conversations) => {
-            console.log('📨 Received conversations from WebSocket:', conversations);
-            console.log('📊 Conversations type:', typeof conversations);
-            console.log('📊 Conversations is array:', Array.isArray(conversations));
-            console.log('📊 Conversations length:', conversations?.length);
-            console.log('📊 First conversation structure:', conversations?.[0]);
-            console.log('📊 Raw conversations:', JSON.stringify(conversations, null, 2));
+            console.log('💬 [MessagesService] Conversations received:', conversations?.length || 0);
             this._notifyCallbacks('conversations', conversations);
         });
 
-        // Listen for unread messages
+        // Other listeners...
         webSocketService.on('unreadMessages', (messages) => {
             const normalizedMessages = messages.map(msg => this.normalizeMessage(msg));
             this._notifyCallbacks('unreadMessages', normalizedMessages);
         });
 
-        // Listen for typing notifications
         webSocketService.on('typing', (notification) => {
             this._notifyCallbacks('typing', notification);
         });
 
-        // Listen for errors
         webSocketService.on('error', (error) => {
-            console.error('WebSocket Error from backend:', error);
             this._notifyCallbacks('error', error);
         });
 
-        // Listen for read confirmations
         webSocketService.on('readSuccess', (data) => {
             this._notifyCallbacks('readSuccess', data);
         });
 
-        // Listen for unread count
         webSocketService.on('unreadCount', (data) => {
             this._notifyCallbacks('unreadCount', data);
         });
+
+        console.log('✅ [MessagesService] All WebSocket listeners setup complete');
     }
 
     // Get messages between users with improved WebSocket handling
@@ -372,7 +354,7 @@ class MessagesService {
         }
     }
 
-    // Normalize message format to ensure consistency
+    // Normalize message format to ensure consistency with backend ChatMessageResponse
     normalizeMessage(message) {
         if (!message) return null;
 
@@ -383,9 +365,13 @@ class MessagesService {
             receiverId: message.receiverId,
             timestamp: message.timestamp,
             attachmentUrl: message.attachmentUrl,
-            isRead: message.isRead || false,
+            attachmentType: message.attachmentType,
+            isRead: message.read || message.isRead || false, // Backend uses 'read' field
             isDelivered: message.isDelivered || false,
-            messageType: message.messageType || 'TEXT'
+            messageType: message.messageType || 'TEXT',
+            senderName: message.senderName,
+            senderAvatar: message.senderAvatar,
+            deletedForAll: message.deletedForAll || false
         };
     }
 

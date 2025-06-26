@@ -16,6 +16,7 @@ const useMessageManagement = (currentUser, user) => {
     const processedMessageIds = useRef(new Set());
     const paginationInfoRef = useRef(null);
     const lastMessageTimestampRef = useRef(null);
+    const flatListRef = useRef(null);
 
     // 📊 Stats for debugging
     useEffect(() => {
@@ -64,6 +65,32 @@ const useMessageManagement = (currentUser, user) => {
             });
             return;
         }
+
+        // 🚨 CRITICAL: Check if trying to chat with yourself
+        if (currentUser?.id === user?.id) {
+            console.error('❌ Cannot load messages: trying to chat with yourself!', {
+                currentUserId: currentUser?.id,
+                targetUserId: user?.id
+            });
+            setError('Không thể tải tin nhắn với chính mình');
+            return;
+        }
+
+        // 🔍 DEBUG: Log detailed user info for backend debugging
+        console.log('📝 [fetchMessages] User details:', {
+            currentUser: {
+                id: currentUser?.id,
+                email: currentUser?.email,
+                name: currentUser?.name
+            },
+            targetUser: {
+                id: user?.id,
+                email: user?.email,
+                name: user?.name
+            },
+            page,
+            isRefresh
+        });
 
         try {
             isLoadingRef.current = true;
@@ -145,16 +172,28 @@ const useMessageManagement = (currentUser, user) => {
         await fetchMessages(0, false);
     }, [fetchMessages]);
 
-    const fetchNewMessages = useCallback(async () => {
+    // 🔄 Safe refresh function - only used when absolutely necessary
+    const fetchNewMessages = useCallback(async (forceRefresh = false) => {
         if (!currentUser?.id || !user?.id) {
             console.log('⚠️ Missing user IDs for fetchNewMessages');
             return;
         }
 
-        try {
-            console.log('🆕 Fetching new messages...');
+        // 🔒 PROTECTION: Don't fetch if we have recent messages and WebSocket is connected
+        if (!forceRefresh && messages.length > 0 && lastMessageTimestampRef.current) {
+            const lastMessageTime = new Date(lastMessageTimestampRef.current).getTime();
+            const now = Date.now();
+            const timeDiff = now - lastMessageTime;
             
-            const fetchTime = new Date().toISOString();
+            // If last message is less than 30 seconds old, skip fetch (WebSocket should handle new messages)
+            if (timeDiff < 30000) {
+                console.log(`🚫 Skipping fetchNewMessages - last message only ${Math.round(timeDiff/1000)}s ago, WebSocket should handle new messages`);
+                return;
+            }
+        }
+
+        try {
+            console.log('🆕 Fetching new messages...', { forceRefresh, messageCount: messages.length });
             
             const response = await messagesService.getMessagesBetweenUsersPaginated(
                 currentUser?.id, 
@@ -172,7 +211,21 @@ const useMessageManagement = (currentUser, user) => {
                 console.log(`✅ Fetched ${latestMessages.length} latest messages`);
 
                 setMessages(prev => {
-                    const newMessages = latestMessages.filter(msg => !processedMessageIds.current.has(msg.id));
+                    // 🔒 CRITICAL: More aggressive duplicate filtering
+                    const newMessages = latestMessages.filter(msg => {
+                        // Skip if already processed
+                        if (processedMessageIds.current.has(msg.id)) {
+                            return false;
+                        }
+                        
+                        // Skip if already exists in current state  
+                        if (prev.some(existingMsg => existingMsg.id === msg.id)) {
+                            console.log(`🔒 [fetchNewMessages] Duplicate blocked in state: ${msg.id}`);
+                            return false;
+                        }
+                        
+                        return true;
+                    });
                     
                     if (lastMessageTimestampRef.current) {
                         console.log(`🔍 Checking for duplicates with timestamp after ${lastMessageTimestampRef.current}`);
@@ -181,9 +234,11 @@ const useMessageManagement = (currentUser, user) => {
                     newMessages.forEach(msg => processedMessageIds.current.add(msg.id));
                     
                     if (newMessages.length > 0) {
-                        console.log(`✅ Adding ${newMessages.length} new messages`);
+                        console.log(`✅ Adding ${newMessages.length} new messages via fetchNewMessages`);
                         const combinedMessages = [...newMessages, ...prev];
                         return deduplicateMessages(sortMessagesByTimestamp(combinedMessages));
+                    } else {
+                        console.log(`📭 No new messages to add from fetchNewMessages (${latestMessages.length} total fetched, all duplicates)`);
                     }
                     return prev;
                 });
@@ -191,7 +246,7 @@ const useMessageManagement = (currentUser, user) => {
         } catch (error) {
             console.error('❌ Error fetching new messages:', error);
         }
-    }, [currentUser?.id, user?.id, sortMessagesByTimestamp, deduplicateMessages]);
+    }, [currentUser?.id, user?.id, messages.length, sortMessagesByTimestamp, deduplicateMessages]);
 
     const onRefresh = useCallback(async () => {
         console.log('🔄 Refreshing messages...');
@@ -210,40 +265,58 @@ const useMessageManagement = (currentUser, user) => {
     }, [hasMore, fetchMessages]);
 
     const handleNewWebSocketMessage = useCallback((newMessage) => {
-        if (!newMessage || !newMessage.id) {
-            console.log('⚠️ Invalid WebSocket message received');
+        // Kiểm tra message hợp lệ
+        if (!newMessage?.id || !newMessage?.senderId || !newMessage?.receiverId) {
+            console.warn('⚠️ [useMessageManagement] Invalid message:', newMessage);
             return;
         }
         
-        if (newMessage.senderId === currentUser?.id) {
-            console.log(`📤 Skipping own message from WebSocket: ${newMessage.id}`);
-            return;
-        }
+        console.log(`📨 [useMessageManagement] Processing message ${newMessage.id}`);
         
+        // 🔒 CRITICAL: Triple-check for duplicates before processing
         if (processedMessageIds.current.has(newMessage.id)) {
-            console.log(`🔄 Message ${newMessage.id} already exists, skipping`);
+            console.log(`🚫 [useMessageManagement] DUPLICATE BLOCKED: Message ${newMessage.id} already processed`);
             return;
         }
         
-        console.log(`📨 New WebSocket message: ${newMessage.id} from ${newMessage.senderId}`);
-        
+        // 🔒 CRITICAL: Mark as processed IMMEDIATELY to prevent race conditions
         processedMessageIds.current.add(newMessage.id);
         
-        setMessages(prev => {
-            const messageExists = prev.some(msg => msg.id === newMessage.id);
-            if (messageExists) {
-                console.log(`⚠️ Message ${newMessage.id} already in state, not adding again`);
-                return prev;
+        // Auto-cleanup old processed IDs (keep last 200)
+        if (processedMessageIds.current.size > 200) {
+            const idsArray = Array.from(processedMessageIds.current);
+            const toRemove = idsArray.slice(0, idsArray.length - 200);
+            toRemove.forEach(id => processedMessageIds.current.delete(id));
+            console.log('🧹 [useMessageManagement] Cleaned up old processed message IDs');
+        }
+
+        // Chuẩn hóa message
+        const normalizedMessage = {
+            id: newMessage.id,
+            content: newMessage.content,
+            senderId: newMessage.senderId,
+            receiverId: newMessage.receiverId,
+            timestamp: newMessage.timestamp || new Date().toISOString(),
+            attachmentUrl: newMessage.attachmentUrl,
+            isRead: newMessage.isRead || false,
+            isDelivered: true,
+            messageType: newMessage.messageType || 'TEXT',
+            status: 'delivered'
+        };
+
+        // Thêm vào UI ngay lập tức
+        setMessages(prevMessages => {
+            // Double-check trong state để đảm bảo
+            if (prevMessages.some(msg => msg.id === normalizedMessage.id)) {
+                console.log(`🔄 [useMessageManagement] Message ${normalizedMessage.id} already in UI`);
+                return prevMessages;
             }
-            
-            const msgTimestamp = newMessage.timestamp || newMessage.createdAt;
-            if (msgTimestamp) {
-                lastMessageTimestampRef.current = msgTimestamp;
-            }
-            
-            return sortMessagesByTimestamp([newMessage, ...prev]);
+
+            console.log(`✅ [useMessageManagement] Adding message ${normalizedMessage.id} to UI`);
+            return [normalizedMessage, ...prevMessages];
         });
-    }, [sortMessagesByTimestamp, currentUser?.id]);
+
+    }, [setMessages]);
 
     useEffect(() => {
         return () => {

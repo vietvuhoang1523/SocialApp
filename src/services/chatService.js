@@ -104,17 +104,24 @@ class ChatService {
      * @private
      */
     _handleConversations(conversations) {
+        console.log('💬 [ChatService] Processing conversations from WebSocket:', conversations?.length || 0);
+        
         // Chuẩn hóa danh sách cuộc trò chuyện
         const normalizedConversations = this.normalizeConversations(conversations);
 
-        // Thông báo cho các subscribers
-        this.conversationsCallbacks.forEach(callback => {
+        console.log('📢 [ChatService] Broadcasting conversations to callbacks:', normalizedConversations.length);
+        
+        // 🚀 IMMEDIATE BROADCAST: Thông báo cho các subscribers ngay lập tức
+        this.conversationsCallbacks.forEach((callback, key) => {
             try {
+                console.log(`📤 [ChatService] Calling conversation callback: ${key}`);
                 callback(normalizedConversations);
             } catch (e) {
-                console.error('Error in conversations callback:', e);
+                console.error('❌ Error in conversations callback:', key, e);
             }
         });
+
+        console.log('✅ [ChatService] All conversation callbacks notified');
     }
 
     /**
@@ -169,31 +176,34 @@ class ChatService {
             console.log('📋 Lấy danh sách cuộc trò chuyện...');
 
             // Đảm bảo WebSocket kết nối trước
-            if (!webSocketHelper.isConnected()) {
+            if (!webSocketService.isConnected()) {
                 console.log('🔌 WebSocket chưa kết nối, đang kết nối...');
-                await webSocketHelper.ensureConnection();
+                await webSocketService.connectWithStoredToken();
+                await new Promise(resolve => setTimeout(resolve, 2000)); // Wait for connection to stabilize
             }
 
-            if (webSocketHelper.isConnected()) {
+            if (webSocketService.isConnected()) {
                 try {
                     console.log('🔗 Sử dụng WebSocket để lấy cuộc trò chuyện');
-                    const conversations = await webSocketHelper.getConversations();
-                    console.log('✅ Nhận cuộc trò chuyện qua WebSocket:', conversations);
-                    return conversations;
+                    await webSocketService.getConversations();
+                    
+                    // Đợi response từ WebSocket
+                    return new Promise((resolve, reject) => {
+                        const timeout = setTimeout(() => {
+                            reject(new Error('WebSocket timeout - conversations not received'));
+                        }, 15000); // 15 seconds timeout
+
+                        const handleResponse = (conversations) => {
+                            clearTimeout(timeout);
+                            webSocketService.off('conversations', handleResponse);
+                            console.log('✅ Nhận cuộc trò chuyện qua WebSocket:', conversations);
+                            resolve(conversations);
+                        };
+
+                        webSocketService.on('conversations', handleResponse);
+                    });
                 } catch (wsError) {
                     console.log('⚠️ WebSocket timeout hoặc lỗi:', wsError.message);
-
-                    // Thử lại một lần nữa với timeout ngắn hơn
-                    if (wsError.message.includes('timeout')) {
-                        console.log('🔄 Thử lại với timeout ngắn hơn...');
-                        try {
-                            const conversationsRetry = await webSocketHelper.getConversations();
-                            console.log('✅ Nhận cuộc trò chuyện qua WebSocket (retry):', conversationsRetry);
-                            return conversationsRetry;
-                        } catch (retryError) {
-                            console.log('❌ Retry cũng thất bại:', retryError.message);
-                        }
-                    }
                 }
             }
 
@@ -720,10 +730,10 @@ class ChatService {
             console.log('💬 Lấy tin nhắn giữa users:', currentUserId, 'và', partnerId);
 
             // Thử sử dụng WebSocket trước
-            if (webSocketHelper.isConnected()) {
+            if (webSocketService.isConnected()) {
                 try {
                     console.log('🔗 Sử dụng WebSocket để lấy tin nhắn');
-                    const result = await webSocketHelper.getMessagesBetweenUsers(
+                    await webSocketService.getMessagesBetweenUsers(
                         currentUserId,
                         partnerId,
                         {
@@ -735,19 +745,35 @@ class ChatService {
                         }
                     );
 
-                    if (result && result.messages) {
-                        console.log('✅ Nhận tin nhắn qua WebSocket:', result.messages.length, 'tin nhắn');
-                        return {
-                            content: result.messages,
-                            pagination: result.pagination
+                    // Đợi response từ WebSocket
+                    return new Promise((resolve, reject) => {
+                        const timeout = setTimeout(() => {
+                            reject(new Error('WebSocket timeout - messages not received'));
+                        }, 15000);
+
+                        const handleResponse = (result) => {
+                            clearTimeout(timeout);
+                            webSocketService.off('messageHistory', handleResponse);
+                            
+                            if (result && result.messages) {
+                                console.log('✅ Nhận tin nhắn qua WebSocket:', result.messages.length, 'tin nhắn');
+                                resolve({
+                                    content: result.messages,
+                                    pagination: result.pagination
+                                });
+                            } else if (Array.isArray(result)) {
+                                console.log('✅ Nhận tin nhắn qua WebSocket (format cũ):', result.length, 'tin nhắn');
+                                resolve({
+                                    content: result,
+                                    pagination: null
+                                });
+                            } else {
+                                reject(new Error('Unexpected WebSocket response format'));
+                            }
                         };
-                    } else if (Array.isArray(result)) {
-                        console.log('✅ Nhận tin nhắn qua WebSocket (format cũ):', result.length, 'tin nhắn');
-                        return {
-                            content: result,
-                            pagination: null
-                        };
-                    }
+
+                        webSocketService.on('messageHistory', handleResponse);
+                    });
                 } catch (wsError) {
                     console.log('⚠️ WebSocket failed, falling back to REST API:', wsError);
                 }

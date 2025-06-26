@@ -2,7 +2,8 @@
 // React Hook để quản lý tin nhắn với WebSocket
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { Alert } from 'react-native';
-import webSocketMessageService from '../services/WebSocketMessageService';
+import webSocketService from '../services/WebSocketService';
+import messagesService from '../services/messagesService';
 
 /**
  * Hook để quản lý tin nhắn trong cuộc trò chuyện
@@ -382,24 +383,9 @@ const useMessage = (currentUser, targetUser) => {
             try {
                 await webSocketMessageService.initialize();
 
-                // Listen for new messages
-                const unsubscribeNewMessage = webSocketMessageService.on('newMessage', (message) => {
-                    console.log('📨 Received new message:', message);
-                    
-                    // Check if message belongs to current conversation
-                    const isRelevant = 
-                        (message.senderId === currentUser.id && message.receiverId === targetUser.id) ||
-                        (message.senderId === targetUser.id && message.receiverId === currentUser.id);
-
-                    if (isRelevant) {
-                        addMessage(message);
-                        
-                        // Auto mark as read if from target user
-                        if (message.senderId === targetUser.id) {
-                            setTimeout(() => markAsRead(message.id), 1000);
-                        }
-                    }
-                });
+                // 🚫 REMOVED: newMessage listener to prevent duplicates
+                // This was causing multiple message processing
+                // All newMessage handling is now centralized in useChatWebSocket.js
 
                 // Listen for typing notifications
                 const unsubscribeTyping = webSocketMessageService.on('typing', (notification) => {
@@ -430,9 +416,8 @@ const useMessage = (currentUser, targetUser) => {
                     }
                 });
 
-                // Store unsubscribe functions
+                // Store unsubscribe functions (excluding removed newMessage listener)
                 listenersRef.current = [
-                    unsubscribeNewMessage,
                     unsubscribeTyping,
                     unsubscribeReadReceipt,
                     unsubscribeMessageDeleted

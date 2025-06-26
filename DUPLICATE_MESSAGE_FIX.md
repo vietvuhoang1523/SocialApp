@@ -124,3 +124,67 @@ const handleSend = useCallback(() => {
 - `src/hook/useMessageHandlers.js` - Remove auto-refresh, smart fallback
 - `src/components/chat/NewMessageInput.js` - Debounce protection
 - `src/screens/Messages/NewChatScreen.js` - Pass handleNewWebSocketMessage parameter 
+
+# Fix Duplicate Messages & Real-time Message Reception
+
+## 🎯 Vấn đề đã được giải quyết:
+1. **Duplicate messages**: Tin nhắn bị lặp 2-3 lần
+2. **Tin nhắn không nhận ngay**: Phải refresh mới thấy tin nhắn mới
+3. **Multiple listeners**: Quá nhiều WebSocket listeners trùng lặp
+
+## 🔧 Những thay đổi chính:
+
+### 1. **NewChatScreen.js** - Đơn giản hóa message listener
+- **Trước**: Có nhiều listeners phức tạp, logic xử lý rối rắm
+- **Sau**: CHỈ MỘT listener duy nhất cho `newMessage`
+- Kiểm tra tin nhắn thuộc cuộc trò chuyện hiện tại
+- Gọi `handleNewWebSocketMessage` chỉ một lần
+
+### 2. **useMessageManagement.js** - Tối ưu duplicate check
+- **Trước**: Logic kiểm tra duplicate phức tạp, nhiều bước
+- **Sau**: Kiểm tra duplicate ngay từ đầu với `processedMessageIds`
+- Đánh dấu đã xử lý NGAY LẬP TỨC
+- Double-check trong React state
+
+### 3. **useChatWebSocket.js** - Loại bỏ logic phức tạp
+- **Trước**: Phân loại tin nhắn gửi/nhận, logic rối rắm
+- **Sau**: CHỈ pass tin nhắn liên quan đến cuộc trò chuyện hiện tại
+- Một callback duy nhất `handleMessage`
+
+### 4. **messagesService.js** - Đơn giản hóa broadcasting
+- **Trước**: Nhiều log phức tạp, validate nhiều lần
+- **Sau**: Validate một lần, broadcast ngay lập tức
+- Loại bỏ các log không cần thiết
+
+### 5. **NewMessagesScreen.js** - Một listener cho conversations
+- **Trước**: Có cả direct WebSocket listener và messagesService listener
+- **Sau**: CHỈ sử dụng messagesService listener
+- Loại bỏ duplicate processing
+
+## ✅ Kết quả:
+- ✅ Tin nhắn hiển thị ngay lập tức khi nhận được
+- ✅ Không có duplicate messages
+- ✅ Logic đơn giản, dễ debug
+- ✅ Performance tốt hơn (ít listeners hơn)
+
+## 🔄 Luồng xử lý tin nhắn mới:
+
+```
+1. WebSocket nhận tin nhắn từ server
+   ↓
+2. WebSocketService._notifyListeners('newMessage', message)
+   ↓
+3. messagesService broadcast đến tất cả subscribers
+   ↓
+4. NewChatScreen nhận message → kiểm tra liên quan → gọi handleNewWebSocketMessage
+   ↓
+5. useMessageManagement kiểm tra duplicate → thêm vào UI ngay lập tức
+   ↓
+6. NewMessagesScreen cập nhật conversation list
+```
+
+## 🎯 Nguyên tắc chính:
+- **MỖI MESSAGE CHỈ XỬ LÝ MỘT LẦN**
+- **KIỂM TRA DUPLICATE NGAY TỪ ĐẦU**
+- **BROADCAST NGAY LẬP TỨC**
+- **ÍT LISTENERS HƠN = ÍT LỖI HƊN** 

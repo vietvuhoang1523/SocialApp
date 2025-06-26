@@ -243,7 +243,7 @@ const QuickSportsActionsScreen = ({ navigation }) => {
 
           <TouchableOpacity
             style={[styles.navCard, { backgroundColor: colors.cardBackground }]}
-            onPress={() => navigation.navigate('AllPendingRequestsScreen')}
+            onPress={() => navigation.navigate('AllPendingRequests')}
           >
             <MaterialCommunityIcons name="clock-outline" size={24} color={colors.primary} />
             <Text style={[styles.navText, { color: colors.text }]}>Yêu cầu chờ duyệt</Text>

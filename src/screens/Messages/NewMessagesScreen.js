@@ -257,65 +257,22 @@ const NewMessagesScreen = ({ navigation, route }) => {
                     }
                 });
 
-                        // Listen for conversation updates
-        messagesService.on('conversationUpdate', (updatedConv) => {
-            console.log('📨 Conversation updated:', updatedConv);
-            setConversations(prev => {
-                const updatedList = prev.map(conv => 
-                    conv.id === updatedConv.id ? { ...conv, ...updatedConv } : conv
-                );
-                console.log('📊 Updated conversations list:', updatedList.length);
-                return updatedList;
-            });
-        });
+                // Listen for conversation updates
+                messagesService.on('conversationUpdate', (updatedConv) => {
+                    console.log('📨 Conversation updated:', updatedConv);
+                    setConversations(prev => {
+                        const updatedList = prev.map(conv => 
+                            conv.id === updatedConv.id ? { ...conv, ...updatedConv } : conv
+                        );
+                        console.log('📊 Updated conversations list:', updatedList.length);
+                        return updatedList;
+                    });
+                });
 
-                        // Listen for new messages
-        messagesService.on('newMessage', (message) => {
-            console.log('📩 New message received for conversation list:', message);
-            
-            // ✅ FIX: Thêm kiểm tra và chuẩn hóa message
-            if (!message) {
-                console.log('⚠️ Received null/undefined message');
-                return;
-            }
-            
-            // ✅ FIX: Tạo ID unique nếu thiếu
-            if (!message.id) {
-                message.id = `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-                console.log('⚠️ Message missing ID, generated:', message.id);
-            }
-            
-            // ✅ FIX: Đảm bảo message có timestamp
-            if (!message.timestamp) {
-                message.timestamp = new Date().toISOString();
-                console.log('⚠️ Message missing timestamp, added:', message.timestamp);
-            }
-            
-            // ✅ FIX: Đảm bảo có senderId và receiverId
-            if (!message.senderId || !message.receiverId) {
-                console.log('⚠️ Message missing senderId or receiverId:', message);
-                return;
-            }
-            
-            // ✅ FIX: Debounce message processing
-            const messageKey = `${message.id}_${message.timestamp}`;
-            if (messageProcessingRef.current.has(messageKey)) {
-                console.log('🔍 Message already being processed, skipping:', messageKey);
-                return;
-            }
-            
-            messageProcessingRef.current.add(messageKey);
-            
-            // Clear old entries after 5 seconds
-            if (messageTimeoutRef.current) {
-                clearTimeout(messageTimeoutRef.current);
-            }
-            messageTimeoutRef.current = setTimeout(() => {
-                messageProcessingRef.current.clear();
-            }, 5000);
-            
-            updateConversationWithNewMessage(message);
-        });
+                // ❌ REMOVED: Duplicate message listener to prevent duplicate messages
+                // The useChatWebSocket hook in NewChatScreen handles ALL message processing
+                // NewMessagesScreen should NOT listen to individual messages
+                console.log('✅ [NewMessagesScreen] NOT registering message listener - handled by useChatWebSocket');
 
                 // Listen for unread counts
                 messagesService.on('unreadCount', (data) => {
@@ -351,7 +308,7 @@ const NewMessagesScreen = ({ navigation, route }) => {
         return () => {
             // Cleanup listeners
             messagesService.off('conversationUpdate');
-            messagesService.off('newMessage');
+            // ❌ REMOVED: No newMessage listener to clean up
             messagesService.off('unreadCount');
             webSocketService.off('userOnline');
             webSocketService.off('userOffline');
@@ -541,78 +498,87 @@ const NewMessagesScreen = ({ navigation, route }) => {
         }
     }, [activeTab, loadConversations, loadFriends, currentUser?.id]);
 
-    // 📩 Update conversation with new message
-    const updateConversationWithNewMessage = (message) => {
-        console.log('📩 Processing new message:', message);
+    // 📩 Update conversation with new message - ENHANCED for immediate updates
+    const updateConversationWithNewMessage = useCallback((message) => {
+        console.log('📩 [ENHANCED] Processing new message for conversations:', message);
         
         setConversations(prev => {
-            // ✅ FIX: Cải thiện logic kiểm tra duplicate
-            const messageAlreadyProcessed = prev.some(conv => 
-                conv.lastMessage && 
-                (conv.lastMessage.id === message.id || 
-                 (conv.lastMessage.content === message.content && 
-                  conv.lastMessage.timestamp === message.timestamp &&
-                  conv.lastMessage.senderId === message.senderId))
+            console.log('📊 [ENHANCED] Current conversations count:', prev.length);
+            
+            // ✅ FIX: Enhanced duplicate check - check by message ID first
+            const isDuplicateById = prev.some(conv => 
+                conv.lastMessage && conv.lastMessage.id === message.id
             );
             
-            if (messageAlreadyProcessed) {
-                console.log('🔍 Tin nhắn đã được xử lý trước đó, bỏ qua:', message.id);
+            if (isDuplicateById) {
+                console.log('🔍 [ENHANCED] Message ID already exists in conversations, skipping:', message.id);
                 return prev;
             }
             
+            // ✅ Find conversation by user relationship
             const conversationIndex = prev.findIndex(conv => {
                 // ✅ FIX: Hỗ trợ cả otherUser và partner format
                 const partner = conv.otherUser || conv.partner;
-                return (partner.id === message.senderId && message.receiverId === currentUser?.id) ||
-                       (partner.id === message.receiverId && message.senderId === currentUser?.id);
+                if (!partner) return false;
+                
+                const isMessageBetweenUsers = 
+                    (partner.id === message.senderId && message.receiverId === currentUser?.id) ||
+                    (partner.id === message.receiverId && message.senderId === currentUser?.id);
+                
+                console.log('🔍 [ENHANCED] Checking conversation with partner:', partner.id, 'isMatch:', isMessageBetweenUsers);
+                return isMessageBetweenUsers;
             });
 
             if (conversationIndex !== -1) {
-                // ✅ FIX: Kiểm tra timestamp để đảm bảo chỉ cập nhật tin nhắn mới hơn
-                const existingConv = prev[conversationIndex];
-                const existingTimestamp = existingConv.lastMessage?.timestamp ? 
-                    new Date(existingConv.lastMessage.timestamp).getTime() : 0;
-                const newTimestamp = message.timestamp ? 
-                    new Date(message.timestamp).getTime() : 0;
+                console.log('📊 [ENHANCED] Found existing conversation at index:', conversationIndex);
                 
-                // Nếu tin nhắn mới cũ hơn tin nhắn hiện tại, không cập nhật
-                if (newTimestamp < existingTimestamp) {
-                    console.log('⚠️ Tin nhắn mới cũ hơn tin nhắn hiện tại, không cập nhật');
-                    return prev;
-                }
-                
+                // ✅ Create new array with updated conversation
                 const updatedConversations = [...prev];
-                updatedConversations[conversationIndex] = {
-                    ...updatedConversations[conversationIndex],
+                const existingConv = updatedConversations[conversationIndex];
+                
+                // ✅ Update the conversation with new message
+                const updatedConv = {
+                    ...existingConv,
                     lastMessage: message,
-                    updatedAt: message.timestamp,
+                    updatedAt: message.timestamp || new Date().toISOString(),
+                    lastActivity: message.timestamp || new Date().toISOString(),
                     unreadCount: message.senderId !== currentUser?.id ? 
-                        (updatedConversations[conversationIndex].unreadCount || 0) + 1 : 0
+                        (existingConv.unreadCount || 0) + 1 : (existingConv.unreadCount || 0)
                 };
 
-                // ✅ FIX: Tạo bản sao mới của mảng để đảm bảo React nhận ra thay đổi
-                const [movedConv] = updatedConversations.splice(conversationIndex, 1);
-                return [movedConv, ...updatedConversations];
+                // ✅ Move conversation to top and update
+                updatedConversations.splice(conversationIndex, 1);
+                const finalList = [updatedConv, ...updatedConversations];
+                
+                console.log('✅ [ENHANCED] Conversation updated and moved to top, total:', finalList.length);
+                return finalList;
             }
 
-            // Create new conversation if doesn't exist
+            // ✅ Create new conversation if doesn't exist
+            console.log('📊 [ENHANCED] Creating new conversation for message');
+            const partnerId = message.senderId === currentUser?.id ? message.receiverId : message.senderId;
+            
             const newConversation = {
-                id: `conv_${message.senderId}_${message.receiverId}`,
-                // ✅ FIX: Sử dụng partner format để tương thích với backend
+                id: `conv_${Date.now()}_${partnerId}`,
+                // ✅ FIX: Enhanced partner format với better fallback
                 partner: {
-                    id: message.senderId === currentUser?.id ? message.receiverId : message.senderId,
-                    fullName: 'Người dùng mới',
-                    username: 'newuser',
-                    avatarUrl: null
+                    id: partnerId,
+                    fullName: `User ${partnerId}`, // Better fallback
+                    username: `user${partnerId}`,
+                    avatarUrl: null,
+                    profilePictureUrl: null
                 },
                 lastMessage: message,
                 unreadCount: message.senderId !== currentUser?.id ? 1 : 0,
-                lastActivity: message.timestamp
+                lastActivity: message.timestamp || new Date().toISOString(),
+                updatedAt: message.timestamp || new Date().toISOString()
             };
 
-            return [newConversation, ...prev];
+            const finalList = [newConversation, ...prev];
+            console.log('✅ [ENHANCED] New conversation created, total:', finalList.length);
+            return finalList;
         });
-    };
+    }, [currentUser?.id]);
 
     // 🎨 Animate tab switch
     const animateTabSwitch = (newTab) => {

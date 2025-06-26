@@ -190,48 +190,9 @@ export const useMessagePagination = (user1Id, user2Id, pageSize = 20) => {
         };
     }, [user1Id, user2Id, loadPage]);
 
-    // Listen for new messages via MessagesService event system
-    useEffect(() => {
-        const handleNewMessage = (message) => {
-            console.log('📨 New message received via hook:', message);
-            
-            // Check if message belongs to current conversation
-            const isRelevant = (message.senderId === user1Id && message.receiverId === user2Id) ||
-                              (message.senderId === user2Id && message.receiverId === user1Id);
-            
-            if (isRelevant) {
-                // Add new message to the beginning (most recent first)
-                setMessages(prev => {
-                    // Prevent duplicates
-                    if (prev.find(m => m.id === message.id)) {
-                        return prev;
-                    }
-                    return [message, ...prev];
-                });
-                
-                setAllMessages(prev => new Map(prev.set(message.id, message)));
-                
-                // Update pagination count if available
-                setPagination(prev => {
-                    if (prev) {
-                        return {
-                            ...prev,
-                            totalElements: prev.totalElements + 1
-                        };
-                    }
-                    return prev;
-                });
-            }
-        };
-
-        // Register event listener
-        const eventKey = `messagePagination_${user1Id}_${user2Id}`;
-        messagesService.on('newMessage', handleNewMessage);
-        
-        return () => {
-            messagesService.off('newMessage', eventKey);
-        };
-    }, [user1Id, user2Id]);
+    // 🚫 REMOVED: newMessage listener to prevent duplicates
+    // This listener was causing duplicate message processing
+    // All newMessage handling is now centralized in useChatWebSocket.js
 
     // Utility functions
     const hasNextPage = pagination?.hasNext || false;

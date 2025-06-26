@@ -300,18 +300,32 @@ class WebSocketService {
             // ✅ Subscribe to personal message queue - backend sends new messages here
             console.log('📡 Subscribing to /user/' + userEmail + '/queue/messages');
             this.client.subscribe(`/user/${userEmail}/queue/messages`, (message) => {
-                console.log('📨 Received new message via WebSocket:', message.body);
+                console.log('📨 [WebSocketService] Raw message received via WebSocket:', message.body);
+                console.log('📨 [WebSocketService] Message headers:', message.headers);
                 try {
                     const messageData = JSON.parse(message.body);
-                    console.log('📨 Message details:', {
+                    console.log('📨 [WebSocketService] Parsed message data:', {
                         id: messageData.id,
                         senderId: messageData.senderId,
                         receiverId: messageData.receiverId,
-                        content: messageData.content?.substring(0, 50) + '...'
+                        content: messageData.content?.substring(0, 50) + '...',
+                        timestamp: messageData.timestamp,
+                        read: messageData.read,
+                        senderName: messageData.senderName
                     });
+                    
+                    // ✅ Validate message before broadcasting
+                    if (!messageData.id || !messageData.senderId || !messageData.receiverId) {
+                        console.error('❌ [WebSocketService] Invalid message format:', messageData);
+                        return;
+                    }
+                    
+                    // 🚀 IMMEDIATE BROADCAST: Notify listeners right away
+                    console.log('📢 [WebSocketService] Broadcasting new message immediately');
                     this._notifyListeners('newMessage', messageData);
                 } catch (error) {
                     console.error('❌ Error parsing new message:', error);
+                    console.error('❌ Raw message body:', message.body);
                 }
             });
 
@@ -387,9 +401,26 @@ class WebSocketService {
                 console.log('✅ Message read confirmation:', message.body);
                 try {
                     const readData = JSON.parse(message.body);
-                    this._notifyListeners('messageRead', readData);
+                    this._notifyListeners('readSuccess', readData);
                 } catch (error) {
                     console.error('❌ Error parsing read confirmation:', error);
+                }
+            });
+
+            // Check client again
+            if (!this.client || !this.client.connected) {
+                throw new Error('STOMP client disconnected during setup');
+            }
+
+            // ✅ Subscribe to error queue
+            console.log('📡 Subscribing to /user/' + userEmail + '/queue/errors');
+            this.client.subscribe(`/user/${userEmail}/queue/errors`, (message) => {
+                console.log('❌ Received error from backend:', message.body);
+                try {
+                    const errorData = JSON.parse(message.body);
+                    this._notifyListeners('error', errorData);
+                } catch (error) {
+                    console.error('❌ Error parsing error message:', error);
                 }
             });
 
@@ -483,8 +514,20 @@ class WebSocketService {
                 receiverId: parseInt(messageData.receiverId),
                 attachmentUrl: messageData.attachmentUrl || null,
                 attachmentType: messageData.attachmentType || null,
+                attachmentSize: messageData.attachmentSize || null,
+                attachmentName: messageData.attachmentName || null,
                 messageType: messageData.messageType || 'text',
-                timestamp: new Date().toISOString()
+                timestamp: new Date().toISOString(),
+                // Optional fields for future features
+                replyToMessageId: messageData.replyToMessageId || null,
+                isForwarded: messageData.isForwarded || false,
+                originalMessageId: messageData.originalMessageId || null,
+                latitude: messageData.latitude || null,
+                longitude: messageData.longitude || null,
+                locationName: messageData.locationName || null,
+                contactName: messageData.contactName || null,
+                contactPhone: messageData.contactPhone || null,
+                contactEmail: messageData.contactEmail || null
                 // ✅ Backend will set senderId from SecurityUtils
             };
 
@@ -809,15 +852,34 @@ class WebSocketService {
     }
 
     _notifyListeners(event, data) {
-        if (!this.eventListeners.has(event)) return;
+        if (!this.eventListeners.has(event)) {
+            console.log(`⚠️ No listeners registered for event: ${event}`);
+            return;
+        }
 
-        this.eventListeners.get(event).forEach(callback => {
+        const listeners = this.eventListeners.get(event);
+        console.log(`📢 [WebSocketService] Broadcasting ${event} to ${listeners.size} listeners`);
+        
+        // Log message details for debugging
+        if (event === 'newMessage' && data) {
+            console.log(`📨 [WebSocketService] Broadcasting message:`, {
+                id: data.id,
+                senderId: data.senderId,
+                receiverId: data.receiverId,
+                content: data.content?.substring(0, 30) + '...'
+            });
+        }
+
+        listeners.forEach((callback, key) => {
             try {
+                console.log(`📤 [WebSocketService] Calling listener ${key} for ${event}`);
                 callback(data);
             } catch (error) {
-                console.error(`Error in event listener for ${event}:`, error);
+                console.error(`❌ Error in event listener ${key} for ${event}:`, error);
             }
         });
+
+        console.log(`✅ [WebSocketService] Successfully broadcasted ${event} to all listeners`);
     }
 
     // Enhanced connection status check
